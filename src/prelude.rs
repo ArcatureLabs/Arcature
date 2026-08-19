@@ -35,7 +35,11 @@ pub use serde::{Deserialize, Serialize};
 // --- Capability entry points (one primary type per enabled subsystem) -----
 
 #[cfg(feature = "inertia")]
-pub use crate::inertia::{inertia, Inertia, InertiaConfig, RootDocument};
+pub use crate::inertia::{Inertia, InertiaConfig, RootDocument};
+
+// The `inertia!()` macro is `#[macro_export]`, so it is at the crate root.
+#[cfg(feature = "inertia")]
+pub use crate::inertia;
 
 #[cfg(feature = "database")]
 pub use crate::database::{Db, DatabaseConfig};

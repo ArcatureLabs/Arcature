@@ -65,7 +65,12 @@ pub use axum::middleware::from_fn;
 #[cfg(feature = "inertia")]
 pub mod inertia;
 #[cfg(feature = "inertia")]
-pub use inertia::{inertia, Inertia, InertiaConfig, RootDocument};
+pub use inertia::{
+    default_root_document, AssetVersion, Inertia, InertiaConfig, InertiaError,
+    InertiaLayer, RootDocument, ScriptBody,
+};
+// The `inertia!()` macro is `#[macro_export]` inside `inertia::mod`, so it is
+// reachable as `arcature::inertia!(...)` at the crate root.
 
 #[cfg(feature = "database")]
 pub mod database;

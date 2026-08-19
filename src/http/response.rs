@@ -8,6 +8,8 @@
 use crate::error::{Error, Result};
 use axum::http::HeaderValue;
 use axum::response::{IntoResponse, Redirect, Response};
+#[cfg(any(feature = "api", feature = "inertia"))]
+use axum::Json;
 
 /// A builder for HTTP redirect responses with named-route support.
 ///
