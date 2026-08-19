@@ -25,6 +25,14 @@ name = "arcature"
 path = "src/lib.rs"
 
 # ---------------------------------------------------------------------------
+# Workspace — the proc-macro crate lives alongside `arcature` as a path dep.
+# Only `arcature` is the public release unit; `arcature-macros` is an
+# implementation detail Rust requires (proc-macros must be a separate crate).
+# ---------------------------------------------------------------------------
+[workspace]
+members = [".", "macros"]
+
+# ---------------------------------------------------------------------------
 # Features
 # ---------------------------------------------------------------------------
 #
@@ -59,6 +67,7 @@ default = [
 # expert can still build a raw Axum app over the kernel; with it the
 # generated app's `main.rs` needs no direct tokio dependency.
 macros = [
+    "dep:arcature-macros",
     "dep:tokio",
     "dep:tokio-util",
     "dep:tower-http",
@@ -160,6 +169,11 @@ unsafe_code = "forbid"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("storage"))'] }
 
 [dependencies]
+# Proc-macro crate (the #[model], #[request], #[controller], #[derive(Job)],
+# #[derive(Event)] macros). A separate crate because Rust requires proc-macros
+# to live in their own crate.
+arcature-macros = { path = "macros", optional = true }
+
 # HTTP / async runtime kernel.
 axum = { version = "0.8.9", default-features = false, features = ["tokio", "http1", "ws", "json", "form", "query"] }
 tower = { version = "0.5.3", default-features = false }

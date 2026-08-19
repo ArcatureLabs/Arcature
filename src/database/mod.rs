@@ -30,3 +30,13 @@ pub use transaction::Transaction;
 pub use sea_orm;
 pub use sea_orm_migration;
 pub use sqlx;
+
+/// The marker trait for a SeaORM entity model.
+///
+/// The `#[model(table = "...")]` macro generates `impl Model for T` where
+/// `type Entity = T::Entity`. This binds the user's struct to the
+/// [`QueryModel`] query facade so `T::query(&db).where_eq(...).all()` works.
+pub trait Model: sea_orm::EntityTrait {
+    /// The SeaORM `Entity` for this model (always `<Self as EntityTrait>::Entity`).
+    type Entity: sea_orm::EntityTrait<Model = Self>;
+}

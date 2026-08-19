@@ -84,6 +84,10 @@ pub use inertia::{
 pub mod database;
 #[cfg(feature = "database")]
 pub use database::{Db, DatabaseConfig};
+// Re-export SeaORM so the `#[model]` macro's `::arcature::sea_orm::DeriveEntityModel`
+// path resolves. The database feature pulls in sea_orm.
+#[cfg(feature = "database")]
+pub use sea_orm;
 
 #[cfg(feature = "auth")]
 pub mod auth;
@@ -104,6 +108,11 @@ pub use validation::{
     validate_or_problem, validation_problem, Request, Validated, ValidatedForm, ValidatedJson,
     ValidatedPath, ValidatedQuery,
 };
+// Re-export `validator` so the `#[request]` macro's
+// `#[derive(::arcature::Validate)]` resolves. The validation feature pulls in
+// validator with the derive feature.
+#[cfg(feature = "validation")]
+pub use validator;
 #[cfg(feature = "validation")]
 pub use validation::rejection::{
     from_form_rejection, from_json_rejection, from_path_rejection, from_query_rejection,
@@ -177,6 +186,12 @@ pub mod cli;
 mod macros;
 #[cfg(feature = "macros")]
 pub use macros::main;
+
+// Proc-macro re-exports from the `arcature-macros` crate. The derive macros
+// `Job` and `Event` share names with the traits `jobs::Job` and
+// `events::Event` in different namespaces (the same trick `serde` uses).
+#[cfg(feature = "macros")]
+pub use arcature_macros::{controller, model, request, Event, Job};
 
 // --- The curated prelude ----------------------------------------------------
 
