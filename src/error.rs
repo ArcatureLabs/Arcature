@@ -291,6 +291,20 @@ impl From<redis::RedisError> for Error {
     }
 }
 
+#[cfg(feature = "cache")]
+impl From<crate::cache::CacheError> for Error {
+    fn from(e: crate::cache::CacheError) -> Self {
+        Error::Cache(e.to_string())
+    }
+}
+
+#[cfg(feature = "cache")]
+impl From<crate::cache::CacheConnectError> for Error {
+    fn from(e: crate::cache::CacheConnectError) -> Self {
+        Error::Cache(e.to_string())
+    }
+}
+
 #[cfg(feature = "mail")]
 impl From<lettre::error::Error> for Error {
     fn from(e: lettre::error::Error) -> Self {
@@ -298,9 +312,37 @@ impl From<lettre::error::Error> for Error {
     }
 }
 
-#[cfg(feature = "storage")]
+#[cfg(feature = "mail")]
+impl From<crate::mail::MailSendError> for Error {
+    fn from(e: crate::mail::MailSendError) -> Self {
+        Error::Mail(e.to_string())
+    }
+}
+
+#[cfg(feature = "mail")]
+impl From<crate::mail::MailConfigError> for Error {
+    fn from(e: crate::mail::MailConfigError) -> Self {
+        Error::Mail(e.to_string())
+    }
+}
+
+#[cfg(any(feature = "storage-fs", feature = "storage-s3"))]
 impl From<opendal::Error> for Error {
     fn from(e: opendal::Error) -> Self {
+        Error::Storage(e.to_string())
+    }
+}
+
+#[cfg(any(feature = "storage-fs", feature = "storage-s3"))]
+impl From<crate::storage::StorageError> for Error {
+    fn from(e: crate::storage::StorageError) -> Self {
+        Error::Storage(e.to_string())
+    }
+}
+
+#[cfg(any(feature = "storage-fs", feature = "storage-s3"))]
+impl From<crate::storage::StorageConnectError> for Error {
+    fn from(e: crate::storage::StorageConnectError) -> Self {
         Error::Storage(e.to_string())
     }
 }

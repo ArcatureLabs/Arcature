@@ -96,11 +96,11 @@ validation = ["dep:validator"]
 cache = ["dep:redis"]
 
 # Storage: filesystem by default; S3-compatible behind `storage-s3`.
-storage-fs = ["dep:opendal", "dep:bytes", "dep:futures"]
-storage-s3 = ["storage-fs"]
+storage-fs = ["dep:opendal", "dep:bytes", "dep:futures", "opendal/services-fs"]
+storage-s3 = ["storage-fs", "opendal/services-s3", "opendal/http-transport-reqwest", "opendal/executors-tokio"]
 
 # Mail: lettre SMTP.
-mail = ["dep:lettre"]
+mail = ["dep:lettre", "dep:url", "dep:percent-encoding"]
 
 # Jobs: Redis-backed queue, dispatch, worker runtime, scheduler.
 jobs = [
@@ -206,6 +206,8 @@ futures = { version = "0.3.33", default-features = false, features = ["std"], op
 
 # Mail.
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "pool", "tokio1", "rustls", "tokio1-rustls", "aws-lc-rs", "webpki-roots", "hostname"], optional = true }
+url = { version = "2.5", default-features = false, optional = true }
+percent-encoding = { version = "2.3", default-features = false, optional = true }
 
 # Observability.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"], optional = true }

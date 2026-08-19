@@ -104,17 +104,26 @@ pub use validation::rejection::{
 #[cfg(feature = "cache")]
 pub mod cache;
 #[cfg(feature = "cache")]
-pub use cache::{Cache, CacheConfig};
+pub use cache::{
+    Cache, CacheConfig, CacheConfigError, CacheConnectError, CacheError, CacheHealthError,
+    Namespace,
+};
 
 #[cfg(feature = "storage-fs")]
 pub mod storage;
 #[cfg(feature = "storage-fs")]
-pub use storage::{Storage, StorageConfig, StoragePath};
+pub use storage::{
+    Disk, FsConfig, S3Config, Storage, StorageBuilder, StorageConfig, StorageConfigError,
+    StorageConnectError, StorageError, StoragePath, StoragePathError,
+};
 
 #[cfg(feature = "mail")]
 pub mod mail;
 #[cfg(feature = "mail")]
-pub use mail::{Mail, Mailer, Mailable, SmtpConfig};
+pub use mail::{
+    Email, EmailAttachment, EmailError, Mail, MailBuilder, MailConfigError, MailSendError,
+    Mailer, Mailable, SmtpConfig, SmtpCredentials, TlsMode,
+};
 
 #[cfg(feature = "jobs")]
 pub mod jobs;
