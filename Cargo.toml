@@ -102,12 +102,12 @@ storage-s3 = ["storage-fs", "opendal/services-s3", "opendal/http-transport-reqwe
 # Mail: lettre SMTP.
 mail = ["dep:lettre", "dep:url", "dep:percent-encoding"]
 
-# Jobs: Redis-backed queue, dispatch, worker runtime, scheduler.
+# Jobs: PostgreSQL SKIP LOCKED queue, worker runtime, scheduler.
+# `database` brings in sqlx (with the PgPool), chrono, and uuid.
 jobs = [
-    "dep:redis",
+    "database",
+    "dep:tokio",
     "dep:tokio-util",
-    "dep:chrono",
-    "dep:uuid",
 ]
 
 # Events + listeners: in-process typed dispatch.
@@ -124,7 +124,7 @@ opentelemetry = ["observe", "dep:opentelemetry"]
 pages = ["dep:http"]
 
 # Realtime WebSocket + SSE wrappers over axum.
-realtime = ["dep:tokio", "dep:futures"]
+realtime = ["dep:tokio", "dep:futures", "dep:bytes"]
 
 # The `arc` CLI, generators, and the canonical application templates.
 cli = ["dep:clap", "dep:tokio", "dep:tokio-util"]

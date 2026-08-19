@@ -60,6 +60,14 @@ pub use http::json;
 pub use axum::routing::{any, delete, get, head, options, patch, post, put};
 pub use axum::middleware::from_fn;
 
+/// The base trait that gives a framework component (job, event, etc.) its
+/// static name, used for dispatch lookup and inspection. Always available;
+/// the `#[job]` and `#[derive(Event)]` macros generate `impl DxComponent`.
+pub trait DxComponent {
+    /// The static component name (e.g. the type name).
+    const NAME: &'static str;
+}
+
 // --- Feature-gated subsystems ----------------------------------------------
 
 #[cfg(feature = "inertia")]
@@ -128,17 +136,22 @@ pub use mail::{
 #[cfg(feature = "jobs")]
 pub mod jobs;
 #[cfg(feature = "jobs")]
-pub use jobs::{Job, JobHandler, Jobs, JobError};
+pub use jobs::{
+    Job, JobModel, JobRequest, Jobs, JobError, JobStatus, EnqueuedJob, Registry, Worker,
+    WorkerBuilder, WorkerConfig, RetryPolicy, EnqueueError, RegisterError, WorkerError,
+    MigrateError, SchedulerError, Scheduler, ScheduleBinding, ScheduleCadence, ClaimedJob,
+    DEFAULT_MAX_PAYLOAD_BYTES,
+};
 
 #[cfg(feature = "events")]
 pub mod events;
 #[cfg(feature = "events")]
-pub use events::{Event, Dispatcher, ListenerBinding};
+pub use events::{Event, Dispatcher, DispatchError, ListenerBinding};
 
 #[cfg(feature = "realtime")]
 pub mod realtime;
 #[cfg(feature = "realtime")]
-pub use realtime::{Broadcast, WebSocketEndpoint, SseEndpoint, Registry};
+pub use realtime::{Broadcast, SseEndpoint, WebSocketEndpoint};
 
 // The `api` module is always available: `Problem` (RFC 9457) needs only
 // always-on deps and the validation subsystem depends on it. The `api`

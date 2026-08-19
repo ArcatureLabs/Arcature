@@ -60,13 +60,13 @@ pub use crate::storage::{Storage, StorageConfig, StoragePath};
 pub use crate::mail::{Mail, Mailer, Mailable, SmtpConfig};
 
 #[cfg(feature = "jobs")]
-pub use crate::jobs::{Job, JobHandler, Jobs};
+pub use crate::jobs::{Job, JobModel, Jobs, JobError, JobRequest, Registry, Worker, WorkerConfig};
 
 #[cfg(feature = "events")]
-pub use crate::events::{Event, Dispatcher};
+pub use crate::events::{Dispatcher, Event};
 
 #[cfg(feature = "realtime")]
-pub use crate::realtime::{Broadcast, Registry, SseEndpoint, WebSocketEndpoint};
+pub use crate::realtime::{Broadcast, SseEndpoint, WebSocketEndpoint};
 
 #[cfg(feature = "api")]
 pub use crate::api::{Problem, ProblemKind};

@@ -1,0 +1,78 @@
+//! The `Jobs` facade: enqueue over the application's existing `PgPool`.
+//!
+//! One pool, no second connection. `enqueue_tx` / `enqueue_with` take a caller
+//! transaction/executor so `create order + enqueue job` share one transaction.
+
+use sqlx::postgres::PgExecutor;
+use sqlx::PgPool;
+
+use super::enqueue::{insert_job, EnqueuedJob, JobRequest};
+use super::error::{EnqueueError, MigrateError};
+use super::migrate;
+
+/// The job queue facade over the application's existing `PgPool`.
+#[derive(Clone)]
+pub struct Jobs {
+    pool: PgPool,
+}
+
+impl Jobs {
+    /// Create a `Jobs` facade from an existing `PgPool`. No second pool.
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    /// The underlying pool (the escape hatch).
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
+    /// Apply the jobs schema migrations (idempotent, advisory-locked).
+    pub async fn migrate(&self) -> Result<(), MigrateError> {
+        migrate::apply(&self.pool).await
+    }
+
+    /// Apply migrations within a caller's transaction.
+    pub async fn migrate_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), MigrateError> {
+        migrate::apply_tx(tx).await
+    }
+
+    /// Enqueue a job.
+    pub async fn enqueue<J>(
+        &self,
+        request: &JobRequest<J>,
+    ) -> Result<EnqueuedJob, EnqueueError>
+    where
+        J: serde::Serialize + serde::de::DeserializeOwned,
+    {
+        insert_job(&self.pool, request).await
+    }
+
+    /// Enqueue a job using a caller-supplied executor (e.g. a transaction).
+    pub async fn enqueue_with<'c, E, J>(
+        &self,
+        executor: E,
+        request: &JobRequest<J>,
+    ) -> Result<EnqueuedJob, EnqueueError>
+    where
+        E: PgExecutor<'c>,
+        J: serde::Serialize + serde::de::DeserializeOwned,
+    {
+        insert_job(executor, request).await
+    }
+
+    /// Enqueue a job within a caller's transaction.
+    pub async fn enqueue_tx<J>(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        request: &JobRequest<J>,
+    ) -> Result<EnqueuedJob, EnqueueError>
+    where
+        J: serde::Serialize + serde::de::DeserializeOwned,
+    {
+        insert_job(&mut **tx, request).await
+    }
+}

@@ -271,7 +271,7 @@ impl<S: RouterState> Application<S> {
                 .map_err(|e| EngineError::Startup {
                     subsystem: "cache",
                     stage: "connect",
-                    source: e,
+                    source: e.into(),
                 })?;
             resources.set_cache(cache);
         }
@@ -282,7 +282,7 @@ impl<S: RouterState> Application<S> {
                 .map_err(|e| EngineError::Startup {
                     subsystem: "storage",
                     stage: "connect",
-                    source: e,
+                    source: e.into(),
                 })?;
             resources.set_storage(storage);
         }
@@ -292,7 +292,7 @@ impl<S: RouterState> Application<S> {
                 .map_err(|e| EngineError::Startup {
                     subsystem: "mail",
                     stage: "connect",
-                    source: e,
+                    source: e.into(),
                 })?;
             resources.set_mail(mailer);
         }

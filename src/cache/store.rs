@@ -136,8 +136,9 @@ impl Cache {
     /// Drop this cache handle. The underlying connection closes when the
     /// **last** clone is dropped (Arc refcounting), not when this method is
     /// called.
-    pub async fn close(self) {
-        drop(self);
+    pub async fn close(&self) {
+        // No explicit close: the connection closes when the last clone is
+        // dropped. This method is a no-op kept for API symmetry with `Db`.
     }
 }
 
