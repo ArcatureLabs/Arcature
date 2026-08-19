@@ -55,7 +55,7 @@ pub mod retry {
 }
 
 pub use claim::ClaimedJob;
-pub use config::{JobModel, RetryPolicy, WorkerConfig, DEFAULT_MAX_PAYLOAD_BYTES};
+pub use config::{DEFAULT_MAX_PAYLOAD_BYTES, JobModel, RetryPolicy, WorkerConfig};
 pub use enqueue::{EnqueuedJob, JobRequest, JobStatus};
 pub use error::{
     EnqueueError, JobError, MigrateError, RegisterError, RetryPolicyError, SchedulerError,

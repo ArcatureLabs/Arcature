@@ -15,18 +15,15 @@ impl Transaction {
     where
         F: for<'c> FnOnce(
                 &'c sea_orm::DatabaseTransaction,
-            ) -> std::pin::Pin<Box<dyn Future<Output = Result<T, sea_orm::DbErr>> + Send + 'c>>
-            + Send,
+            ) -> std::pin::Pin<
+                Box<dyn Future<Output = Result<T, sea_orm::DbErr>> + Send + 'c>,
+            > + Send,
         T: Send,
     {
-        db.orm()
-            .transaction(f)
-            .await
-            .map_err(|e| match e {
-                sea_orm::TransactionError::Connection(err) | sea_orm::TransactionError::Transaction(err) => {
-                    crate::Error::from(err)
-                }
-            })
+        db.orm().transaction(f).await.map_err(|e| match e {
+            sea_orm::TransactionError::Connection(err)
+            | sea_orm::TransactionError::Transaction(err) => crate::Error::from(err),
+        })
     }
 
     /// Run a closure inside a raw SQLx transaction over `db.sqlx()`. Commits
@@ -35,7 +32,9 @@ impl Transaction {
     where
         F: for<'c> FnOnce(
             &'c mut sqlx::Transaction<'_, sqlx::Postgres>,
-        ) -> std::pin::Pin<Box<dyn Future<Output = Result<T, sqlx::Error>> + Send + 'c>>,
+        ) -> std::pin::Pin<
+            Box<dyn Future<Output = Result<T, sqlx::Error>> + Send + 'c>,
+        >,
         T: Send,
     {
         let mut txn = db.sqlx().begin().await.map_err(crate::Error::from)?;

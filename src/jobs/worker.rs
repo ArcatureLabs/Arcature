@@ -414,7 +414,10 @@ async fn dispatch_one(
             let message = match &dispatch {
                 DispatchOutcome::HandlerError(err) => err.stored_message(),
                 DispatchOutcome::Timeout => {
-                    format!("job {job_id} exceeded its {}s timeout", job_timeout.as_secs())
+                    format!(
+                        "job {job_id} exceeded its {}s timeout",
+                        job_timeout.as_secs()
+                    )
                 }
                 _ => String::new(),
             };

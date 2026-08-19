@@ -16,7 +16,10 @@ pub fn validate_kind(kind: &str) -> Result<(), String> {
     if kind.len() > KIND_MAX_LEN {
         return Err(format!("kind must not exceed {KIND_MAX_LEN} bytes"));
     }
-    if !kind.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b':' | b'_' | b'-')) {
+    if !kind
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b':' | b'_' | b'-'))
+    {
         return Err("kind must contain only ASCII alphanumeric, '.', ':', '_', or '-'".to_string());
     }
     Ok(())

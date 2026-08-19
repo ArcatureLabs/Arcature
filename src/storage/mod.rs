@@ -36,13 +36,11 @@ pub mod path;
 pub mod store;
 
 pub use config::{FsConfig, S3Config, StorageConfig};
-pub use error::{
-    StorageConfigError, StorageConnectError, StorageError, StoragePathError,
-};
+pub use error::{StorageConfigError, StorageConnectError, StorageError, StoragePathError};
 pub use path::StoragePath;
 pub use store::{Disk, Storage, StorageBuilder};
 
 // Re-export the certified OpenDAL and bytes crates so downstream code targets
 // the Arcature-pinned versions.
-pub use opendal;
 pub use bytes;
+pub use opendal;

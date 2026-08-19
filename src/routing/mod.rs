@@ -19,11 +19,11 @@
 //! a separate engine.
 
 use crate::error::{Error, Result};
+use axum::Router;
 use axum::extract::Request;
 use axum::handler::Handler as AxumHandler;
 use axum::middleware::from_fn;
 use axum::response::{IntoResponse, Response};
-use axum::Router;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -150,7 +150,10 @@ impl<S: RouterState> Route<S> {
     }
 }
 
-fn method_router_for<S, H, T>(method: axum::http::Method, handler: H) -> axum::routing::MethodRouter<S>
+fn method_router_for<S, H, T>(
+    method: axum::http::Method,
+    handler: H,
+) -> axum::routing::MethodRouter<S>
 where
     S: RouterState,
     H: AxumHandler<T, S> + Send + 'static,
@@ -190,9 +193,7 @@ impl<S: RouterState> MiddlewareLayer<S> {
     where
         F: Fn(Router<S>) -> Router<S> + Send + Sync + 'static,
     {
-        MiddlewareLayer {
-            inner: Arc::new(f),
-        }
+        MiddlewareLayer { inner: Arc::new(f) }
     }
 
     fn apply(&self, router: Router<S>) -> Router<S> {
@@ -217,9 +218,10 @@ impl<S: RouterState> RouteGroup<S> {
         M: Middleware,
     {
         let m = middleware.clone();
-        self.apply_mw.push(MiddlewareLayer::new(move |router: Router<S>| {
-            middleware_layer(m.clone(), router)
-        }));
+        self.apply_mw
+            .push(MiddlewareLayer::new(move |router: Router<S>| {
+                middleware_layer(m.clone(), router)
+            }));
         self
     }
 }
@@ -476,15 +478,18 @@ mod tests {
 
     #[test]
     fn group_prefixes_paths() {
-        let group = RouteGroup::new("/admin", [Route::get("/users", || async { "ok" })
-            .name("admin.users")]);
+        let group = RouteGroup::new(
+            "/admin",
+            [Route::get("/users", || async { "ok" }).name("admin.users")],
+        );
         let routes: Routes = Routes::new([group]);
         assert_eq!(routes.url_for("admin.users", &[]).unwrap(), "/admin/users");
     }
 
     #[test]
     fn missing_param_errors() {
-        let routes: Routes = Routes::new([Route::get("/users/{id}", || async { "ok" }).name("users.show")]);
+        let routes: Routes =
+            Routes::new([Route::get("/users/{id}", || async { "ok" }).name("users.show")]);
         assert!(routes.url_for("users.show", &[]).is_err());
     }
 

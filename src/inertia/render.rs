@@ -61,7 +61,8 @@ impl Inertia {
     ) -> Result<Response, InertiaError> {
         let page_props = serde_json::to_value(&props)?;
         let props = Props::from_serialized(page_props)?;
-        self.render_advanced_with_options(component, props, options).await
+        self.render_advanced_with_options(component, props, options)
+            .await
     }
 
     /// Render with advanced per-prop behavior (deferred, optional, merge).
@@ -260,7 +261,10 @@ fn post_process(mut resp: Response, request: &InertiaRequest) -> Response {
 
     // Convert bare 302 after PUT/PATCH/DELETE to 303.
     if request.is_inertia()
-        && matches!(request.method(), &Method::PUT | &Method::PATCH | &Method::DELETE)
+        && matches!(
+            request.method(),
+            &Method::PUT | &Method::PATCH | &Method::DELETE
+        )
         && resp.status() == StatusCode::FOUND
     {
         *resp.status_mut() = StatusCode::SEE_OTHER;

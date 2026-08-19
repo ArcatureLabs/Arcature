@@ -20,7 +20,7 @@ mod sse;
 mod websocket;
 
 pub use channel::{Broadcast, ChannelError, ChannelPayload, Subscription};
-pub use error::{admission_status, ProtocolHint, RealtimeError};
+pub use error::{ProtocolHint, RealtimeError, admission_status};
 pub use origin::{OriginDecision, OriginPolicy, VerifiedOrigin};
 pub use registry::{ConnectionGuard, Registry};
 pub use shutdown::ShutdownConfig;

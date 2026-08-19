@@ -3,10 +3,10 @@
 //! One pool, no second connection. `enqueue_tx` / `enqueue_with` take a caller
 //! transaction/executor so `create order + enqueue job` share one transaction.
 
-use sqlx::postgres::PgExecutor;
 use sqlx::PgPool;
+use sqlx::postgres::PgExecutor;
 
-use super::enqueue::{insert_job, EnqueuedJob, JobRequest};
+use super::enqueue::{EnqueuedJob, JobRequest, insert_job};
 use super::error::{EnqueueError, MigrateError};
 use super::migrate;
 
@@ -41,10 +41,7 @@ impl Jobs {
     }
 
     /// Enqueue a job.
-    pub async fn enqueue<J>(
-        &self,
-        request: &JobRequest<J>,
-    ) -> Result<EnqueuedJob, EnqueueError>
+    pub async fn enqueue<J>(&self, request: &JobRequest<J>) -> Result<EnqueuedJob, EnqueueError>
     where
         J: serde::Serialize + serde::de::DeserializeOwned,
     {

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 /// Static pages: serves files from a directory.
@@ -57,7 +57,10 @@ impl Pages {
     pub async fn serve(&self, relative: &str) -> Response {
         // Reject absolute paths and traversal.
         let path = std::path::Path::new(relative);
-        if path.is_absolute() || path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+        if path.is_absolute()
+            || path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
         {
             return StatusCode::FORBIDDEN.into_response();
         }
@@ -80,7 +83,9 @@ impl Pages {
                 let mut response = Response::new(Body::from(bytes));
                 *response.status_mut() = StatusCode::OK;
                 if let Ok(value) = HeaderValue::from_str(mime) {
-                    response.headers_mut().insert(axum::http::header::CONTENT_TYPE, value);
+                    response
+                        .headers_mut()
+                        .insert(axum::http::header::CONTENT_TYPE, value);
                 }
                 response
             }
@@ -131,12 +136,14 @@ impl MaintenanceGuard {
 
     /// Engage the guard (returns `503`).
     pub fn engage(&self) {
-        self.engaged.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.engaged
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Disengage the guard.
     pub fn disengage(&self) {
-        self.engaged.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.engaged
+            .store(false, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Whether the guard is engaged.

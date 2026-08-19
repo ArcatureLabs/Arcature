@@ -13,10 +13,10 @@
 use std::sync::Arc;
 
 use lettre::message::Mailbox;
-use lettre::transport::stub::AsyncStubTransport;
 use lettre::transport::smtp::client::Tls;
 use lettre::transport::smtp::client::TlsParameters;
 use lettre::transport::smtp::extension::ClientId;
+use lettre::transport::stub::AsyncStubTransport;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 use crate::mail::config::{SmtpConfig, TlsMode};
@@ -251,12 +251,8 @@ impl<'a> MailBuilder<'a> {
             .map_err(|e: lettre::address::AddressError| {
                 MailSendError::build(EmailError::address(e))
             })?;
-        let email = Email::builder()
-            .from(self.mail.from.clone())
-            .to(to_mailbox);
-        let message = mailable
-            .build(email)
-            .map_err(|e| MailSendError::build(e))?;
+        let email = Email::builder().from(self.mail.from.clone()).to(to_mailbox);
+        let message = mailable.build(email).map_err(|e| MailSendError::build(e))?;
         self.mail.mailer.send(&message).await
     }
 }
@@ -322,10 +318,9 @@ mod tests {
         let from: Mailbox = "noreply@example.com".parse().unwrap();
         let mail = Mail::new(mailer, from);
         let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(
-            mail.to("user@example.com")
-                .send(&WelcomeEmail { name: "Alice".into() }),
-        )
+        rt.block_on(mail.to("user@example.com").send(&WelcomeEmail {
+            name: "Alice".into(),
+        }))
         .expect("send");
         let captured = rt.block_on(mail.mailer().captured()).expect("capture");
         assert_eq!(captured.len(), 1);

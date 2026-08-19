@@ -75,8 +75,7 @@ fn origin_policy_deny_all() {
 
 #[test]
 fn origin_policy_allow_exact() {
-    let policy =
-        OriginPolicy::allow_exact(VerifiedOrigin::from_trusted("https://example.com"));
+    let policy = OriginPolicy::allow_exact(VerifiedOrigin::from_trusted("https://example.com"));
     let header = axum::http::HeaderValue::from_static("https://example.com");
     assert_eq!(
         policy.authorize(Some(&header)),

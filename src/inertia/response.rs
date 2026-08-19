@@ -70,10 +70,7 @@ pub(crate) fn json_response(page_json: String) -> Response {
         axum::http::header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    headers.insert(
-        Headers::INERTIA,
-        HeaderValue::from_static("true"),
-    );
+    headers.insert(Headers::INERTIA, HeaderValue::from_static("true"));
     ensure_vary_x_inertia(&mut headers);
     (StatusCode::OK, headers, Body::from(page_json)).into_response()
 }

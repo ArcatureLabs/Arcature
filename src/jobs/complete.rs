@@ -12,8 +12,8 @@ use chrono::{DateTime, Utc};
 use sqlx::postgres::PgExecutor;
 use uuid::Uuid;
 
-use super::error::{truncate_for_storage, JobError, WorkerError};
 use super::config::RetryPolicy;
+use super::error::{JobError, WorkerError, truncate_for_storage};
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -84,11 +84,7 @@ pub(crate) enum ClaimTransition {
 
 impl ClaimTransition {
     fn from_affected(rows: u64) -> Self {
-        if rows > 0 {
-            Self::Updated
-        } else {
-            Self::Lost
-        }
+        if rows > 0 { Self::Updated } else { Self::Lost }
     }
 }
 
@@ -122,7 +118,9 @@ pub(crate) fn decide(
                 }
             } else {
                 Outcome::Retry {
-                    available_at: now + chrono::Duration::from_std(policy.delay_for(state.attempts as u32)).unwrap_or_default(),
+                    available_at: now
+                        + chrono::Duration::from_std(policy.delay_for(state.attempts as u32))
+                            .unwrap_or_default(),
                 }
             }
         }
@@ -269,10 +267,7 @@ pub(crate) async fn heartbeat(
 /// Sweep expired leases. Expired-lease rows with `attempts >= max_attempts` go
 /// `dead` (`exhausted`); those with attempts remaining go back to `pending`.
 /// Returns the total number of rows affected (dead + requeued).
-pub async fn sweep_expired_leases(
-    pool: &sqlx::PgPool,
-    batch: i64,
-) -> Result<u64, WorkerError> {
+pub async fn sweep_expired_leases(pool: &sqlx::PgPool, batch: i64) -> Result<u64, WorkerError> {
     // Mark dead the expired-lease rows that have exhausted their attempts.
     let dead = sqlx::query(
         r#"UPDATE arcature_jobs
@@ -330,7 +325,10 @@ pub async fn sweep_expired_leases(
 
 /// Cancel a job (set status to `cancelled` for `pending` or `running` rows).
 /// Returns the number of rows affected.
-pub async fn cancel(executor: impl for<'e> PgExecutor<'e>, job_id: Uuid) -> Result<u64, WorkerError> {
+pub async fn cancel(
+    executor: impl for<'e> PgExecutor<'e>,
+    job_id: Uuid,
+) -> Result<u64, WorkerError> {
     let rows = sqlx::query(
         r#"UPDATE arcature_jobs
            SET status = 'cancelled',

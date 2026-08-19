@@ -26,14 +26,9 @@ type EnqueueFn = Box<dyn Fn() -> BoxFuture + Send + Sync>;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ScheduleCadence {
     /// Fire every `seconds` seconds.
-    Every {
-        seconds: u64,
-    },
+    Every { seconds: u64 },
     /// Fire daily at `hour:minute` UTC.
-    Daily {
-        hour: u8,
-        minute: u8,
-    },
+    Daily { hour: u8, minute: u8 },
 }
 
 /// A compile-time schedule binding.
@@ -182,16 +177,9 @@ fn compute_next_fire(cadence: &ScheduleCadence, now: DateTime<Utc>) -> DateTime<
                 Some(t) if t > now => t,
                 _ => {
                     let tomorrow = now + chrono::Duration::days(1);
-                    Utc.with_ymd_and_hms(
-                        tomorrow.year(),
-                        tomorrow.month(),
-                        tomorrow.day(),
-                        h,
-                        m,
-                        0,
-                    )
-                    .single()
-                    .unwrap_or(now)
+                    Utc.with_ymd_and_hms(tomorrow.year(), tomorrow.month(), tomorrow.day(), h, m, 0)
+                        .single()
+                        .unwrap_or(now)
                 }
             }
         }

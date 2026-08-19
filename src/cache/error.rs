@@ -99,10 +99,16 @@ impl fmt::Display for CacheConfigError {
             Self::ZeroPayloadLimit => write!(formatter, "max_payload_size must not be zero"),
             Self::EmptyNamespace => write!(formatter, "namespace prefix must not be empty"),
             Self::NamespaceEndsWithSeparator => {
-                write!(formatter, "namespace prefix must not end with the separator ':'")
+                write!(
+                    formatter,
+                    "namespace prefix must not end with the separator ':'"
+                )
             }
             Self::NamespaceContainsControlChar => {
-                write!(formatter, "namespace prefix must not contain control characters")
+                write!(
+                    formatter,
+                    "namespace prefix must not contain control characters"
+                )
             }
         }
     }

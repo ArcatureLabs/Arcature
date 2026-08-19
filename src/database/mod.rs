@@ -16,13 +16,13 @@
 
 pub mod config;
 pub mod connection;
+pub mod migration;
 pub mod query;
 pub mod transaction;
-pub mod migration;
 
 pub use config::{DatabaseConfig, PoolConfig, SessionConfig};
 pub use connection::Db;
-pub use query::{delete, find_by_pk, insert, update, Query, QueryModel};
+pub use query::{Query, QueryModel, delete, find_by_pk, insert, update};
 pub use transaction::Transaction;
 
 // Re-export the certified SeaORM and SQLx crates so downstream code targets

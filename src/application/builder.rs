@@ -242,12 +242,13 @@ impl<S: RouterState> Application<S> {
             .parse()
             .map_err(|_| EngineError::InvalidPort(port))?;
 
-        let listener = TcpListener::bind(addr)
-            .await
-            .map_err(|source| EngineError::BindListener {
-                address: addr.to_string(),
-                source,
-            })?;
+        let listener =
+            TcpListener::bind(addr)
+                .await
+                .map_err(|source| EngineError::BindListener {
+                    address: addr.to_string(),
+                    source,
+                })?;
 
         let lifecycle = Lifecycle::new();
 
@@ -288,8 +289,8 @@ impl<S: RouterState> Application<S> {
         }
         #[cfg(feature = "mail")]
         if let Some(cfg) = &self.mail_config {
-            let mailer = crate::mail::Mailer::smtp(cfg.clone())
-                .map_err(|e| EngineError::Startup {
+            let mailer =
+                crate::mail::Mailer::smtp(cfg.clone()).map_err(|e| EngineError::Startup {
                     subsystem: "mail",
                     stage: "connect",
                     source: e.into(),

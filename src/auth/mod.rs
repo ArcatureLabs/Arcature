@@ -65,7 +65,7 @@ pub use error::{
     SessionConfigError, SigningKeyReason,
 };
 pub use password::{
-    verify_password, PasswordHasher, PasswordHashString, PasswordSecret, RehashOutcome,
+    PasswordHashString, PasswordHasher, PasswordSecret, RehashOutcome, verify_password,
 };
 pub use password_config::PasswordConfig;
 pub use session::{SameSite, SessionConfig, SessionKey, SessionLayer};
@@ -73,8 +73,8 @@ pub use session::{SameSite, SessionConfig, SessionKey, SessionLayer};
 // Re-export the redacting secret wrapper for credential/token holders.
 pub use secrecy;
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// The application identity contract.
 ///

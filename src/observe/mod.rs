@@ -141,9 +141,7 @@ impl std::error::Error for RequestIdError {}
 #[derive(Debug)]
 pub enum ObserveError {
     /// A response header could not be constructed.
-    RequestHeader {
-        reason: &'static str,
-    },
+    RequestHeader { reason: &'static str },
 }
 
 impl fmt::Display for ObserveError {
@@ -196,9 +194,9 @@ pub fn is_stable(name: &str) -> bool {
 // RequestIdLayer — Tower layer that assigns the request id
 // ---------------------------------------------------------------------------
 
-use std::convert::Infallible;
 use axum::extract::Request;
 use axum::response::Response;
+use std::convert::Infallible;
 use tower::{Layer, Service};
 
 /// A Tower layer that resolves the request id from the upstream header or

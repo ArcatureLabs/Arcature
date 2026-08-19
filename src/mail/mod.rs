@@ -44,7 +44,7 @@ pub mod transport;
 pub use config::{SmtpConfig, SmtpCredentials, TlsMode};
 pub use error::{EmailError, MailConfigError, MailSendError};
 pub use message::{Email, EmailAttachment};
-pub use transport::{hello_name, parse_mailbox, Mail, MailBuilder, Mailer, Mailable};
+pub use transport::{Mail, MailBuilder, Mailable, Mailer, hello_name, parse_mailbox};
 
 // Re-export the certified lettre crate so downstream code targets the
 // Arcature-pinned version.

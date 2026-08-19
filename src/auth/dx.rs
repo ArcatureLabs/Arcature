@@ -493,7 +493,10 @@ impl Session {
     ///
     /// Returns [`SessionError`] if the session read fails.
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, SessionError> {
-        self.0.get(key).await.map_err(|e| SessionError(e.to_string()))
+        self.0
+            .get(key)
+            .await
+            .map_err(|e| SessionError(e.to_string()))
     }
 
     /// Remove a value from the session, returning it if present.

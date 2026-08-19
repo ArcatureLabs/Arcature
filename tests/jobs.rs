@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use arcature::jobs::{
-    JobModel, JobRequest, JobStatus, RegisterError, RetryPolicy, RetryPolicyError,
-    WorkerConfig, WorkerConfigError,
+    JobModel, JobRequest, JobStatus, RegisterError, RetryPolicy, RetryPolicyError, WorkerConfig,
+    WorkerConfigError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -111,7 +111,8 @@ fn retry_policy_caps_at_cap() {
 
 #[test]
 fn retry_policy_validate_rejects_nan() {
-    let policy = RetryPolicy::exponential(Duration::from_secs(1), f64::NAN, Duration::from_secs(10));
+    let policy =
+        RetryPolicy::exponential(Duration::from_secs(1), f64::NAN, Duration::from_secs(10));
     assert!(matches!(
         policy.validate(),
         Err(RetryPolicyError::MultiplierNotFinite { .. })
@@ -202,5 +203,8 @@ fn registry_rejects_duplicate() {
         .unwrap();
 
     let result = registry.add(&model, |_job: SendWelcome| async { Ok(()) });
-    assert!(matches!(result, Err(RegisterError::AlreadyRegistered { .. })));
+    assert!(matches!(
+        result,
+        Err(RegisterError::AlreadyRegistered { .. })
+    ));
 }

@@ -479,10 +479,7 @@ impl Cache {
 }
 
 /// Enforce the configured payload size limit.
-pub(crate) fn check_payload_size(
-    size: usize,
-    limit: Option<usize>,
-) -> Result<(), CacheError> {
+pub(crate) fn check_payload_size(size: usize, limit: Option<usize>) -> Result<(), CacheError> {
     if let Some(limit) = limit
         && size > limit
     {

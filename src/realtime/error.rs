@@ -18,15 +18,11 @@ pub enum RealtimeError {
     ConnectionLimit,
     /// A protocol error (oversize, malformed, utf8, stream). The hint is a
     /// fixed low-cardinality string, safe to record in tracing spans.
-    Protocol {
-        hint: ProtocolHint,
-    },
+    Protocol { hint: ProtocolHint },
     /// A channel error (lagged, closed, full).
     Channel(ChannelError),
     /// The drain timed out with `remaining` connections still live.
-    Shutdown {
-        remaining: usize,
-    },
+    Shutdown { remaining: usize },
 }
 
 /// A fixed hint for a protocol error (low-cardinality, safe to record).
@@ -90,8 +86,8 @@ pub fn admission_status(e: &RealtimeError) -> StatusCode {
     match e {
         RealtimeError::Origin | RealtimeError::Unauthorized => StatusCode::FORBIDDEN,
         RealtimeError::ConnectionLimit => StatusCode::SERVICE_UNAVAILABLE,
-        RealtimeError::Protocol { .. } | RealtimeError::Channel(_) | RealtimeError::Shutdown { .. } => {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        RealtimeError::Protocol { .. }
+        | RealtimeError::Channel(_)
+        | RealtimeError::Shutdown { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

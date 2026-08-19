@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use axum::http::{HeaderMap, HeaderValue};
+use axum::http::HeaderValue;
 
 /// A verified, non-ASCII-safe origin string. Built from a trusted source or
 /// parsed from a header (non-ASCII is rejected).
@@ -55,13 +55,9 @@ pub enum OriginPolicy {
     /// Deny all origins (the default).
     DenyAll,
     /// Allow a single exact origin.
-    AllowExact {
-        origin: VerifiedOrigin,
-    },
+    AllowExact { origin: VerifiedOrigin },
     /// Allow a set of origins.
-    AllowSet {
-        origins: Vec<VerifiedOrigin>,
-    },
+    AllowSet { origins: Vec<VerifiedOrigin> },
 }
 
 impl OriginPolicy {

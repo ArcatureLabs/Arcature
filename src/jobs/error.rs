@@ -132,22 +132,13 @@ pub(crate) fn truncate_for_storage(value: &str) -> String {
 #[derive(Debug)]
 pub enum EnqueueError {
     /// The event payload could not be serialized.
-    Serialize {
-        source: serde_json::Error,
-    },
+    Serialize { source: serde_json::Error },
     /// The payload exceeded the size limit.
-    PayloadTooLarge {
-        size: usize,
-        limit: usize,
-    },
+    PayloadTooLarge { size: usize, limit: usize },
     /// The job kind was invalid.
-    InvalidKind {
-        reason: String,
-    },
+    InvalidKind { reason: String },
     /// A database error during the insert.
-    Database {
-        source: SqlxError,
-    },
+    Database { source: SqlxError },
 }
 
 impl EnqueueError {
@@ -172,7 +163,10 @@ impl fmt::Display for EnqueueError {
         match self {
             Self::Serialize { source } => write!(f, "job payload serialization failed: {source}"),
             Self::PayloadTooLarge { size, limit } => {
-                write!(f, "job payload too large: {size} bytes exceeds {limit}-byte limit")
+                write!(
+                    f,
+                    "job payload too large: {size} bytes exceeds {limit}-byte limit"
+                )
             }
             Self::InvalidKind { reason } => write!(f, "invalid job kind: {reason}"),
             Self::Database { source } => write!(f, "job enqueue database error: {source}"),
@@ -204,18 +198,11 @@ impl From<SqlxError> for EnqueueError {
 #[derive(Debug)]
 pub enum RegisterError {
     /// A handler is already registered for this kind and version.
-    AlreadyRegistered {
-        kind: String,
-        version: i16,
-    },
+    AlreadyRegistered { kind: String, version: i16 },
     /// The job kind was invalid.
-    InvalidKind {
-        reason: String,
-    },
+    InvalidKind { reason: String },
     /// The payload version was invalid (must be >= 1).
-    InvalidVersion {
-        version: i16,
-    },
+    InvalidVersion { version: i16 },
 }
 
 impl RegisterError {
@@ -239,7 +226,10 @@ impl fmt::Display for RegisterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::AlreadyRegistered { kind, version } => {
-                write!(f, "handler already registered for kind {kind:?} version {version}")
+                write!(
+                    f,
+                    "handler already registered for kind {kind:?} version {version}"
+                )
             }
             Self::InvalidKind { reason } => write!(f, "invalid job kind: {reason}"),
             Self::InvalidVersion { version } => {
@@ -263,17 +253,11 @@ impl std::error::Error for RegisterError {}
 #[derive(Debug)]
 pub enum WorkerError {
     /// The worker configuration was invalid.
-    InvalidConfig {
-        source: WorkerConfigError,
-    },
+    InvalidConfig { source: WorkerConfigError },
     /// The retry policy was invalid.
-    InvalidRetryPolicy {
-        source: RetryPolicyError,
-    },
+    InvalidRetryPolicy { source: RetryPolicyError },
     /// A database error in the claim/sweep/heartbeat path.
-    Database {
-        source: SqlxError,
-    },
+    Database { source: SqlxError },
 }
 
 impl WorkerError {
@@ -330,9 +314,7 @@ impl From<RetryPolicyError> for WorkerError {
 #[derive(Debug)]
 pub enum MigrateError {
     /// A database error during migration.
-    Database {
-        source: SqlxError,
-    },
+    Database { source: SqlxError },
 }
 
 impl MigrateError {
@@ -371,23 +353,25 @@ impl From<SqlxError> for MigrateError {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RetryPolicyError {
     /// The multiplier is NaN or infinite.
-    MultiplierNotFinite {
-        multiplier: f64,
-    },
+    MultiplierNotFinite { multiplier: f64 },
     /// The multiplier is negative (would produce a negative delay).
-    MultiplierNegative {
-        multiplier: f64,
-    },
+    MultiplierNegative { multiplier: f64 },
 }
 
 impl fmt::Display for RetryPolicyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MultiplierNotFinite { multiplier } => {
-                write!(f, "retry multiplier ({multiplier}) must be finite; a NaN or infinite multiplier would produce an invalid delay")
+                write!(
+                    f,
+                    "retry multiplier ({multiplier}) must be finite; a NaN or infinite multiplier would produce an invalid delay"
+                )
             }
             Self::MultiplierNegative { multiplier } => {
-                write!(f, "retry multiplier ({multiplier}) must not be negative; a negative multiplier would produce a negative delay")
+                write!(
+                    f,
+                    "retry multiplier ({multiplier}) must not be negative; a negative multiplier would produce a negative delay"
+                )
             }
         }
     }
@@ -417,10 +401,7 @@ pub enum WorkerConfigError {
 impl fmt::Display for WorkerConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::JobTimeoutExceedsLease {
-                job_timeout,
-                lease,
-            } => {
+            Self::JobTimeoutExceedsLease { job_timeout, lease } => {
                 write!(
                     f,
                     "job_timeout ({job_timeout:?}) must not exceed lease ({lease:?}); a timeout longer than the lease would guarantee duplicate delivery"

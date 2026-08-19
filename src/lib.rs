@@ -42,23 +42,25 @@ pub const FRAMEWORK_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // --- Always-on kernel -------------------------------------------------------
 
+pub mod application;
+pub mod config;
 mod error;
 pub mod http;
 pub mod routing;
-pub mod config;
-pub mod application;
 
-pub use error::{not_found, bad_request, forbidden, Error, Result, ValidationError};
-pub use application::{Application, ApplicationBuilder, EngineError, Lifecycle, LifecycleState, Resources};
-pub use routing::{Middleware, Next, Route, RouteGroup, Routes, RouterState};
-pub use http::{redirect, RedirectResponse, text, no_content};
+pub use application::{
+    Application, ApplicationBuilder, EngineError, Lifecycle, LifecycleState, Resources,
+};
+pub use error::{Error, Result, ValidationError, bad_request, forbidden, not_found};
 #[cfg(any(feature = "api", feature = "inertia"))]
 pub use http::json;
+pub use http::{RedirectResponse, no_content, redirect, text};
+pub use routing::{Middleware, Next, Route, RouteGroup, RouterState, Routes};
 
 // Re-export axum method-routing constructors at the crate root so the kernel
 // compiles without a direct `axum::routing` import in user code.
-pub use axum::routing::{any, delete, get, head, options, patch, post, put};
 pub use axum::middleware::from_fn;
+pub use axum::routing::{any, delete, get, head, options, patch, post, put};
 
 /// The base trait that gives a framework component (job, event, etc.) its
 /// static name, used for dispatch lookup and inspection. Always available;
@@ -74,8 +76,8 @@ pub trait DxComponent {
 pub mod inertia;
 #[cfg(feature = "inertia")]
 pub use inertia::{
-    default_root_document, AssetVersion, Inertia, InertiaConfig, InertiaError,
-    InertiaLayer, RootDocument, ScriptBody,
+    AssetVersion, Inertia, InertiaConfig, InertiaError, InertiaLayer, RootDocument, ScriptBody,
+    default_root_document,
 };
 // The `inertia!()` macro is `#[macro_export]` inside `inertia::mod`, so it is
 // reachable as `arcature::inertia!(...)` at the crate root.
@@ -83,7 +85,7 @@ pub use inertia::{
 #[cfg(feature = "database")]
 pub mod database;
 #[cfg(feature = "database")]
-pub use database::{Db, DatabaseConfig};
+pub use database::{DatabaseConfig, Db};
 // Re-export SeaORM so the `#[model]` macro's `::arcature::sea_orm::DeriveEntityModel`
 // path resolves. The database feature pulls in sea_orm.
 #[cfg(feature = "database")]
@@ -93,30 +95,30 @@ pub use sea_orm;
 pub mod auth;
 #[cfg(feature = "auth")]
 pub use auth::{
-    verify_password, Auth, AuthError, AuthManager, AuthUser, AuthzError, Current, CsrfConfig,
-    CsrfConfigError, CsrfError, CsrfLayer, CsrfToken, Flash, FlashError, FlashLevel, FlashMessage,
-    LoginBuilder, OptionalAuth, OptionalCurrent, PasswordHashError, PasswordHasher,
-    PasswordHashString, PasswordSecret, PasswordVerifyError, Policy, RehashOutcome,
-    SameSite, Session, SessionBuildError, SessionConfig, SessionConfigError, SessionError,
-    SessionKey, SessionLayer, SigningKeyReason, UserLoader,
+    Auth, AuthError, AuthManager, AuthUser, AuthzError, CsrfConfig, CsrfConfigError, CsrfError,
+    CsrfLayer, CsrfToken, Current, Flash, FlashError, FlashLevel, FlashMessage, LoginBuilder,
+    OptionalAuth, OptionalCurrent, PasswordHashError, PasswordHashString, PasswordHasher,
+    PasswordSecret, PasswordVerifyError, Policy, RehashOutcome, SameSite, Session,
+    SessionBuildError, SessionConfig, SessionConfigError, SessionError, SessionKey, SessionLayer,
+    SigningKeyReason, UserLoader, verify_password,
 };
 
 #[cfg(feature = "validation")]
 pub mod validation;
 #[cfg(feature = "validation")]
 pub use validation::{
-    validate_or_problem, validation_problem, Request, Validated, ValidatedForm, ValidatedJson,
-    ValidatedPath, ValidatedQuery,
+    Request, Validated, ValidatedForm, ValidatedJson, ValidatedPath, ValidatedQuery,
+    validate_or_problem, validation_problem,
 };
 // Re-export `validator` so the `#[request]` macro's
 // `#[derive(::arcature::Validate)]` resolves. The validation feature pulls in
 // validator with the derive feature.
 #[cfg(feature = "validation")]
-pub use validator;
-#[cfg(feature = "validation")]
 pub use validation::rejection::{
     from_form_rejection, from_json_rejection, from_path_rejection, from_query_rejection,
 };
+#[cfg(feature = "validation")]
+pub use validator;
 
 #[cfg(feature = "cache")]
 pub mod cache;
@@ -139,23 +141,23 @@ pub mod mail;
 #[cfg(feature = "mail")]
 pub use mail::{
     Email, EmailAttachment, EmailError, Mail, MailBuilder, MailConfigError, MailSendError,
-    Mailer, Mailable, SmtpConfig, SmtpCredentials, TlsMode,
+    Mailable, Mailer, SmtpConfig, SmtpCredentials, TlsMode,
 };
 
 #[cfg(feature = "jobs")]
 pub mod jobs;
 #[cfg(feature = "jobs")]
 pub use jobs::{
-    Job, JobModel, JobRequest, Jobs, JobError, JobStatus, EnqueuedJob, Registry, Worker,
-    WorkerBuilder, WorkerConfig, RetryPolicy, EnqueueError, RegisterError, WorkerError,
-    MigrateError, SchedulerError, Scheduler, ScheduleBinding, ScheduleCadence, ClaimedJob,
-    DEFAULT_MAX_PAYLOAD_BYTES,
+    ClaimedJob, DEFAULT_MAX_PAYLOAD_BYTES, EnqueueError, EnqueuedJob, Job, JobError, JobModel,
+    JobRequest, JobStatus, Jobs, MigrateError, RegisterError, Registry, RetryPolicy,
+    ScheduleBinding, ScheduleCadence, Scheduler, SchedulerError, Worker, WorkerBuilder,
+    WorkerConfig, WorkerError,
 };
 
 #[cfg(feature = "events")]
 pub mod events;
 #[cfg(feature = "events")]
-pub use events::{Event, Dispatcher, DispatchError, ListenerBinding};
+pub use events::{DispatchError, Dispatcher, Event, ListenerBinding};
 
 #[cfg(feature = "realtime")]
 pub mod realtime;
@@ -166,7 +168,7 @@ pub use realtime::{Broadcast, SseEndpoint, WebSocketEndpoint};
 // always-on deps and the validation subsystem depends on it. The `api`
 // feature gates additional conveniences layered on top.
 pub mod api;
-pub use api::{Problem, ProblemBuilder, ProblemKind, PROBLEM_JSON};
+pub use api::{PROBLEM_JSON, Problem, ProblemBuilder, ProblemKind};
 
 #[cfg(feature = "observe")]
 pub mod observe;
@@ -191,7 +193,7 @@ pub use macros::main;
 // `Job` and `Event` share names with the traits `jobs::Job` and
 // `events::Event` in different namespaces (the same trick `serde` uses).
 #[cfg(feature = "macros")]
-pub use arcature_macros::{controller, model, request, Event, Job};
+pub use arcature_macros::{Event, Job, controller, model, request};
 
 // --- The curated prelude ----------------------------------------------------
 
@@ -199,5 +201,14 @@ pub mod prelude;
 
 // --- Serialization re-export (shared by inertia/api/auth/etc.) -------------
 
-#[cfg(any(feature = "inertia", feature = "api", feature = "auth", feature = "database", feature = "events", feature = "jobs", feature = "validation", feature = "pages"))]
+#[cfg(any(
+    feature = "inertia",
+    feature = "api",
+    feature = "auth",
+    feature = "database",
+    feature = "events",
+    feature = "jobs",
+    feature = "validation",
+    feature = "pages"
+))]
 pub use serde::{Deserialize, Serialize};

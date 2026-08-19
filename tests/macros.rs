@@ -2,7 +2,7 @@
 
 #![cfg(feature = "macros")]
 
-use arcature::jobs::{JobModel, JobRequest};
+use arcature::jobs::JobRequest;
 use serde::{Deserialize, Serialize};
 
 // --- #[derive(Event)] ---

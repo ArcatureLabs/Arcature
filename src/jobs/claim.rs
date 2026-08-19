@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use sqlx::postgres::PgExecutor;
 use sqlx::Row;
+use sqlx::postgres::PgExecutor;
 use uuid::Uuid;
 
 use super::error::WorkerError;

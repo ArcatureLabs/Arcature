@@ -1,6 +1,7 @@
 use arcature::prelude::*;
-use crate::controllers::home;
+
+use crate::controllers;
 
 pub fn routes() -> Routes {
-    Routes::new([Route::get("/", home::index).name("home")])
+    Routes::new([Route::get("/", controllers::index).name("home")])
 }

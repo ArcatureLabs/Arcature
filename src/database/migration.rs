@@ -40,7 +40,9 @@ where
 }
 
 /// Migration status.
-pub async fn status<Schema>(db: &super::connection::Db) -> Result<Vec<MigrationStatus>, crate::Error>
+pub async fn status<Schema>(
+    db: &super::connection::Db,
+) -> Result<Vec<MigrationStatus>, crate::Error>
 where
     Schema: MigratorTrait,
 {

@@ -16,7 +16,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemImpl, ItemStruct, Lit, LitStr, Meta};
+use syn::{DeriveInput, ItemImpl, ItemStruct, Lit, LitStr, Meta, parse_macro_input};
 
 // ===========================================================================
 // #[model(table = "users")]
@@ -67,7 +67,10 @@ fn parse_model_attr(attr: TokenStream) -> syn::Result<String> {
     let meta: Meta = syn::parse(attr)?;
     match meta {
         Meta::NameValue(nv) if nv.path.is_ident("table") => {
-            if let syn::Expr::Lit(syn::ExprLit { lit: Lit::Str(s), .. }) = nv.value {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: Lit::Str(s), ..
+            }) = nv.value
+            {
                 Ok(s.value())
             } else {
                 Err(syn::Error::new(

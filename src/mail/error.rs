@@ -23,7 +23,9 @@ pub enum MailConfigError {
 
 impl MailConfigError {
     pub(crate) fn invalid_url(detail: impl Into<String>) -> Self {
-        Self::InvalidUrl { detail: detail.into() }
+        Self::InvalidUrl {
+            detail: detail.into(),
+        }
     }
 
     pub(crate) fn empty_host() -> Self {

@@ -23,7 +23,10 @@ where
     /// Construct a query over all rows of `E`, bound to `db`.
     #[must_use]
     pub fn new(db: &'db Db) -> Self {
-        Self { db, select: E::find() }
+        Self {
+            db,
+            select: E::find(),
+        }
     }
 
     /// Add a filter condition (typically `Column::X.eq(v)`).
@@ -72,12 +75,18 @@ where
 
     /// Execute and return all matching rows.
     pub async fn all(self) -> Result<Vec<E::Model>, crate::Error> {
-        self.select.all(self.db.orm()).await.map_err(crate::Error::from)
+        self.select
+            .all(self.db.orm())
+            .await
+            .map_err(crate::Error::from)
     }
 
     /// Execute and return the first matching row, if any.
     pub async fn one(self) -> Result<Option<E::Model>, crate::Error> {
-        self.select.one(self.db.orm()).await.map_err(crate::Error::from)
+        self.select
+            .one(self.db.orm())
+            .await
+            .map_err(crate::Error::from)
     }
 }
 
@@ -95,7 +104,10 @@ impl<E: EntityTrait> QueryModel for E {}
 // --- CRUD free functions ----------------------------------------------------
 
 /// Insert a new row from an `ActiveModel`.
-pub async fn insert<A>(db: &Db, active: A) -> Result<<A::Entity as EntityTrait>::Model, crate::Error>
+pub async fn insert<A>(
+    db: &Db,
+    active: A,
+) -> Result<<A::Entity as EntityTrait>::Model, crate::Error>
 where
     A: ActiveModelTrait + ActiveModelBehavior + Send,
     <A::Entity as EntityTrait>::Model: IntoActiveModel<A>,
@@ -104,7 +116,10 @@ where
 }
 
 /// Update an existing row from an `ActiveModel`.
-pub async fn update<A>(db: &Db, active: A) -> Result<<A::Entity as EntityTrait>::Model, crate::Error>
+pub async fn update<A>(
+    db: &Db,
+    active: A,
+) -> Result<<A::Entity as EntityTrait>::Model, crate::Error>
 where
     A: ActiveModelTrait + ActiveModelBehavior + Send,
     <A::Entity as EntityTrait>::Model: IntoActiveModel<A>,
@@ -127,5 +142,8 @@ where
     E: EntityTrait,
     P: Into<<E::PrimaryKey as sea_orm::PrimaryKeyTrait>::ValueType> + Send,
 {
-    E::find_by_id(pk).one(db.orm()).await.map_err(crate::Error::from)
+    E::find_by_id(pk)
+        .one(db.orm())
+        .await
+        .map_err(crate::Error::from)
 }

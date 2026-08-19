@@ -134,7 +134,10 @@ impl SessionConfig {
             parts.push(format!("SET lock_timeout = {}", t.as_millis()));
         }
         if let Some(t) = self.idle_in_transaction_session_timeout {
-            parts.push(format!("SET idle_in_transaction_session_timeout = {}", t.as_millis()));
+            parts.push(format!(
+                "SET idle_in_transaction_session_timeout = {}",
+                t.as_millis()
+            ));
         }
         if parts.is_empty() {
             None
@@ -217,7 +220,10 @@ impl fmt::Debug for DatabaseConfig {
             .field("host", &self.connect_options.get_host())
             .field("port", &self.connect_options.get_port())
             .field("database", &self.connect_options.get_database())
-            .field("ssl_mode", &ssl_mode_name(self.connect_options.get_ssl_mode()))
+            .field(
+                "ssl_mode",
+                &ssl_mode_name(self.connect_options.get_ssl_mode()),
+            )
             .field("pool", &self.pool)
             .field("session", &self.session)
             .field("application_name", &self.application_name)
@@ -249,8 +255,8 @@ mod tests {
 
     #[test]
     fn debug_redacts_credentials() {
-        let config = DatabaseConfig::new("postgres://secret_user:secret_pass@localhost:5432/mydb")
-            .unwrap();
+        let config =
+            DatabaseConfig::new("postgres://secret_user:secret_pass@localhost:5432/mydb").unwrap();
         let debug = format!("{config:?}");
         assert!(!debug.contains("secret_user"));
         assert!(!debug.contains("secret_pass"));

@@ -8,7 +8,7 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 
 use super::channel::{Broadcast, ChannelError};
-use super::error::{admission_status, RealtimeError};
+use super::error::{RealtimeError, admission_status};
 use super::origin::OriginPolicy;
 use super::registry::Registry;
 use super::shutdown::ShutdownConfig;

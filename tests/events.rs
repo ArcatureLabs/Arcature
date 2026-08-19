@@ -1,9 +1,9 @@
 //! Tests for the events Dispatcher (in-process typed dispatch).
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use arcature::events::{Dispatcher, DispatchError};
+use arcature::events::{DispatchError, Dispatcher};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, arcature::Event)]

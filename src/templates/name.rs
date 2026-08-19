@@ -31,7 +31,10 @@ impl ProjectName {
                 reason: "name must start with an ASCII lowercase letter".into(),
             });
         }
-        if !s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
             return Err(TemplateError::InvalidName {
                 reason: "name must contain only ASCII lowercase, digits, or hyphens".into(),
             });

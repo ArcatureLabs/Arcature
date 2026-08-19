@@ -96,7 +96,9 @@ impl fmt::Display for StoragePathError {
                 write!(formatter, "object key must not contain a '..' path segment")
             }
             Self::Backslash => write!(formatter, "object key must not contain a backslash"),
-            Self::ControlChar => write!(formatter, "object key must not contain control characters"),
+            Self::ControlChar => {
+                write!(formatter, "object key must not contain control characters")
+            }
             Self::EmptySegment => {
                 write!(formatter, "object key must not contain empty path segments")
             }

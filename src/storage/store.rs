@@ -316,9 +316,7 @@ impl StorageBuilder {
                 source: crate::storage::error::StorageConfigError::EmptyRoot,
             });
         }
-        let default_name = self
-            .default_name
-            .unwrap_or_else(|| self.disks[0].0.clone());
+        let default_name = self.default_name.unwrap_or_else(|| self.disks[0].0.clone());
         let mut disks = HashMap::new();
         for (name, config) in self.disks {
             config.validate()?;

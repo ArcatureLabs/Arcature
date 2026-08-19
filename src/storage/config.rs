@@ -234,14 +234,8 @@ impl fmt::Debug for S3Config {
             .field("endpoint", &self.endpoint)
             .field("region", &self.region)
             .field("root", &self.root)
-            .field(
-                "has_access_key_id",
-                &self.access_key_id.is_some(),
-            )
-            .field(
-                "has_secret_access_key",
-                &self.secret_access_key.is_some(),
-            )
+            .field("has_access_key_id", &self.access_key_id.is_some())
+            .field("has_secret_access_key", &self.secret_access_key.is_some())
             .finish()
     }
 }
@@ -258,7 +252,10 @@ mod tests {
 
     #[test]
     fn fs_rejects_empty_root() {
-        assert!(matches!(FsConfig::new(""), Err(StorageConfigError::EmptyRoot)));
+        assert!(matches!(
+            FsConfig::new(""),
+            Err(StorageConfigError::EmptyRoot)
+        ));
     }
 
     #[test]
@@ -269,7 +266,10 @@ mod tests {
 
     #[test]
     fn s3_rejects_empty_bucket() {
-        assert!(matches!(S3Config::new(""), Err(StorageConfigError::EmptyBucket)));
+        assert!(matches!(
+            S3Config::new(""),
+            Err(StorageConfigError::EmptyBucket)
+        ));
     }
 
     #[test]
@@ -279,7 +279,10 @@ mod tests {
             .access_key_id("AKIATESTKEY123")
             .secret_access_key("supersecretvalue456");
         let debug = format!("{config:?}");
-        assert!(!debug.contains("AKIATESTKEY123"), "debug leaked access key id");
+        assert!(
+            !debug.contains("AKIATESTKEY123"),
+            "debug leaked access key id"
+        );
         assert!(
             !debug.contains("supersecretvalue456"),
             "debug leaked secret access key"

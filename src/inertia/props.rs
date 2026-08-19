@@ -22,18 +22,14 @@ pub(crate) type PropFuture =
     Pin<Box<dyn Future<Output = Result<Value, Box<dyn std::error::Error + Send + Sync>>> + Send>>;
 
 /// A boxed future for shared-optional resolvers (request-aware).
-pub(crate) type SharedPropFuture = Pin<
-    Box<
-        dyn Future<Output = Result<Value, Box<dyn std::error::Error + Send + Sync>>> + Send,
-    >,
->;
+pub(crate) type SharedPropFuture =
+    Pin<Box<dyn Future<Output = Result<Value, Box<dyn std::error::Error + Send + Sync>>> + Send>>;
 
 /// A type-erased async resolver: `() -> PropFuture`.
 pub(crate) type Resolver = Arc<dyn Fn() -> PropFuture + Send + Sync>;
 
 /// A type-erased request-aware resolver: `&InertiaRequest -> SharedPropFuture`.
-pub(crate) type SharedResolver =
-    Arc<dyn Fn(&InertiaRequest) -> SharedPropFuture + Send + Sync>;
+pub(crate) type SharedResolver = Arc<dyn Fn(&InertiaRequest) -> SharedPropFuture + Send + Sync>;
 
 /// The merge strategy a prop carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,10 +107,13 @@ impl Props {
     /// Add eager `errors` prop (always included).
     pub fn errors(self, errors: impl Serialize) -> Self {
         let value = serde_json::to_value(&errors).unwrap_or(Value::Null);
-        self.with("errors", Prop {
-            base: BaseProp::Always(SerializedValue::new(value)),
-            merge: None,
-        })
+        self.with(
+            "errors",
+            Prop {
+                base: BaseProp::Always(SerializedValue::new(value)),
+                merge: None,
+            },
+        )
     }
 
     /// Build from a serialized JSON object (flattens to dotted eager props).
@@ -125,10 +124,13 @@ impl Props {
         };
         let mut props = Props::new();
         for (key, val) in map {
-            props = props.with(key, Prop {
-                base: BaseProp::Eager(SerializedValue::new(val)),
-                merge: None,
-            });
+            props = props.with(
+                key,
+                Prop {
+                    base: BaseProp::Eager(SerializedValue::new(val)),
+                    merge: None,
+                },
+            );
         }
         Ok(props)
     }
@@ -194,7 +196,8 @@ impl SharedProps {
             let fut = resolver(req);
             Box::pin(fut) as SharedPropFuture
         });
-        self.entries.push((key.into(), SharedProp::Optional(erased)));
+        self.entries
+            .push((key.into(), SharedProp::Optional(erased)));
         self
     }
 
@@ -350,19 +353,27 @@ pub(crate) async fn resolve(
         let top_level = top_level_key(key);
         let included = match shared_prop {
             SharedProp::Page(prop) => {
-                resolve_page(key, prop, is_full, partial, &reset_paths, &mut props, &mut metadata)
-                    .await?
+                resolve_page(
+                    key,
+                    prop,
+                    is_full,
+                    partial,
+                    &reset_paths,
+                    &mut props,
+                    &mut metadata,
+                )
+                .await?
             }
             SharedProp::Optional(resolver) => {
                 if is_full || !included(key, partial) {
                     false
                 } else {
-                    let value = (resolver)(request)
-                        .await
-                        .map_err(|source| InertiaError::PropResolution {
+                    let value = (resolver)(request).await.map_err(|source| {
+                        InertiaError::PropResolution {
                             path: Arc::from(key.as_ref()),
                             source,
-                        })?;
+                        }
+                    })?;
                     insert_nested(&mut props, key, value);
                     true
                 }
@@ -375,7 +386,16 @@ pub(crate) async fn resolve(
 
     // Page props overlay shared props (win on collision).
     for (key, prop) in &page_entries {
-        resolve_page(key, prop, is_full, partial, &reset_paths, &mut props, &mut metadata).await?;
+        resolve_page(
+            key,
+            prop,
+            is_full,
+            partial,
+            &reset_paths,
+            &mut props,
+            &mut metadata,
+        )
+        .await?;
     }
 
     // `errors` defaults to `{}` when not provided.
@@ -445,12 +465,17 @@ fn match_path_included(path: &str, only: &[Arc<str>], except: &[Arc<str>]) -> bo
     let selected = only.is_empty()
         || only.iter().any(|o| {
             path == o.as_ref()
-                || path.strip_prefix(o.as_ref()).is_some_and(|r| r.starts_with('.'))
+                || path
+                    .strip_prefix(o.as_ref())
+                    .is_some_and(|r| r.starts_with('.'))
                 || o.strip_prefix(path).is_some_and(|r| r.starts_with('.'))
         });
     selected
         && !except.iter().any(|e| {
-            path == e.as_ref() || path.strip_prefix(e.as_ref()).is_some_and(|r| r.starts_with('.'))
+            path == e.as_ref()
+                || path
+                    .strip_prefix(e.as_ref())
+                    .is_some_and(|r| r.starts_with('.'))
         })
 }
 
@@ -548,11 +573,7 @@ async fn resolve_page(
     Ok(included)
 }
 
-fn filter_nested_value(
-    path: &str,
-    value: Value,
-    partial: Option<&PartialSelection>,
-) -> Value {
+fn filter_nested_value(path: &str, value: Value, partial: Option<&PartialSelection>) -> Value {
     let Some(partial) = partial else {
         return value;
     };

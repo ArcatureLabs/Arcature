@@ -1,7 +1,5 @@
 use arcature::prelude::*;
 
-pub mod home_controller;
-
-pub mod home {
-    pub use super::home_controller::index;
+pub async fn index() -> Result<Response> {
+    Ok(text(StatusCode::OK, "Hello from __PROJECT_NAME__!"))
 }

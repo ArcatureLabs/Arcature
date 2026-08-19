@@ -20,14 +20,9 @@ pub enum SubcommandError {
     /// No subcommand was given.
     Missing,
     /// The subcommand is unknown.
-    Unknown {
-        name: String,
-    },
+    Unknown { name: String },
     /// The subcommand is missing a required argument.
-    MissingArg {
-        subcommand: String,
-        arg: String,
-    },
+    MissingArg { subcommand: String, arg: String },
 }
 
 impl std::fmt::Display for SubcommandError {
@@ -69,7 +64,9 @@ pub fn parse(args: &[OsString]) -> Result<Subcommand, SubcommandError> {
                         subcommand: "new".into(),
                         arg: "--dest <path>".into(),
                     })?;
-                    dest = Some(std::path::PathBuf::from(value.to_string_lossy().into_owned()));
+                    dest = Some(std::path::PathBuf::from(
+                        value.to_string_lossy().into_owned(),
+                    ));
                 }
             }
 

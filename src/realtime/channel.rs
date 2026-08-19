@@ -1,8 +1,8 @@
 //! The broadcast channel: a bounded `tokio::sync::broadcast` wrapper with
 //! explicit subscriber counting.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::sync::broadcast;
 

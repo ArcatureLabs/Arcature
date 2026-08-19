@@ -6,11 +6,11 @@
 use std::fmt;
 use std::time::Duration;
 
+use lettre::transport::smtp::PoolConfig;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::Tls;
 use lettre::transport::smtp::client::TlsParameters;
 use lettre::transport::smtp::extension::ClientId;
-use lettre::transport::smtp::PoolConfig;
 
 use crate::mail::error::{MailConfigError, SmtpError};
 
@@ -77,7 +77,9 @@ impl SmtpCredentials {
 
 impl fmt::Debug for SmtpCredentials {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_struct("SmtpCredentials").finish_non_exhaustive()
+        formatter
+            .debug_struct("SmtpCredentials")
+            .finish_non_exhaustive()
     }
 }
 
@@ -140,10 +142,15 @@ impl SmtpConfig {
     /// Returns [`MailConfigError::InvalidUrl`] if the URL cannot be parsed or
     /// has an unsupported scheme/tls combination.
     pub fn from_url(connection_url: &str) -> Result<Self, MailConfigError> {
-        let url = url::Url::parse(connection_url).map_err(|e| MailConfigError::invalid_url(e.to_string()))?;
+        let url = url::Url::parse(connection_url)
+            .map_err(|e| MailConfigError::invalid_url(e.to_string()))?;
         let tls_mode = match url.scheme() {
             "smtps" => TlsMode::Implicit,
-            "smtp" => match url.query_pairs().find(|(k, _)| k == "tls").map(|(_, v)| v.to_string()) {
+            "smtp" => match url
+                .query_pairs()
+                .find(|(k, _)| k == "tls")
+                .map(|(_, v)| v.to_string())
+            {
                 None => TlsMode::Plain,
                 Some(v) if v == "required" => TlsMode::Starttls,
                 Some(v) if v == "opportunistic" => TlsMode::Opportunistic,
@@ -159,7 +166,10 @@ impl SmtpConfig {
                 )));
             }
         };
-        let host = url.host_str().ok_or_else(|| MailConfigError::invalid_url("missing host"))?.to_string();
+        let host = url
+            .host_str()
+            .ok_or_else(|| MailConfigError::invalid_url("missing host"))?
+            .to_string();
         if host.trim().is_empty() {
             return Err(MailConfigError::empty_host());
         }
@@ -336,8 +346,14 @@ mod tests {
 
     #[test]
     fn new_rejects_empty_host() {
-        assert!(matches!(SmtpConfig::new(""), Err(MailConfigError::EmptyHost)));
-        assert!(matches!(SmtpConfig::new("  "), Err(MailConfigError::EmptyHost)));
+        assert!(matches!(
+            SmtpConfig::new(""),
+            Err(MailConfigError::EmptyHost)
+        ));
+        assert!(matches!(
+            SmtpConfig::new("  "),
+            Err(MailConfigError::EmptyHost)
+        ));
     }
 
     #[test]

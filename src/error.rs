@@ -221,7 +221,10 @@ impl axum::response::IntoResponse for Error {
         if is_production {
             return (
                 status,
-                [(axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/json"))],
+                [(
+                    axum::http::header::CONTENT_TYPE,
+                    HeaderValue::from_static("application/json"),
+                )],
                 serde_json::json!({
                     "type": format!("urn:arcature:problem:{}", self.code()),
                     "title": self.code(),
@@ -249,7 +252,10 @@ impl axum::response::IntoResponse for Error {
 
         (
             status,
-            [(axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/json"))],
+            [(
+                axum::http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            )],
             body.to_string(),
         )
             .into_response()
@@ -347,7 +353,12 @@ impl From<crate::storage::StorageConnectError> for Error {
     }
 }
 
-#[cfg(any(feature = "inertia", feature = "api", feature = "events", feature = "jobs"))]
+#[cfg(any(
+    feature = "inertia",
+    feature = "api",
+    feature = "events",
+    feature = "jobs"
+))]
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Error::Serialization(e.to_string())

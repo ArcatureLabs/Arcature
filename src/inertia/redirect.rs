@@ -36,7 +36,9 @@ impl Redirect {
             Redirect::Standard { location, method } => {
                 let status = if matches!(
                     method,
-                    axum::http::Method::PUT | axum::http::Method::PATCH | axum::http::Method::DELETE
+                    axum::http::Method::PUT
+                        | axum::http::Method::PATCH
+                        | axum::http::Method::DELETE
                 ) {
                     StatusCode::SEE_OTHER
                 } else {

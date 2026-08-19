@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Response};
 use futures::stream::{self, StreamExt};
 
 use super::channel::{Broadcast, ChannelError};
-use super::error::{admission_status, RealtimeError};
+use super::error::{RealtimeError, admission_status};
 use super::origin::OriginPolicy;
 use super::registry::Registry;
 use super::shutdown::ShutdownConfig;
@@ -99,35 +99,31 @@ impl SseEndpoint {
 
         // Build the event stream. First event is a `retry:` preamble;
         // subsequent events are broadcast payloads.
-        let preamble = stream::once(async move {
-            Ok::<_, Infallible>(Event::default().retry(retry))
+        let preamble =
+            stream::once(async move { Ok::<_, Infallible>(Event::default().retry(retry)) });
+        let events = stream::unfold((sub, shutdown), move |(mut sub, shutdown)| async move {
+            if shutdown.is_draining() {
+                return None;
+            }
+            match sub.recv().await {
+                Ok(payload) => {
+                    let data = std::str::from_utf8(payload.as_bytes())
+                        .unwrap_or("")
+                        .to_string();
+                    let event = Event::default().data(data);
+                    Some((Ok(event), (sub, shutdown)))
+                }
+                Err(ChannelError::Closed) => None,
+                Err(ChannelError::Lagged) => {
+                    let event = Event::default().comment("lagged");
+                    Some((Ok(event), (sub, shutdown)))
+                }
+                Err(ChannelError::Full) => {
+                    let event = Event::default().comment("full");
+                    Some((Ok(event), (sub, shutdown)))
+                }
+            }
         });
-        let events = stream::unfold(
-            (sub, shutdown),
-            move |(mut sub, shutdown)| async move {
-                if shutdown.is_draining() {
-                    return None;
-                }
-                match sub.recv().await {
-                    Ok(payload) => {
-                        let data = std::str::from_utf8(payload.as_bytes())
-                            .unwrap_or("")
-                            .to_string();
-                        let event = Event::default().data(data);
-                        Some((Ok(event), (sub, shutdown)))
-                    }
-                    Err(ChannelError::Closed) => None,
-                    Err(ChannelError::Lagged) => {
-                        let event = Event::default().comment("lagged");
-                        Some((Ok(event), (sub, shutdown)))
-                    }
-                    Err(ChannelError::Full) => {
-                        let event = Event::default().comment("full");
-                        Some((Ok(event), (sub, shutdown)))
-                    }
-                }
-            },
-        );
 
         let stream = preamble.chain(events);
         Sse::new(stream).keep_alive(keep_alive).into_response()

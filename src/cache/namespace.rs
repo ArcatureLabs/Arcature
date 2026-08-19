@@ -74,7 +74,10 @@ impl Namespace {
 
 impl fmt::Debug for Namespace {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_tuple("Namespace").field(&self.0.as_ref()).finish()
+        formatter
+            .debug_tuple("Namespace")
+            .field(&self.0.as_ref())
+            .finish()
     }
 }
 

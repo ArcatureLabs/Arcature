@@ -8,4 +8,4 @@ mod kind;
 pub mod problem;
 
 pub use kind::ProblemKind;
-pub use problem::{Problem, ProblemBuilder, PROBLEM_JSON};
+pub use problem::{PROBLEM_JSON, Problem, ProblemBuilder};

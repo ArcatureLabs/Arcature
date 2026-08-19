@@ -492,7 +492,10 @@ mod tests {
             .expect("dev config")
             .with_cookie_name("__Host-csrf");
         assert_eq!(config.cookie_name(), "__Host-csrf");
-        assert!(config.secure(), "setting a __Host- name must auto-enable Secure");
+        assert!(
+            config.secure(),
+            "setting a __Host- name must auto-enable Secure"
+        );
     }
 
     #[test]
@@ -534,7 +537,10 @@ mod tests {
     fn extract_header_finds_valid_token() {
         let token = CsrfToken::generate().expect("rng");
         let mut headers = HeaderMap::new();
-        headers.insert("x-csrf-token", HeaderValue::from_str(token.as_str()).unwrap());
+        headers.insert(
+            "x-csrf-token",
+            HeaderValue::from_str(token.as_str()).unwrap(),
+        );
         let extracted = extract_csrf_header(&headers, "x-csrf-token");
         assert_eq!(extracted.as_ref().map(|t| t.as_str()), Some(token.as_str()));
     }

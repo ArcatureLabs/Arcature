@@ -14,7 +14,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-pub use subcommand::{parse, Subcommand, SubcommandError};
+pub use subcommand::{Subcommand, SubcommandError, parse};
 
 use crate::templates;
 

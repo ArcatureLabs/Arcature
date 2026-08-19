@@ -1,8 +1,8 @@
 //! The connection registry: enforces a max-connection cap and tracks live
 //! connections for graceful drain.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use tokio::sync::Notify;
@@ -56,12 +56,7 @@ impl Registry {
             if self
                 .inner
                 .live
-                .compare_exchange_weak(
-                    current,
-                    current + 1,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                )
+                .compare_exchange_weak(current, current + 1, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
             {
                 break;

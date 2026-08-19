@@ -4,8 +4,10 @@ version = "2026.3.0"
 edition = "2024"
 rust-version = "1.97.1"
 license = "Apache-2.0"
+repository = "https://github.com/ArcatureLabs/Arcature"
 description = "Proc-macro crate for Arcature: #[model], #[request], #[controller], #[derive(Job)], #[derive(Event)]."
-publish = false
+categories = ["web-programming", "development-tools"]
+keywords = ["web", "framework", "arcature", "macro", "proc-macro"]
 
 [lib]
 proc-macro = true

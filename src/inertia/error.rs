@@ -28,7 +28,10 @@ impl fmt::Display for InertiaError {
         match self {
             InertiaError::Serialize(e) => write!(f, "inertia page serialization failed: {e}"),
             InertiaError::Location(e) => {
-                write!(f, "inertia redirect location is not a valid header value: {e}")
+                write!(
+                    f,
+                    "inertia redirect location is not a valid header value: {e}"
+                )
             }
             InertiaError::PropResolution { path, source } => {
                 write!(f, "inertia prop `{path}` failed to resolve: {source}")
@@ -36,8 +39,12 @@ impl fmt::Display for InertiaError {
             InertiaError::ConfigMissing => {
                 write!(f, "inertia extractor used without InertiaLayer installed")
             }
-            InertiaError::PropsMustBeObject => f.write_str("inertia page props must be a JSON object"),
-            InertiaError::Header(e) => write!(f, "inertia header value could not be constructed: {e}"),
+            InertiaError::PropsMustBeObject => {
+                f.write_str("inertia page props must be a JSON object")
+            }
+            InertiaError::Header(e) => {
+                write!(f, "inertia header value could not be constructed: {e}")
+            }
         }
     }
 }

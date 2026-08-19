@@ -2,7 +2,7 @@
 
 #![cfg(feature = "templates")]
 
-use arcature::templates::{generate, ProjectName, TemplateError};
+use arcature::templates::{ProjectName, TemplateError, generate};
 
 #[test]
 fn project_name_parse_valid() {

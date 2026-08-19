@@ -2,6 +2,6 @@
 
 pub mod response;
 
-pub use response::{no_content, redirect, text, RedirectResponse};
 #[cfg(any(feature = "api", feature = "inertia"))]
 pub use response::json;
+pub use response::{RedirectResponse, no_content, redirect, text};

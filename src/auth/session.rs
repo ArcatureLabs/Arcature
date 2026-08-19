@@ -459,8 +459,14 @@ mod tests {
         let config = SessionConfig::new(&[0xAB; 64]).expect("valid key");
         let debug = format!("{config:?}");
         assert!(debug.contains("<redacted"));
-        assert!(!debug.contains("abab"), "hex key bytes must not leak: {debug}");
-        assert!(!debug.contains("171"), "decimal key bytes must not leak: {debug}");
+        assert!(
+            !debug.contains("abab"),
+            "hex key bytes must not leak: {debug}"
+        );
+        assert!(
+            !debug.contains("171"),
+            "decimal key bytes must not leak: {debug}"
+        );
     }
 
     #[test]

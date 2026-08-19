@@ -35,14 +35,14 @@ pub mod render;
 pub mod request;
 pub mod response;
 
-pub use config::{default_root_document, AssetVersion, InertiaConfig, RootDocument, ScriptBody};
+pub use config::{AssetVersion, InertiaConfig, RootDocument, ScriptBody, default_root_document};
 pub use error::InertiaError;
 pub use page::{Component, PageOptions};
 pub use props::{
-    always, deferred, deferred_group, eager, lazy, merge, optional, prepend, deep_merge,
-    MergeStrategy, Prop, Props, SharedProps,
+    MergeStrategy, Prop, Props, SharedProps, always, deep_merge, deferred, deferred_group, eager,
+    lazy, merge, optional, prepend,
 };
-pub use redirect::{external, fragment, redirect, Redirect};
+pub use redirect::{Redirect, external, fragment, redirect};
 pub use render::{Inertia, InertiaLayer};
 pub use request::InertiaRequest;
 

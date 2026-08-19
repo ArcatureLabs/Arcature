@@ -60,8 +60,8 @@ where
             // poison job: never retry it forever. The serde error is
             // intentionally dropped (it can echo the offending payload, which
             // would leak payload content into the stored error).
-            let job: J = serde_json::from_value(payload.clone())
-                .map_err(|_| HandlerError::Malformed)?;
+            let job: J =
+                serde_json::from_value(payload.clone()).map_err(|_| HandlerError::Malformed)?;
             let result = (self.handler)(job).await;
             // The job id is available for the observability seam; handlers do
             // not receive it by default (the payload is the contract).
@@ -119,11 +119,15 @@ impl Registry {
         Fut: Future<Output = Result<(), JobError>> + Send + 'static,
     {
         validate_kind(model.kind()).map_err(RegisterError::invalid_kind)?;
-        validate_version(model.version()).map_err(|_| RegisterError::invalid_version(model.version()))?;
+        validate_version(model.version())
+            .map_err(|_| RegisterError::invalid_version(model.version()))?;
 
         let key = (model.kind().to_string(), model.version());
         if self.handlers.contains_key(&key) {
-            return Err(RegisterError::already_registered(model.kind(), model.version()));
+            return Err(RegisterError::already_registered(
+                model.kind(),
+                model.version(),
+            ));
         }
 
         let boxed: Arc<dyn Fn(J) -> BoxFut<'static, Result<(), JobError>> + Send + Sync> =
@@ -142,9 +146,7 @@ impl Registry {
         kind: &str,
         version: i16,
     ) -> Option<Arc<dyn ErasedHandler + Send + Sync>> {
-        self.handlers
-            .get(&(kind.to_string(), version))
-            .cloned()
+        self.handlers.get(&(kind.to_string(), version)).cloned()
     }
 
     /// Whether the registry has no handlers.

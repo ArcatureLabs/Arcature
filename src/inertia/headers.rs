@@ -17,7 +17,8 @@ impl Headers {
     pub const VERSION: HeaderName = HeaderName::from_static("x-inertia-version");
 
     /// `X-Inertia-Partial-Component` — the component a partial reload targets.
-    pub const PARTIAL_COMPONENT: HeaderName = HeaderName::from_static("x-inertia-partial-component");
+    pub const PARTIAL_COMPONENT: HeaderName =
+        HeaderName::from_static("x-inertia-partial-component");
 
     /// `X-Inertia-Partial-Data` — comma-separated prop keys to include.
     pub const PARTIAL_DATA: HeaderName = HeaderName::from_static("x-inertia-partial-data");

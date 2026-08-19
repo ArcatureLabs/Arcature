@@ -6,8 +6,8 @@
 //! during graceful shutdown: readiness goes false first, then the listener
 //! stops, then drain hooks run, then the process exits.
 
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 /// The lifecycle states, in order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,7 +112,8 @@ impl Lifecycle {
 
     /// Mark the process stopped.
     pub fn mark_stopped(&self) {
-        self.state.store(LifecycleState::Stopped as u8, Ordering::Release);
+        self.state
+            .store(LifecycleState::Stopped as u8, Ordering::Release);
     }
 }
 

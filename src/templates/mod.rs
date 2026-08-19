@@ -6,11 +6,11 @@
 //! renames it into place only when every file is written.
 
 mod catalog;
-mod render;
 mod error;
 mod name;
+mod render;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub use error::TemplateError;
 pub use name::ProjectName;
@@ -32,23 +32,20 @@ pub fn generate(target: &Path) -> Result<(), TemplateError> {
         });
     }
 
-    let name = ProjectName::parse(
-        target
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or(TemplateError::InvalidDestination {
-                reason: "destination has no final path component".into(),
-            })?,
-    )?;
+    let name = ProjectName::parse(target.file_name().and_then(|n| n.to_str()).ok_or(
+        TemplateError::InvalidDestination {
+            reason: "destination has no final path component".into(),
+        },
+    )?)?;
 
-    let parent = target
-        .parent()
-        .ok_or(TemplateError::InvalidDestination {
-            reason: "destination has no parent directory".into(),
-        })?;
+    let parent = target.parent().ok_or(TemplateError::InvalidDestination {
+        reason: "destination has no parent directory".into(),
+    })?;
     if !parent.exists() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| TemplateError::Io { path: parent.into(), source: e })?;
+        std::fs::create_dir_all(parent).map_err(|e| TemplateError::Io {
+            path: parent.into(),
+            source: e,
+        })?;
     }
 
     // Stage in a hidden directory next to the target.
@@ -67,10 +64,14 @@ pub fn generate(target: &Path) -> Result<(), TemplateError> {
         let dir = dest.parent().ok_or(TemplateError::InvalidDestination {
             reason: "file has no parent directory".into(),
         })?;
-        std::fs::create_dir_all(dir)
-            .map_err(|e| TemplateError::Io { path: dir.into(), source: e })?;
-        std::fs::write(&dest, &rendered)
-            .map_err(|e| TemplateError::Io { path: dest.clone(), source: e })?;
+        std::fs::create_dir_all(dir).map_err(|e| TemplateError::Io {
+            path: dir.into(),
+            source: e,
+        })?;
+        std::fs::write(&dest, &rendered).map_err(|e| TemplateError::Io {
+            path: dest.clone(),
+            source: e,
+        })?;
     }
 
     // Atomic rename into place.

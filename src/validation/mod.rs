@@ -90,10 +90,7 @@ where
 {
     type Rejection = axum::response::Response;
 
-    async fn from_request(
-        req: axum::extract::Request,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
         let ValidatedJson(value) = ValidatedJson::<T>::from_request(req, state).await?;
         Ok(Validated(value))
     }

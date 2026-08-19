@@ -43,9 +43,7 @@ pub mod namespace;
 pub mod store;
 
 pub use config::CacheConfig;
-pub use error::{
-    CacheConfigError, CacheConnectError, CacheError, CacheHealthError,
-};
+pub use error::{CacheConfigError, CacheConnectError, CacheError, CacheHealthError};
 pub use namespace::Namespace;
 pub use store::Cache;
 

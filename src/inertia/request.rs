@@ -81,8 +81,16 @@ impl InertiaRequest {
             .filter(|v| !v.is_empty())
             .map(Arc::from);
 
-        let only = parse_comma_list(headers.get(Headers::PARTIAL_DATA).and_then(|v| v.to_str().ok()));
-        let except = parse_comma_list(headers.get(Headers::PARTIAL_EXCEPT).and_then(|v| v.to_str().ok()));
+        let only = parse_comma_list(
+            headers
+                .get(Headers::PARTIAL_DATA)
+                .and_then(|v| v.to_str().ok()),
+        );
+        let except = parse_comma_list(
+            headers
+                .get(Headers::PARTIAL_EXCEPT)
+                .and_then(|v| v.to_str().ok()),
+        );
         let reset = parse_comma_list(headers.get(Headers::RESET).and_then(|v| v.to_str().ok()));
 
         let error_bag = headers

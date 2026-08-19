@@ -1,4 +1,3 @@
-use super::error::TemplateError;
 use super::name::ProjectName;
 
 /// Render a template by substituting the placeholder tokens.

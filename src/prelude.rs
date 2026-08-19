@@ -11,9 +11,9 @@
 
 // Framework-owned types (always available).
 pub use crate::application::{Application, ApplicationBuilder, Lifecycle, Resources};
-pub use crate::config::{env_or, env_required, AppConfig, AppEnvironment};
-pub use crate::error::{not_found, bad_request, forbidden, Error, Result, ValidationError};
-pub use crate::http::{no_content, redirect, text, RedirectResponse};
+pub use crate::config::{AppConfig, AppEnvironment, env_or, env_required};
+pub use crate::error::{Error, Result, ValidationError, bad_request, forbidden, not_found};
+pub use crate::http::{RedirectResponse, no_content, redirect, text};
 pub use crate::routing::{Middleware, Next, Route, RouteGroup, RouterState, Routes};
 
 // Routing constructors (the certified Axum functions, re-exported).
@@ -29,7 +29,16 @@ pub use crate::axum::response::{IntoResponse, Redirect, Response};
 pub use crate::http::json;
 
 // Serialization (available with any serde-using feature).
-#[cfg(any(feature = "inertia", feature = "api", feature = "auth", feature = "database", feature = "events", feature = "jobs", feature = "validation", feature = "pages"))]
+#[cfg(any(
+    feature = "inertia",
+    feature = "api",
+    feature = "auth",
+    feature = "database",
+    feature = "events",
+    feature = "jobs",
+    feature = "validation",
+    feature = "pages"
+))]
 pub use serde::{Deserialize, Serialize};
 
 // --- Capability entry points (one primary type per enabled subsystem) -----
@@ -42,10 +51,12 @@ pub use crate::inertia::{Inertia, InertiaConfig, RootDocument};
 pub use crate::inertia;
 
 #[cfg(feature = "database")]
-pub use crate::database::{Db, DatabaseConfig};
+pub use crate::database::{DatabaseConfig, Db};
 
 #[cfg(feature = "auth")]
-pub use crate::auth::{Auth, AuthUser, OptionalAuth, Policy, Session, Flash, FlashLevel, AuthManager};
+pub use crate::auth::{
+    Auth, AuthManager, AuthUser, Flash, FlashLevel, OptionalAuth, Policy, Session,
+};
 
 #[cfg(feature = "validation")]
 pub use crate::validation::{Request, Validated};
@@ -57,10 +68,10 @@ pub use crate::cache::{Cache, CacheConfig};
 pub use crate::storage::{Storage, StorageConfig, StoragePath};
 
 #[cfg(feature = "mail")]
-pub use crate::mail::{Mail, Mailer, Mailable, SmtpConfig};
+pub use crate::mail::{Mail, Mailable, Mailer, SmtpConfig};
 
 #[cfg(feature = "jobs")]
-pub use crate::jobs::{Job, JobModel, Jobs, JobError, JobRequest, Registry, Worker, WorkerConfig};
+pub use crate::jobs::{Job, JobError, JobModel, JobRequest, Jobs, Registry, Worker, WorkerConfig};
 
 #[cfg(feature = "events")]
 pub use crate::events::{Dispatcher, Event};

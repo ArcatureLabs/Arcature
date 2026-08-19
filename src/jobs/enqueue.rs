@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sqlx::postgres::PgExecutor;
 use sqlx::Row;
+use sqlx::postgres::PgExecutor;
 use uuid::Uuid;
 
 use super::config::JobModel;
@@ -163,7 +163,8 @@ impl<J> JobRequest<J> {
 
     /// The effective max attempts (override or model default).
     pub fn effective_max_attempts(&self) -> u32 {
-        self.max_attempts_override.unwrap_or(self.max_attempts_default)
+        self.max_attempts_override
+            .unwrap_or(self.max_attempts_default)
     }
 }
 

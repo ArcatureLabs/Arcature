@@ -6,10 +6,10 @@
 //! `inertia` feature) `inertia!()`.
 
 use crate::error::{Error, Result};
-use axum::http::HeaderValue;
-use axum::response::{IntoResponse, Redirect, Response};
 #[cfg(any(feature = "api", feature = "inertia"))]
 use axum::Json;
+use axum::http::HeaderValue;
+use axum::response::{IntoResponse, Redirect, Response};
 
 /// A builder for HTTP redirect responses with named-route support.
 ///
@@ -26,7 +26,10 @@ pub struct RedirectResponse {
 #[derive(Debug, Clone)]
 enum RedirectTarget {
     Path(String),
-    Route { name: String, params: Vec<RouteParam> },
+    Route {
+        name: String,
+        params: Vec<RouteParam>,
+    },
     Back,
 }
 
@@ -89,9 +92,15 @@ impl RedirectResponse {
                 }
             }
             RedirectTarget::Route { name, params } => {
-                let path = routes.url_for(name, &params.iter().map(|p| match p {
-                    RouteParam::Owned(s) => s.as_str(),
-                }).collect::<Vec<_>>())?;
+                let path = routes.url_for(
+                    name,
+                    &params
+                        .iter()
+                        .map(|p| match p {
+                            RouteParam::Owned(s) => s.as_str(),
+                        })
+                        .collect::<Vec<_>>(),
+                )?;
                 if self.permanent {
                     Redirect::permanent(&path)
                 } else {
@@ -226,7 +235,10 @@ pub fn json<T: serde::Serialize>(value: T) -> Response {
 pub fn text<S: Into<String>>(status: axum::http::StatusCode, body: S) -> Response {
     (
         status,
-        [(axum::http::header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"))],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; charset=utf-8"),
+        )],
         body.into(),
     )
         .into_response()
