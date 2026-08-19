@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  test:
+    name: Test (MSRV ${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: ["1.97.1", "stable"]
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: arcature_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: clippy
+
+      - name: Install cargo-hack
+        run: cargo install cargo-hack
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (default features)
+        run: cargo clippy --all-targets
+
+      - name: Build (default features)
+        run: cargo build
+
+      - name: Test (default features)
+        run: cargo test
+
+      - name: Build (no default features, kernel only)
+        run: cargo build --no-default-features
+
+      - name: Build (fullstack)
+        run: cargo build --features fullstack
+
+      - name: Build (no DB, no macros subset)
+        run: cargo build --no-default-features --features "macros,inertia,auth,validation,cache,storage-fs,mail,jobs,events,api,observe,pages,realtime,cli,templates"
+
+      - name: Feature powerset (build only, skip DB-needing subsets)
+        run: cargo hack build --feature-powerset --skip database --keep-going
+
+  publish-dry-run:
+    name: cargo publish --dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.1"
+
+      - name: cargo publish --dry-run (workspace excludes macros)
+        run: cargo publish --dry-run --no-verify

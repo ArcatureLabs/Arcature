@@ -88,16 +88,17 @@ fn parse_model_attr(attr: TokenStream) -> syn::Result<String> {
 // ===========================================================================
 //
 // An attribute macro applied to a named struct. Prepends
-// `#[derive(::arcature::Deserialize, ::arcature::Validate)]` so the struct
-// is deserializable and the `validator` crate's `#[validate(...)]` field
-// attributes are processed. The struct is emitted unchanged otherwise.
+// `#[derive(::arcature::Validate)]` so the struct is validated by the
+// `validator` crate's `#[validate(...)]` field attributes. The user must
+// also derive `Deserialize` (the macro does not add it to avoid duplicate
+// derives).
 
 #[proc_macro_attribute]
 pub fn request(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut item_struct = parse_macro_input!(item as ItemStruct);
 
     let derive_attr: syn::Attribute = syn::parse_quote! {
-        #[derive(::arcature::Deserialize, ::arcature::Validate)]
+        #[derive(::arcature::validator::Validate)]
     };
     item_struct.attrs.insert(0, derive_attr);
 

@@ -42,7 +42,7 @@ impl std::fmt::Display for JobStatus {
 
 impl JobStatus {
     /// Parse a status string from the database.
-    pub(crate) fn from_db(s: &str) -> Option<Self> {
+    pub fn from_db(s: &str) -> Option<Self> {
         match s {
             "pending" => Some(Self::Pending),
             "running" => Some(Self::Running),
