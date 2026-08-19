@@ -83,7 +83,6 @@ database = [
 auth = [
     "dep:argon2",
     "dep:tower-sessions",
-    "dep:cookie",
     "dep:secrecy",
     "dep:zeroize",
     "dep:getrandom",
@@ -189,14 +188,13 @@ uuid = { version = "1.24.0", default-features = false, features = ["v4", "serde"
 # Auth / security.
 argon2 = { version = "0.5.3", default-features = false, features = ["std", "password-hash", "rand"], optional = true }
 tower-sessions = { version = "0.15.0", default-features = false, features = ["axum-core", "signed"], optional = true }
-cookie = { version = "0.18.2", default-features = false, optional = true }
 secrecy = { version = "0.10.3", default-features = false, optional = true }
 zeroize = { version = "1.9.0", default-features = false, features = ["alloc"], optional = true }
 getrandom = { version = "0.4.3", default-features = false, optional = true }
 time = { version = "0.3.55", default-features = false, optional = true }
 
 # Validation.
-validator = { version = "0.21.0", default-features = false, optional = true }
+validator = { version = "0.21.0", default-features = false, features = ["derive"], optional = true }
 
 # Cache / jobs.
 redis = { version = "1.5.0", default-features = false, features = ["tokio-comp"], optional = true }
@@ -223,3 +221,4 @@ tokio-tungstenite = { version = "0.29.0", default-features = false }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json"] }
 tempfile = { version = "3.23.0", default-features = false }
 serde_urlencoded = { version = "0.7.1", default-features = false }
+tower-sessions-memory-store = { version = "0.15.0", default-features = false }

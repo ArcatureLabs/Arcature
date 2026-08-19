@@ -80,12 +80,26 @@ pub use database::{Db, DatabaseConfig};
 #[cfg(feature = "auth")]
 pub mod auth;
 #[cfg(feature = "auth")]
-pub use auth::{Auth, AuthUser, OptionalAuth, Policy, Session, Flash, FlashLevel, AuthManager, AuthzError};
+pub use auth::{
+    verify_password, Auth, AuthError, AuthManager, AuthUser, AuthzError, Current, CsrfConfig,
+    CsrfConfigError, CsrfError, CsrfLayer, CsrfToken, Flash, FlashError, FlashLevel, FlashMessage,
+    LoginBuilder, OptionalAuth, OptionalCurrent, PasswordHashError, PasswordHasher,
+    PasswordHashString, PasswordSecret, PasswordVerifyError, Policy, RehashOutcome,
+    SameSite, Session, SessionBuildError, SessionConfig, SessionConfigError, SessionError,
+    SessionKey, SessionLayer, SigningKeyReason, UserLoader,
+};
 
 #[cfg(feature = "validation")]
 pub mod validation;
 #[cfg(feature = "validation")]
-pub use validation::{Request, Validated};
+pub use validation::{
+    validate_or_problem, validation_problem, Request, Validated, ValidatedForm, ValidatedJson,
+    ValidatedPath, ValidatedQuery,
+};
+#[cfg(feature = "validation")]
+pub use validation::rejection::{
+    from_form_rejection, from_json_rejection, from_path_rejection, from_query_rejection,
+};
 
 #[cfg(feature = "cache")]
 pub mod cache;
@@ -117,10 +131,11 @@ pub mod realtime;
 #[cfg(feature = "realtime")]
 pub use realtime::{Broadcast, WebSocketEndpoint, SseEndpoint, Registry};
 
-#[cfg(feature = "api")]
+// The `api` module is always available: `Problem` (RFC 9457) needs only
+// always-on deps and the validation subsystem depends on it. The `api`
+// feature gates additional conveniences layered on top.
 pub mod api;
-#[cfg(feature = "api")]
-pub use api::{Problem, ProblemKind};
+pub use api::{Problem, ProblemBuilder, ProblemKind, PROBLEM_JSON};
 
 #[cfg(feature = "observe")]
 pub mod observe;
