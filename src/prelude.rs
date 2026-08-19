@@ -1,0 +1,75 @@
+//! The curated Arcature prelude.
+//!
+//! `use arcature::prelude::*;` brings the normal-user surface into scope: the
+//! [`Application`] engine, the [`Routes`] router, routing constructors,
+//! common extractors and response helpers, and the framework [`Result`].
+//! Capability entry points (when their feature is enabled) are also included.
+//!
+//! The prelude is deliberately *curated*, not a glob of every dependency: the
+//! full surface of each subsystem lives under its module
+//! (e.g. `arcature::database`, `arcature::auth`).
+
+// Framework-owned types (always available).
+pub use crate::application::{Application, ApplicationBuilder, Lifecycle, Resources};
+pub use crate::config::{env_or, env_required, AppConfig, AppEnvironment};
+pub use crate::error::{not_found, bad_request, forbidden, Error, Result, ValidationError};
+pub use crate::http::{no_content, redirect, text, RedirectResponse};
+pub use crate::routing::{Middleware, Next, Route, RouteGroup, RouterState, Routes};
+
+// Routing constructors (the certified Axum functions, re-exported).
+pub use crate::{any, delete, from_fn, get, head, options, patch, post, put};
+
+// Common Axum extractors and response types, re-exported through Arcature.
+pub use crate::axum::extract::{Path, State};
+pub use crate::axum::http::{HeaderMap, StatusCode, Uri};
+pub use crate::axum::response::{IntoResponse, Redirect, Response};
+
+// JSON response helper (available with api or inertia).
+#[cfg(any(feature = "api", feature = "inertia"))]
+pub use crate::http::json;
+
+// Serialization (available with any serde-using feature).
+#[cfg(any(feature = "inertia", feature = "api", feature = "auth", feature = "database", feature = "events", feature = "jobs", feature = "validation", feature = "pages"))]
+pub use serde::{Deserialize, Serialize};
+
+// --- Capability entry points (one primary type per enabled subsystem) -----
+
+#[cfg(feature = "inertia")]
+pub use crate::inertia::{inertia, Inertia, InertiaConfig, RootDocument};
+
+#[cfg(feature = "database")]
+pub use crate::database::{Db, DatabaseConfig};
+
+#[cfg(feature = "auth")]
+pub use crate::auth::{Auth, AuthUser, OptionalAuth, Policy, Session, Flash, FlashLevel, AuthManager};
+
+#[cfg(feature = "validation")]
+pub use crate::validation::{Request, Validated};
+
+#[cfg(feature = "cache")]
+pub use crate::cache::{Cache, CacheConfig};
+
+#[cfg(feature = "storage-fs")]
+pub use crate::storage::{Storage, StorageConfig, StoragePath};
+
+#[cfg(feature = "mail")]
+pub use crate::mail::{Mail, Mailer, Mailable, SmtpConfig};
+
+#[cfg(feature = "jobs")]
+pub use crate::jobs::{Job, JobHandler, Jobs};
+
+#[cfg(feature = "events")]
+pub use crate::events::{Event, Dispatcher};
+
+#[cfg(feature = "realtime")]
+pub use crate::realtime::{Broadcast, Registry, SseEndpoint, WebSocketEndpoint};
+
+#[cfg(feature = "api")]
+pub use crate::api::{Problem, ProblemKind};
+
+#[cfg(feature = "observe")]
+pub use crate::observe::RequestId;
+
+// The `#[arcature::main]` runtime entry point (requires the `macros` feature).
+#[cfg(feature = "macros")]
+pub use crate::main;

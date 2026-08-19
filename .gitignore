@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# local environment
+.env
+
+# editor
+.vscode/
+.idea/
+
+# node (frontend assets in generated apps)
+node_modules/
+dist/

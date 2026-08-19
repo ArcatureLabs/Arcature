@@ -1,0 +1,225 @@
+[package]
+name = "arcature"
+version = "2026.3.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "Apache-2.0"
+repository = "https://github.com/ArcatureLabs/Arcature"
+homepage = "https://github.com/ArcatureLabs/Arcature"
+documentation = "https://docs.rs/arcature"
+readme = "README.md"
+description = "Arcature: an opinionated full-stack Rust web framework. One package, batteries included."
+categories = ["web-programming", "asynchronous", "framework"]
+keywords = ["web", "framework", "axum", "inertia", "arcature"]
+
+# The `arc` CLI ships from the same package as a binary target. A normal
+# application never compiles the CLI; the binary is only built by
+# `cargo install arcature` / `cargo build --bin arc`.
+[[bin]]
+name = "arc"
+path = "src/bin/arc.rs"
+required-features = ["cli"]
+
+[lib]
+name = "arcature"
+path = "src/lib.rs"
+
+# ---------------------------------------------------------------------------
+# Features
+# ---------------------------------------------------------------------------
+#
+# Arcature is one release unit. Features exist only to reduce compile surface,
+# never to turn the framework into a self-assembly kit. `cargo add arcature`
+# (the default) is batteries-included: it compiles the canonical generated
+# application with no extra flags.
+#
+# Heavy operator integrations (OpenTelemetry exporter, S3, interactive API
+# docs, TLS variants) stay opt-in so a default app does not pull them.
+[features]
+default = [
+    "macros",
+    "inertia",
+    "database",
+    "auth",
+    "validation",
+    "cache",
+    "storage-fs",
+    "mail",
+    "jobs",
+    "events",
+    "api",
+    "observe",
+    "pages",
+    "realtime",
+    "cli",
+    "templates",
+]
+
+# The runtime + lifecycle + #[arcature::main] entry point. Without this an
+# expert can still build a raw Axum app over the kernel; with it the
+# generated app's `main.rs` needs no direct tokio dependency.
+macros = [
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:tower-http",
+    "dep:hyper",
+    "dep:hyper-util",
+]
+
+# Native Inertia.js server protocol implementation.
+inertia = ["dep:http"]
+
+# Database: single PostgreSQL pool shared by SeaORM + SQLx, models,
+# migrations, transactions, raw-SQL escape hatch.
+database = [
+    "dep:sqlx",
+    "dep:sea-orm",
+    "dep:sea-orm-migration",
+    "dep:chrono",
+    "dep:uuid",
+]
+
+# Authentication, sessions, authorization policies, password hashing.
+auth = [
+    "dep:argon2",
+    "dep:tower-sessions",
+    "dep:cookie",
+    "dep:secrecy",
+    "dep:zeroize",
+    "dep:getrandom",
+    "dep:time",
+]
+
+# Request validation built on `validator`.
+validation = ["dep:validator"]
+
+# Cache: Valkey/Redis client.
+cache = ["dep:redis"]
+
+# Storage: filesystem by default; S3-compatible behind `storage-s3`.
+storage-fs = ["dep:opendal", "dep:bytes", "dep:futures"]
+storage-s3 = ["storage-fs"]
+
+# Mail: lettre SMTP.
+mail = ["dep:lettre"]
+
+# Jobs: Redis-backed queue, dispatch, worker runtime, scheduler.
+jobs = [
+    "dep:redis",
+    "dep:tokio-util",
+    "dep:chrono",
+    "dep:uuid",
+]
+
+# Events + listeners: in-process typed dispatch.
+events = []
+
+# API: problem details (RFC 9457), typed API responses, OpenAPI.
+api = ["dep:http", "dep:validator"]
+
+# Observability: tracing; OpenTelemetry exporter opt-in.
+observe = ["dep:tracing", "dep:tracing-subscriber"]
+opentelemetry = ["observe", "dep:opentelemetry"]
+
+# Static pages / assets / root HTML document.
+pages = ["dep:http"]
+
+# Realtime WebSocket + SSE wrappers over axum.
+realtime = ["dep:tokio", "dep:futures"]
+
+# The `arc` CLI, generators, and the canonical application templates.
+cli = ["dep:clap", "dep:tokio", "dep:tokio-util"]
+templates = []
+
+# Developer one-port proxy (framework internal; powers `arc dev`).
+dev-proxy = ["dep:hyper", "dep:hyper-util", "dep:tokio", "dep:tower-http"]
+
+# Full features convenience alias (everything except operator opt-ins).
+fullstack = [
+    "macros",
+    "inertia",
+    "database",
+    "auth",
+    "validation",
+    "cache",
+    "storage-fs",
+    "storage-s3",
+    "mail",
+    "jobs",
+    "events",
+    "api",
+    "observe",
+    "pages",
+    "realtime",
+    "cli",
+    "templates",
+    "dev-proxy",
+]
+
+[lints.rust]
+unsafe_code = "forbid"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("storage"))'] }
+
+[dependencies]
+# HTTP / async runtime kernel.
+axum = { version = "0.8.9", default-features = false, features = ["tokio", "http1", "ws", "json", "form", "query"] }
+tower = { version = "0.5.3", default-features = false }
+tokio = { version = "1.53.1", default-features = false, features = ["net", "macros", "rt-multi-thread", "sync", "time", "io-util", "signal"], optional = true }
+tokio-util = { version = "0.7.19", default-features = false, optional = true }
+tower-http = { version = "0.6.11", default-features = false, features = ["timeout", "limit"], optional = true }
+hyper = { version = "1.11.0", default-features = false, features = ["http1", "client"], optional = true }
+hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"], optional = true }
+http = { version = "1.3", default-features = false, optional = true }
+
+# Serialization — always available (fundamental; already in axum's transitive
+# graph so no new supply-chain surface). Used by the always-on error type.
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.145" }
+
+# CLI.
+clap = { version = "4.6.6", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"], optional = true }
+
+# Database.
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros", "json", "uuid", "chrono"], optional = true }
+sea-orm = { version = "2.0.1", default-features = false, features = ["macros", "runtime-tokio", "sqlx-postgres", "with-json", "with-uuid", "with-chrono"], optional = true }
+sea-orm-migration = { version = "2.0.1", default-features = false, features = ["runtime-tokio", "sqlx-postgres"], optional = true }
+chrono = { version = "0.4.45", default-features = false, features = ["serde"], optional = true }
+uuid = { version = "1.24.0", default-features = false, features = ["v4", "serde"], optional = true }
+
+# Auth / security.
+argon2 = { version = "0.5.3", default-features = false, features = ["std", "password-hash", "rand"], optional = true }
+tower-sessions = { version = "0.15.0", default-features = false, features = ["axum-core", "signed"], optional = true }
+cookie = { version = "0.18.2", default-features = false, optional = true }
+secrecy = { version = "0.10.3", default-features = false, optional = true }
+zeroize = { version = "1.9.0", default-features = false, features = ["alloc"], optional = true }
+getrandom = { version = "0.4.3", default-features = false, optional = true }
+time = { version = "0.3.55", default-features = false, optional = true }
+
+# Validation.
+validator = { version = "0.21.0", default-features = false, optional = true }
+
+# Cache / jobs.
+redis = { version = "1.5.0", default-features = false, features = ["tokio-comp"], optional = true }
+
+# Storage.
+opendal = { version = "0.58.1", default-features = false, optional = true }
+bytes = { version = "1.12.1", default-features = false, optional = true }
+futures = { version = "0.3.33", default-features = false, features = ["std"], optional = true }
+
+# Mail.
+lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "pool", "tokio1", "rustls", "tokio1-rustls", "aws-lc-rs", "webpki-roots", "hostname"], optional = true }
+
+# Observability.
+tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"], optional = true }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry"], optional = true }
+opentelemetry = { version = "0.29", default-features = false, optional = true }
+
+# Error handling.
+thiserror = { version = "2.0", default-features = false }
+
+[dev-dependencies]
+tokio = { version = "1.53.1", default-features = false, features = ["net", "macros", "rt-multi-thread", "sync", "time", "io-util", "signal"] }
+tokio-tungstenite = { version = "0.29.0", default-features = false }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json"] }
+tempfile = { version = "3.23.0", default-features = false }
+serde_urlencoded = { version = "0.7.1", default-features = false }
