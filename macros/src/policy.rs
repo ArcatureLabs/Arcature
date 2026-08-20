@@ -135,10 +135,22 @@ mod tests {
             .unwrap()
             .to_string();
 
-        assert!(expanded.contains("DxComponent"), "missing DxComponent: {expanded}");
-        assert!(expanded.contains("\"LinkPolicy\""), "wrong NAME: {expanded}");
-        assert!(expanded.contains("POLICY_FOR"), "missing POLICY_FOR: {expanded}");
-        assert!(expanded.contains("\"Link\""), "missing model name: {expanded}");
+        assert!(
+            expanded.contains("DxComponent"),
+            "missing DxComponent: {expanded}"
+        );
+        assert!(
+            expanded.contains("\"LinkPolicy\""),
+            "wrong NAME: {expanded}"
+        );
+        assert!(
+            expanded.contains("POLICY_FOR"),
+            "missing POLICY_FOR: {expanded}"
+        );
+        assert!(
+            expanded.contains("\"Link\""),
+            "missing model name: {expanded}"
+        );
         // Should not generate the Policy *trait* impl.
         assert!(
             !expanded.contains(":: arcature :: Policy"),
@@ -154,7 +166,10 @@ mod tests {
         )
         .unwrap()
         .to_string();
-        assert!(expanded.contains("\"LinkAuthz\""), "expected LinkAuthz: {expanded}");
+        assert!(
+            expanded.contains("\"LinkAuthz\""),
+            "expected LinkAuthz: {expanded}"
+        );
     }
 
     #[test]
@@ -165,7 +180,10 @@ mod tests {
         )
         .unwrap()
         .to_string();
-        assert!(expanded.contains("\"Link\""), "expected simple name: {expanded}");
+        assert!(
+            expanded.contains("\"Link\""),
+            "expected simple name: {expanded}"
+        );
     }
 
     #[test]
@@ -176,11 +194,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_argument() {
-        let err = policy(
-            quote! { Link, foo = 42 },
-            quote! { pub struct LinkPolicy; },
-        )
-        .unwrap_err();
+        let err = policy(quote! { Link, foo = 42 }, quote! { pub struct LinkPolicy; }).unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM002);
     }
 }

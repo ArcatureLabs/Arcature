@@ -8,11 +8,11 @@
 //! `database` (and `jobs` for `queue`) features; without them the dispatcher
 //! reports the command as unavailable.
 
-pub mod new;
-pub mod version;
-pub mod serve;
 pub mod migrate;
+pub mod new;
 pub mod schedule;
+pub mod serve;
+pub mod version;
 
 #[cfg(feature = "database")]
 pub mod doctor;

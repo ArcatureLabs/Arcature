@@ -75,10 +75,7 @@ mod tests {
 
     #[test]
     fn json_is_deterministic() {
-        assert_eq!(
-            artifact().to_json().unwrap(),
-            artifact().to_json().unwrap()
-        );
+        assert_eq!(artifact().to_json().unwrap(), artifact().to_json().unwrap());
     }
 
     #[test]

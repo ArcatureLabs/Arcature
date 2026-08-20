@@ -50,7 +50,10 @@ routes! {
 #[test]
 fn the_router_function_builds() {
     let routes = app_routes();
-    let names: Vec<_> = routes.named().map(|(name, path)| (name.clone(), path.clone())).collect();
+    let names: Vec<_> = routes
+        .named()
+        .map(|(name, path)| (name.clone(), path.clone()))
+        .collect();
     assert!(names.contains(&("home".to_string(), "/".to_string())));
     assert!(names.contains(&("auth.login".to_string(), "/auth/login".to_string())));
     assert!(names.contains(&("admin.panel".to_string(), "/admin/panel".to_string())));
@@ -66,7 +69,10 @@ fn url_for_resolves_a_declared_name() {
 fn the_metadata_const_describes_every_route() {
     assert_eq!(APP_ROUTES.len(), 4);
 
-    let home = APP_ROUTES.iter().find(|r| r.name == "home").expect("home route");
+    let home = APP_ROUTES
+        .iter()
+        .find(|r| r.name == "home")
+        .expect("home route");
     assert_eq!(home.method, arcature::RouteMethod::Get);
     assert_eq!(home.path, "/");
     assert_eq!(home.handler, "home");
@@ -141,7 +147,10 @@ fn a_resource_expands_to_its_selected_actions() {
     let names: Vec<_> = WEB_ROUTES.iter().map(|r| r.name).collect();
     assert_eq!(names, vec!["links.index", "links.show", "links.destroy"]);
 
-    let destroy = WEB_ROUTES.iter().find(|r| r.name == "links.destroy").unwrap();
+    let destroy = WEB_ROUTES
+        .iter()
+        .find(|r| r.name == "links.destroy")
+        .unwrap();
     assert_eq!(destroy.method, arcature::RouteMethod::Delete);
     assert_eq!(destroy.handler, "LinksController::destroy");
 }

@@ -14,7 +14,9 @@ use quote::quote;
 use syn::spanned::Spanned as _;
 
 use super::action;
-use super::declaration::{ResourceDeclaration, RouteEntry, RouteGroup, RoutesDeclaration, SingleRoute};
+use super::declaration::{
+    ResourceDeclaration, RouteEntry, RouteGroup, RoutesDeclaration, SingleRoute,
+};
 use super::flatten::action_handler;
 use super::path;
 
@@ -127,7 +129,10 @@ fn bind_check(bind: Option<&syn::Path>) -> TokenStream {
 /// the first-listed middleware the outermost -- first to see the request,
 /// last to see the response.
 fn scoped(inner: TokenStream, middleware: &[syn::Path], state_ty: &TokenStream) -> TokenStream {
-    let layers = middleware.iter().rev().map(|mw| quote! { .middleware(#mw) });
+    let layers = middleware
+        .iter()
+        .rev()
+        .map(|mw| quote! { .middleware(#mw) });
     quote! {
         routes.extend(::arcature::IntoRoutes::into_routes(
             ::arcature::RouteGroup::<#state_ty>::new("", {
@@ -225,7 +230,10 @@ mod tests {
         });
         let second = out.find(". middleware (Second)").expect("Second applied");
         let first = out.find(". middleware (First)").expect("First applied");
-        assert!(second < first, "the first-listed middleware must be outermost");
+        assert!(
+            second < first,
+            "the first-listed middleware must be outermost"
+        );
     }
 
     #[test]

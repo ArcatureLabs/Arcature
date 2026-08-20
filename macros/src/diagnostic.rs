@@ -147,11 +147,7 @@ pub struct MacroError {
 impl MacroError {
     /// Creates a new diagnostic error at `span` with the given code and
     /// message. The rendered output is `error[ARC-MNNN]: <message>`.
-    pub fn new(
-        code: MacroErrorCode,
-        span: proc_macro2::Span,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn new(code: MacroErrorCode, span: proc_macro2::Span, message: impl Into<String>) -> Self {
         let rendered = format!("{}: {}", code.label(), message.into());
         Self {
             code,

@@ -11,7 +11,9 @@
 //! they guard something that fails silently and dangerously.
 
 use arcature::Result;
-use arcature::routing::{IntoRoutes, Middleware, Next, Request, Response, Route, RouteGroup, Routes};
+use arcature::routing::{
+    IntoRoutes, Middleware, Next, Request, Response, Route, RouteGroup, Routes,
+};
 use axum::body::Body;
 use axum::http::Request as HttpRequest;
 use axum::http::StatusCode;
@@ -251,7 +253,11 @@ async fn per_method_middleware_stays_on_its_method() {
         )
         .await
         .expect("infallible");
-    assert_eq!(get.status(), StatusCode::OK, "GET was denied by POST's guard");
+    assert_eq!(
+        get.status(),
+        StatusCode::OK,
+        "GET was denied by POST's guard"
+    );
 
     let post = router
         .oneshot(
@@ -269,9 +275,12 @@ async fn per_method_middleware_stays_on_its_method() {
 #[tokio::test]
 async fn named_routes_survive_grouping() {
     let routes: Routes = Routes::new(
-        RouteGroup::new("/admin", [Route::get("/users/{id}", ok).name("admin.users.show")])
-            .middleware(Stamp("group"))
-            .into_routes(),
+        RouteGroup::new(
+            "/admin",
+            [Route::get("/users/{id}", ok).name("admin.users.show")],
+        )
+        .middleware(Stamp("group"))
+        .into_routes(),
     );
 
     assert_eq!(

@@ -14,9 +14,7 @@ use std::process::Command;
 use super::super::parser::{Subcommand, SubcommandError};
 
 /// Parse `arc schedule` arguments into a [`Subcommand::Schedule`].
-pub fn parse<'a>(
-    iter: &mut std::slice::Iter<'a, OsString>,
-) -> Result<Subcommand, SubcommandError> {
+pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
     let mut dsn = None;
     while let Some(arg) = iter.next() {
         let arg_str = arg.to_string_lossy();
@@ -40,7 +38,9 @@ pub fn run(dsn: Option<&str>) -> Result<(), ScheduleError> {
         cmd.env("DATABASE_URL", url);
     }
 
-    let status = cmd.status().map_err(|source| ScheduleError::Spawn { source })?;
+    let status = cmd
+        .status()
+        .map_err(|source| ScheduleError::Spawn { source })?;
     if !status.success() {
         return Err(ScheduleError::Exited {
             code: status.code(),

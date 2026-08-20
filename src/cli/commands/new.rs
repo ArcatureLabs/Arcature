@@ -9,9 +9,7 @@ use std::path::PathBuf;
 use super::super::parser::{Subcommand, SubcommandError};
 
 /// Parse `arc new` arguments into a [`Subcommand::New`].
-pub fn parse<'a>(
-    iter: &mut std::slice::Iter<'a, OsString>,
-) -> Result<Subcommand, SubcommandError> {
+pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
     let project_name = iter
         .next()
         .ok_or(SubcommandError::MissingArg {

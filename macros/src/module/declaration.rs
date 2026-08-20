@@ -128,8 +128,7 @@ impl ModuleDeclaration {
         } else if lookahead.peek(keyword::jobs) {
             self.jobs = parse_keyed(input, |i| i.parse::<keyword::jobs>(), parse_jobs)?;
         } else if lookahead.peek(keyword::commands) {
-            self.commands =
-                parse_keyed(input, |i| i.parse::<keyword::commands>(), parse_commands)?;
+            self.commands = parse_keyed(input, |i| i.parse::<keyword::commands>(), parse_commands)?;
         } else if lookahead.peek(keyword::schedules) {
             self.schedules =
                 parse_keyed(input, |i| i.parse::<keyword::schedules>(), parse_schedules)?;
@@ -379,7 +378,10 @@ mod tests {
             A { schedules: [sweep every "5m", digest v2 daily "03:30"] }
         })
         .unwrap();
-        assert_eq!(declaration.schedules[0].2, ScheduleSpec::Every { seconds: 300 });
+        assert_eq!(
+            declaration.schedules[0].2,
+            ScheduleSpec::Every { seconds: 300 }
+        );
         assert_eq!(declaration.schedules[1].1, 2);
         assert_eq!(
             declaration.schedules[1].2,

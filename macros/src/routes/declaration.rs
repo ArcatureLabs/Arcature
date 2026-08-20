@@ -150,19 +150,33 @@ fn parse_state_clause(input: ParseStream<'_>) -> syn::Result<Option<syn::Type>> 
 fn parse_entry(input: ParseStream<'_>) -> syn::Result<RouteEntry> {
     let lookahead = input.lookahead1();
     let method = if lookahead.peek(method_keyword::get) {
-        input.parse::<method_keyword::get>().map(|_| RouteMethodKind::Get)
+        input
+            .parse::<method_keyword::get>()
+            .map(|_| RouteMethodKind::Get)
     } else if lookahead.peek(method_keyword::post) {
-        input.parse::<method_keyword::post>().map(|_| RouteMethodKind::Post)
+        input
+            .parse::<method_keyword::post>()
+            .map(|_| RouteMethodKind::Post)
     } else if lookahead.peek(method_keyword::put) {
-        input.parse::<method_keyword::put>().map(|_| RouteMethodKind::Put)
+        input
+            .parse::<method_keyword::put>()
+            .map(|_| RouteMethodKind::Put)
     } else if lookahead.peek(method_keyword::patch) {
-        input.parse::<method_keyword::patch>().map(|_| RouteMethodKind::Patch)
+        input
+            .parse::<method_keyword::patch>()
+            .map(|_| RouteMethodKind::Patch)
     } else if lookahead.peek(method_keyword::delete) {
-        input.parse::<method_keyword::delete>().map(|_| RouteMethodKind::Delete)
+        input
+            .parse::<method_keyword::delete>()
+            .map(|_| RouteMethodKind::Delete)
     } else if lookahead.peek(method_keyword::head) {
-        input.parse::<method_keyword::head>().map(|_| RouteMethodKind::Head)
+        input
+            .parse::<method_keyword::head>()
+            .map(|_| RouteMethodKind::Head)
     } else if lookahead.peek(method_keyword::options) {
-        input.parse::<method_keyword::options>().map(|_| RouteMethodKind::Options)
+        input
+            .parse::<method_keyword::options>()
+            .map(|_| RouteMethodKind::Options)
     } else if lookahead.peek(keyword::group) {
         return parse_group(input).map(RouteEntry::Group);
     } else if lookahead.peek(keyword::resource) {

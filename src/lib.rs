@@ -93,21 +93,20 @@ pub trait DxComponent {
 // `#[service]`, `#[resource]`, `#[page]`, `#[route_model]`, ...) generate
 // code against. These are re-exported at the crate root so downstream code
 // references them as `arcature::ApplicationGraph`, `arcature::Resolve`, etc.
+#[cfg(all(feature = "dx", feature = "database", feature = "api"))]
+pub use dx::Bound;
 #[cfg(feature = "dx")]
 pub use dx::{
     ApplicationGraph, ControllerMetadata, ControllerMethod, Empty, FieldShape, GraphError, Inject,
     Json, ModuleDescriptor, ModuleNode, Page, Provider, RequestCacheDescriptor, RequestMetadata,
-    ResourceMetadata, Resolve, RouteDescriptor, RouteMethod, Service,
-    page,
+    Resolve, ResourceMetadata, RouteDescriptor, RouteMethod, Service, page,
 };
-#[cfg(all(feature = "dx", feature = "database"))]
-pub use dx::{DbFromState, RouteModel};
-#[cfg(all(feature = "dx", feature = "database", feature = "api"))]
-pub use dx::Bound;
 #[cfg(feature = "dx")]
 pub use dx::{Command, CommandError, CommandRegistry};
 #[cfg(feature = "dx")]
 pub use dx::{CommandBinding, JobBinding};
+#[cfg(all(feature = "dx", feature = "database"))]
+pub use dx::{DbFromState, RouteModel};
 
 // --- Feature-gated subsystems ----------------------------------------------
 

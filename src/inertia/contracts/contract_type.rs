@@ -100,9 +100,7 @@ mod tests {
 
     #[test]
     fn object_carries_the_nested_props() {
-        let ty = ContractType::object(
-            PropsSchema::new().required("name", ContractType::string()),
-        );
+        let ty = ContractType::object(PropsSchema::new().required("name", ContractType::string()));
         let ContractType::Object { fields } = ty else {
             panic!("expected an object type");
         };

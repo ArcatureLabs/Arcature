@@ -194,12 +194,24 @@ mod tests {
         .unwrap()
         .to_string();
 
-        assert!(expanded.contains("DxComponent"), "missing DxComponent: {expanded}");
+        assert!(
+            expanded.contains("DxComponent"),
+            "missing DxComponent: {expanded}"
+        );
         assert!(expanded.contains("Service"), "missing Service: {expanded}");
         assert!(expanded.contains("Resolve"), "missing Resolve: {expanded}");
-        assert!(expanded.contains("\"LinkService\""), "wrong NAME: {expanded}");
-        assert!(expanded.contains("\"Db\""), "missing Db in DEPS: {expanded}");
-        assert!(expanded.contains("\"Cache\""), "missing Cache in DEPS: {expanded}");
+        assert!(
+            expanded.contains("\"LinkService\""),
+            "wrong NAME: {expanded}"
+        );
+        assert!(
+            expanded.contains("\"Db\""),
+            "missing Db in DEPS: {expanded}"
+        );
+        assert!(
+            expanded.contains("\"Cache\""),
+            "missing Cache in DEPS: {expanded}"
+        );
     }
 
     #[test]
@@ -210,7 +222,10 @@ mod tests {
         )
         .unwrap()
         .to_string();
-        assert!(expanded.contains("\"LinkSvc\""), "expected LinkSvc NAME: {expanded}");
+        assert!(
+            expanded.contains("\"LinkSvc\""),
+            "expected LinkSvc NAME: {expanded}"
+        );
         assert!(
             !expanded.contains("\"LinkService\""),
             "should not use type name: {expanded}"
@@ -226,7 +241,10 @@ mod tests {
             expanded.contains("resolve"),
             "expected resolve call: {expanded}"
         );
-        assert!(expanded.contains("db :"), "expected field construction: {expanded}");
+        assert!(
+            expanded.contains("db :"),
+            "expected field construction: {expanded}"
+        );
     }
 
     #[test]
@@ -234,7 +252,10 @@ mod tests {
         let expanded = service(quote! {}, quote! { pub struct RepoService<T> { inner: T } })
             .unwrap()
             .to_string();
-        assert!(expanded.contains("DxComponent"), "missing DxComponent: {expanded}");
+        assert!(
+            expanded.contains("DxComponent"),
+            "missing DxComponent: {expanded}"
+        );
         assert!(
             expanded.contains("S , T") || expanded.contains("S, T"),
             "expected <S, T> in resolve impl: {expanded}"

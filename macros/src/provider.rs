@@ -133,8 +133,14 @@ mod tests {
         .unwrap()
         .to_string();
 
-        assert!(expanded.contains("DxComponent"), "missing DxComponent: {expanded}");
-        assert!(expanded.contains("\"StripeClient\""), "wrong NAME: {expanded}");
+        assert!(
+            expanded.contains("DxComponent"),
+            "missing DxComponent: {expanded}"
+        );
+        assert!(
+            expanded.contains("\"StripeClient\""),
+            "wrong NAME: {expanded}"
+        );
         // The macro does NOT generate Service, Resolve, or Provider impls --
         // the developer writes `impl Provider` by hand.
         assert!(
@@ -156,7 +162,10 @@ mod tests {
         let expanded = provider(quote! {}, quote! { pub struct StripeClient(HttpClient); })
             .unwrap()
             .to_string();
-        assert!(expanded.contains("DxComponent"), "missing DxComponent: {expanded}");
+        assert!(
+            expanded.contains("DxComponent"),
+            "missing DxComponent: {expanded}"
+        );
     }
 
     #[test]
@@ -167,7 +176,10 @@ mod tests {
         )
         .unwrap()
         .to_string();
-        assert!(expanded.contains("\"Stripe\""), "expected Stripe NAME: {expanded}");
+        assert!(
+            expanded.contains("\"Stripe\""),
+            "expected Stripe NAME: {expanded}"
+        );
         assert!(
             !expanded.contains("\"StripeClient\""),
             "should not use type name: {expanded}"

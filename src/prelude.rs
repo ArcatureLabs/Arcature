@@ -88,20 +88,20 @@ pub use crate::events::{Dispatcher, Event};
 // high-level response vocabulary (`Empty`, `Json`, `Page`, `page`) and the DI
 // surface (`Inject`, `Resolve`, `Service`). Bring them into the prelude so a
 // generated app's `use arcature::prelude::*` makes the full DSL available.
+#[cfg(all(feature = "dx", feature = "database", feature = "api"))]
+pub use crate::Bound;
 #[cfg(feature = "dx")]
 pub use crate::{
     ApplicationGraph, ControllerMetadata, ControllerMethod, Empty, FieldShape, GraphError, Inject,
-    Json, ModuleDescriptor, ModuleNode, Page, Provider, RequestCacheDescriptor,
-    RequestMetadata, ResourceMetadata, Resolve, RouteDescriptor, RouteMethod, Service, page,
+    Json, ModuleDescriptor, ModuleNode, Page, Provider, RequestCacheDescriptor, RequestMetadata,
+    Resolve, ResourceMetadata, RouteDescriptor, RouteMethod, Service, page,
 };
-#[cfg(all(feature = "dx", feature = "database"))]
-pub use crate::{DbFromState, RouteModel};
-#[cfg(all(feature = "dx", feature = "database", feature = "api"))]
-pub use crate::Bound;
 #[cfg(feature = "dx")]
 pub use crate::{Command, CommandError, CommandRegistry};
 #[cfg(feature = "dx")]
 pub use crate::{CommandBinding, JobBinding};
+#[cfg(all(feature = "dx", feature = "database"))]
+pub use crate::{DbFromState, RouteModel};
 
 #[cfg(feature = "realtime")]
 pub use crate::realtime::{Broadcast, SseEndpoint, WebSocketEndpoint};

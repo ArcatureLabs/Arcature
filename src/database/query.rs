@@ -247,19 +247,12 @@ where
             return Ok(Vec::new());
         }
         let offset = n.saturating_sub(1) * self.per_page;
-        self.query
-            .offset(offset)
-            .limit(self.per_page)
-            .all()
-            .await
+        self.query.offset(offset).limit(self.per_page).all().await
     }
 
     /// Fetch page `n` (1-indexed) with total count. Returns the rows and the
     /// total number of matching rows (before pagination).
-    pub async fn page_with_count(
-        self,
-        n: u64,
-    ) -> Result<(Vec<E::Model>, u64), crate::Error>
+    pub async fn page_with_count(self, n: u64) -> Result<(Vec<E::Model>, u64), crate::Error>
     where
         E: Send + Sync,
         E::Model: Send + Sync,

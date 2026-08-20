@@ -86,22 +86,28 @@ mod tests {
 
     #[test]
     fn rejects_non_async_fn() {
-        let err = job_handler(quote! {}, quote! { pub fn handle() -> Result<()> { Ok(()) } })
-            .unwrap_err();
+        let err = job_handler(
+            quote! {},
+            quote! { pub fn handle() -> Result<()> { Ok(()) } },
+        )
+        .unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM010);
     }
 
     #[test]
     fn rejects_non_pub_fn() {
-        let err = job_handler(quote! {}, quote! { async fn handle() -> Result<()> { Ok(()) } })
-            .unwrap_err();
+        let err = job_handler(
+            quote! {},
+            quote! { async fn handle() -> Result<()> { Ok(()) } },
+        )
+        .unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM010);
     }
 
     #[test]
     fn rejects_missing_return_type() {
-        let err = job_handler(quote! {}, quote! { pub async fn handle(job: SendEmail) {} })
-            .unwrap_err();
+        let err =
+            job_handler(quote! {}, quote! { pub async fn handle(job: SendEmail) {} }).unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM010);
     }
 }

@@ -47,7 +47,10 @@ mod tests {
 
     #[test]
     fn snake_case_splits_on_capitals() {
-        assert_eq!(to_snake_case("SendVerificationEmail"), "send_verification_email");
+        assert_eq!(
+            to_snake_case("SendVerificationEmail"),
+            "send_verification_email"
+        );
         assert_eq!(to_snake_case("User"), "user");
         assert_eq!(to_snake_case("already_snake"), "already_snake");
     }

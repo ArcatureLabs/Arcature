@@ -167,16 +167,14 @@ mod tests {
 
     #[test]
     fn rejects_a_duplicate_command() {
-        let err =
-            validate_module(quote! { A { commands: ["p" => one, "p" => two] } }).unwrap_err();
+        let err = validate_module(quote! { A { commands: ["p" => one, "p" => two] } }).unwrap_err();
         assert!(err.to_compile_error().to_string().contains("command"));
     }
 
     #[test]
     fn rejects_a_job_scheduled_twice() {
-        let err =
-            validate_module(quote! { A { schedules: [s every "5m", s daily "03:00"] } })
-                .unwrap_err();
+        let err = validate_module(quote! { A { schedules: [s every "5m", s daily "03:00"] } })
+            .unwrap_err();
         assert!(err.to_compile_error().to_string().contains("schedule"));
     }
 }

@@ -204,8 +204,11 @@ mod tests {
 
     #[test]
     fn rejects_missing_entity() {
-        let err = route_model(quote! { key_type = i64 }, quote! { pub struct Link(pub M); })
-            .unwrap_err();
+        let err = route_model(
+            quote! { key_type = i64 },
+            quote! { pub struct Link(pub M); },
+        )
+        .unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM005);
     }
 

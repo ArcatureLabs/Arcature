@@ -12,8 +12,8 @@
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::application::{EngineError, EngineResult};
 use crate::application::resources::Resources;
+use crate::application::{EngineError, EngineResult};
 
 /// The managed handles for a running job worker (and optional scheduler).
 ///
@@ -105,7 +105,9 @@ pub(super) async fn start_jobs(
     // Spawn the scheduler only when one was registered.
     let scheduler_handle = if let Some(scheduler) = scheduler {
         let scheduler_shutdown = shutdown.clone();
-        Some(tokio::spawn(async move { scheduler.run(scheduler_shutdown).await }))
+        Some(tokio::spawn(async move {
+            scheduler.run(scheduler_shutdown).await
+        }))
     } else {
         None
     };

@@ -74,14 +74,20 @@ mod tests {
     #[test]
     fn adds_the_validate_derive_and_crate_attribute() {
         let s = expand(quote! { pub struct StoreLinkRequest { pub url: String } });
-        assert!(s.contains(":: arcature :: validator :: Validate"), "got: {s}");
+        assert!(
+            s.contains(":: arcature :: validator :: Validate"),
+            "got: {s}"
+        );
         assert!(s.contains("crate = \"::arcature::validator\""), "got: {s}");
     }
 
     #[test]
     fn implements_the_request_marker() {
         let s = expand(quote! { pub struct StoreLinkRequest { pub url: String } });
-        assert!(s.contains(":: arcature :: Request for StoreLinkRequest"), "got: {s}");
+        assert!(
+            s.contains(":: arcature :: Request for StoreLinkRequest"),
+            "got: {s}"
+        );
     }
 
     #[test]

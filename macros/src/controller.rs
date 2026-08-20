@@ -79,7 +79,11 @@ fn validate(method: &ImplItemFn) -> Result<(), MacroError> {
             "controller methods must have a return type",
         ));
     }
-    if sig.inputs.iter().any(|arg| matches!(arg, FnArg::Receiver(_))) {
+    if sig
+        .inputs
+        .iter()
+        .any(|arg| matches!(arg, FnArg::Receiver(_)))
+    {
         return Err(MacroError::new(
             MacroErrorCode::ArcM004,
             span,
@@ -137,10 +141,9 @@ fn take_page_attribute(method: &mut ImplItemFn) -> Result<Option<String>, MacroE
     let literal: syn::LitStr = attr.parse_args().map_err(|_| {
         MacroError::new(
             MacroErrorCode::ArcM002,
-            attr.path().get_ident().map_or_else(
-                proc_macro2::Span::call_site,
-                syn::Ident::span,
-            ),
+            attr.path()
+                .get_ident()
+                .map_or_else(proc_macro2::Span::call_site, syn::Ident::span),
             "#[page] on a controller method requires a string literal page name, \
              e.g. #[page(\"users/show\")]",
         )
@@ -303,7 +306,10 @@ mod tests {
             let s = expand(quote! {
                 impl A { pub async fn index() -> #output { todo!() } }
             });
-            assert!(s.contains("page : :: core :: option :: Option :: None"), "got: {s}");
+            assert!(
+                s.contains("page : :: core :: option :: Option :: None"),
+                "got: {s}"
+            );
         }
     }
 
@@ -316,7 +322,10 @@ mod tests {
             }
         });
         assert!(s.contains("Some (\"users/show\")"), "got: {s}");
-        assert!(!s.contains("# [page"), "attribute must be stripped, got: {s}");
+        assert!(
+            !s.contains("# [page"),
+            "attribute must be stripped, got: {s}"
+        );
     }
 
     #[test]

@@ -129,8 +129,11 @@ mod tests {
 
     #[test]
     fn rejects_bad_signature() {
-        let err = command(quote! { "test" }, quote! { pub fn handle() -> Result<()> { Ok(()) } })
-            .unwrap_err();
+        let err = command(
+            quote! { "test" },
+            quote! { pub fn handle() -> Result<()> { Ok(()) } },
+        )
+        .unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM011);
     }
 }

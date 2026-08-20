@@ -94,7 +94,9 @@ impl Helper {
             .iter()
             .map(|p| syn::Ident::new(p, Span::call_site()))
             .collect();
-        let declarations = params.iter().map(|p| quote! { #p: impl ::std::fmt::Display });
+        let declarations = params
+            .iter()
+            .map(|p| quote! { #p: impl ::std::fmt::Display });
 
         quote! {
             pub fn #ident( #(#declarations),* ) -> ::std::string::String {

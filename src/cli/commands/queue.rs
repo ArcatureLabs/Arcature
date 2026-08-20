@@ -25,9 +25,7 @@ impl QueueAction {
 }
 
 /// Parse `arc queue` arguments into a [`Subcommand::Queue`].
-pub fn parse<'a>(
-    iter: &mut std::slice::Iter<'a, OsString>,
-) -> Result<Subcommand, SubcommandError> {
+pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
     let mut action = None;
     let mut dsn = None;
     while let Some(arg) = iter.next() {
@@ -87,7 +85,9 @@ pub async fn run(action: &QueueAction, dsn: Option<&str>) -> Result<(), QueueErr
             // sweeps and reports unknown jobs as dead. Most apps run the worker
             // in-process via ApplicationBuilder::jobs instead. Still useful to
             // drain lease-expired jobs without the app.
-            eprintln!("note: `arc queue work` runs a no-handler worker; use the app's in-process worker for real dispatch");
+            eprintln!(
+                "note: `arc queue work` runs a no-handler worker; use the app's in-process worker for real dispatch"
+            );
             let swept = crate::jobs::admin::sweep_expired_leases(&pool, 1024)
                 .await
                 .map_err(QueueError::Admin)?;

@@ -75,7 +75,10 @@ mod tests {
 
     #[test]
     fn action_routes_map_to_rest_conventions() {
-        assert_eq!(route("index", "link"), (RouteMethodKind::Get, String::new()));
+        assert_eq!(
+            route("index", "link"),
+            (RouteMethodKind::Get, String::new())
+        );
         assert_eq!(
             route("show", "link"),
             (RouteMethodKind::Get, "/{link}".to_string())

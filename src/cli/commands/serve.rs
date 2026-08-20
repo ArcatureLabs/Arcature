@@ -13,9 +13,7 @@ use std::process::Command;
 use super::super::parser::{Subcommand, SubcommandError};
 
 /// Parse `arc serve` arguments into a [`Subcommand::Serve`].
-pub fn parse<'a>(
-    iter: &mut std::slice::Iter<'a, OsString>,
-) -> Result<Subcommand, SubcommandError> {
+pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
     let mut bind = None;
     let mut port = None;
     while let Some(arg) = iter.next() {
@@ -63,7 +61,9 @@ pub fn run(bind: Option<&str>, port: Option<u16>) -> Result<(), ServeError> {
         cmd.env("ARCATURE_BACKEND_BIND", addr);
     }
 
-    let status = cmd.status().map_err(|source| ServeError::Spawn { source })?;
+    let status = cmd
+        .status()
+        .map_err(|source| ServeError::Spawn { source })?;
     if !status.success() {
         return Err(ServeError::Exited {
             code: status.code(),

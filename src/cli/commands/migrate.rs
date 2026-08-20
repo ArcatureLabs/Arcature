@@ -14,9 +14,7 @@ use std::process::Command;
 use super::super::parser::{Subcommand, SubcommandError};
 
 /// Parse `arc migrate` arguments into a [`Subcommand::Migrate`].
-pub fn parse<'a>(
-    iter: &mut std::slice::Iter<'a, OsString>,
-) -> Result<Subcommand, SubcommandError> {
+pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
     let mut dsn = None;
     while let Some(arg) = iter.next() {
         let arg_str = arg.to_string_lossy();
@@ -40,7 +38,9 @@ pub fn run(dsn: Option<&str>) -> Result<(), MigrateError> {
         cmd.env("DATABASE_URL", url);
     }
 
-    let status = cmd.status().map_err(|source| MigrateError::Spawn { source })?;
+    let status = cmd
+        .status()
+        .map_err(|source| MigrateError::Spawn { source })?;
     if !status.success() {
         return Err(MigrateError::Exited {
             code: status.code(),

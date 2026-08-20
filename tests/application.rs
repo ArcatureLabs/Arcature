@@ -35,7 +35,10 @@ struct Mark(&'static str);
 impl<S> Layer<S> for Mark {
     type Service = MarkService<S>;
     fn layer(&self, inner: S) -> Self::Service {
-        MarkService { inner, name: self.0 }
+        MarkService {
+            inner,
+            name: self.0,
+        }
     }
 }
 

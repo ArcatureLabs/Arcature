@@ -211,7 +211,9 @@ fn module_macro_aggregates_controller_metadata() {
 // --- #[listener(Event)] ---
 
 #[arcature::listener(UserRegistered)]
-pub async fn send_welcome_email(event: UserRegistered) -> Result<(), arcature::events::DispatchError> {
+pub async fn send_welcome_email(
+    event: UserRegistered,
+) -> Result<(), arcature::events::DispatchError> {
     let _ = event;
     Ok(())
 }
@@ -227,7 +229,10 @@ fn listener_macro_emits_binding() {
 fn listener_macro_emits_fn_unchanged() {
     // If the macro worked, the fn is still callable.
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let event = UserRegistered { user_id: 1, email: "a@b.com".into() };
+    let event = UserRegistered {
+        user_id: 1,
+        email: "a@b.com".into(),
+    };
     let result = rt.block_on(send_welcome_email(event));
     assert!(result.is_ok());
 }

@@ -150,9 +150,7 @@ impl<A: Authorizer> WebSocketEndpoint<A> {
         let shutdown = self.shutdown.clone();
         ws.max_message_size(limits.max_message_size)
             .max_frame_size(limits.max_frame_size)
-            .on_upgrade(move |socket| {
-                run_connection(socket, broadcast, guard, limits, shutdown)
-            })
+            .on_upgrade(move |socket| run_connection(socket, broadcast, guard, limits, shutdown))
     }
 }
 

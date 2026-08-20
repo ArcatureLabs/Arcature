@@ -171,9 +171,12 @@ mod tests {
 
     #[test]
     fn emits_the_function_unchanged_and_a_descriptor_const() {
-        let s = request_cache(quote! { name = "load_profile", key = "user_id" }, resolver())
-            .unwrap()
-            .to_string();
+        let s = request_cache(
+            quote! { name = "load_profile", key = "user_id" },
+            resolver(),
+        )
+        .unwrap()
+        .to_string();
         assert!(s.contains("load_profile"), "got: {s}");
         assert!(s.contains("LOAD_PROFILE_REQUEST_CACHE"), "got: {s}");
         assert!(s.contains("RequestCacheDescriptor"), "got: {s}");
@@ -182,9 +185,12 @@ mod tests {
 
     #[test]
     fn injects_no_memoization_logic() {
-        let s = request_cache(quote! { name = "load_profile", key = "user_id" }, resolver())
-            .unwrap()
-            .to_string();
+        let s = request_cache(
+            quote! { name = "load_profile", key = "user_id" },
+            resolver(),
+        )
+        .unwrap()
+        .to_string();
         assert!(!s.contains("get_or_compute"), "got: {s}");
     }
 
@@ -224,8 +230,7 @@ mod tests {
 
     #[test]
     fn rejects_an_unknown_argument() {
-        let err = request_cache(quote! { name = "a", key = "b", ttl = 5 }, resolver())
-            .unwrap_err();
+        let err = request_cache(quote! { name = "a", key = "b", ttl = 5 }, resolver()).unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM013);
     }
 

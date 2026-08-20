@@ -72,7 +72,11 @@ pub enum SubcommandError {
     /// A flag was given without its value (e.g. `--port` with nothing after).
     MissingFlagValue { subcommand: String, flag: String },
     /// An argument value was invalid (e.g. a non-numeric port).
-    InvalidValue { subcommand: String, value: String, reason: String },
+    InvalidValue {
+        subcommand: String,
+        value: String,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for SubcommandError {

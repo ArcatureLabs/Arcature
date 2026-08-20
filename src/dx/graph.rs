@@ -85,8 +85,7 @@ pub struct ModuleDescriptor {
     /// `RouteDescriptor.handler` (`"ControllerType::method"`) to these
     /// entries to infer the route->page edge when the route declares no
     /// `page:`/`pages:`. Empty by default.
-    pub controller_methods:
-        &'static [&'static [super::controller_metadata::ControllerMethod]],
+    pub controller_methods: &'static [&'static [super::controller_metadata::ControllerMethod]],
     /// Service type names registered in this module.
     pub services: &'static [&'static str],
     /// Policy type names registered in this module.

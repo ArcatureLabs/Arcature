@@ -73,9 +73,17 @@ mod tests {
 
     #[test]
     fn asserts_the_type_implements_client_data() {
-        let s = page_macro(quote! { HomePage { title: t } }).unwrap().to_string();
-        assert!(s.contains("_assert_client_data :: < HomePage >"), "got: {s}");
-        assert!(s.contains(":: arcature :: inertia :: ClientData"), "got: {s}");
+        let s = page_macro(quote! { HomePage { title: t } })
+            .unwrap()
+            .to_string();
+        assert!(
+            s.contains("_assert_client_data :: < HomePage >"),
+            "got: {s}"
+        );
+        assert!(
+            s.contains(":: arcature :: inertia :: ClientData"),
+            "got: {s}"
+        );
     }
 
     #[test]
@@ -83,13 +91,19 @@ mod tests {
         let s = page_macro(quote! { pages::HomePage { title: t } })
             .unwrap()
             .to_string();
-        assert!(s.contains("_assert_client_data :: < pages :: HomePage >"), "got: {s}");
+        assert!(
+            s.contains("_assert_client_data :: < pages :: HomePage >"),
+            "got: {s}"
+        );
     }
 
     #[test]
     fn accepts_an_empty_struct_literal() {
         let s = page_macro(quote! { BlankPage {} }).unwrap().to_string();
-        assert!(s.contains("_assert_client_data :: < BlankPage >"), "got: {s}");
+        assert!(
+            s.contains("_assert_client_data :: < BlankPage >"),
+            "got: {s}"
+        );
     }
 
     #[test]

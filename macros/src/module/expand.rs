@@ -174,6 +174,9 @@ mod tests {
             A { schedules: [sweep every "5m", digest daily "03:30"] }
         });
         assert!(s.contains("Every { seconds : 300u64 }"), "got: {s}");
-        assert!(s.contains("Daily { hour : 3u8 , minute : 30u8 }"), "got: {s}");
+        assert!(
+            s.contains("Daily { hour : 3u8 , minute : 30u8 }"),
+            "got: {s}"
+        );
     }
 }

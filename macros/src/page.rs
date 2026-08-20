@@ -150,7 +150,10 @@ mod tests {
             quote! { "home" },
             quote! { pub struct HomePage { pub title: String } },
         );
-        assert!(s.contains(":: arcature :: inertia :: ClientData"), "got: {s}");
+        assert!(
+            s.contains(":: arcature :: inertia :: ClientData"),
+            "got: {s}"
+        );
         assert!(s.contains("exposure_schema"), "got: {s}");
     }
 
@@ -176,7 +179,10 @@ mod tests {
 
     #[test]
     fn adds_the_serialize_derive() {
-        let s = expand(quote! { "home" }, quote! { pub struct HomePage { pub title: String } });
+        let s = expand(
+            quote! { "home" },
+            quote! { pub struct HomePage { pub title: String } },
+        );
         assert!(s.contains("Serialize"), "got: {s}");
     }
 
@@ -203,7 +209,11 @@ mod tests {
 
     #[test]
     fn rejects_a_missing_page_name() {
-        let err = page(TokenStream::new(), quote! { pub struct P { pub a: String } }).unwrap_err();
+        let err = page(
+            TokenStream::new(),
+            quote! { pub struct P { pub a: String } },
+        )
+        .unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM002);
     }
 

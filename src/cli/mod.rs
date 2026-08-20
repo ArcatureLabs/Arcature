@@ -50,9 +50,7 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> ExitCode {
 /// Dispatch a parsed subcommand to its executor.
 fn execute(cmd: Subcommand) -> Result<(), CliError> {
     match cmd {
-        Subcommand::New { name, dest } => {
-            commands::new::run(&name, dest).map_err(CliError::from)
-        }
+        Subcommand::New { name, dest } => commands::new::run(&name, dest).map_err(CliError::from),
         Subcommand::Version => {
             commands::version::run();
             Ok(())

@@ -10,11 +10,11 @@
 //! startup failure tears down whatever was already started.
 
 pub mod builder;
+#[cfg(feature = "jobs")]
+pub mod jobs_runtime;
 pub mod lifecycle;
 pub mod pipeline;
 pub mod resources;
-#[cfg(feature = "jobs")]
-pub mod jobs_runtime;
 
 pub use builder::{Application, ApplicationBuilder};
 pub use lifecycle::{Lifecycle, LifecycleState};

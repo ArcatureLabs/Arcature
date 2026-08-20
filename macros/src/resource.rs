@@ -126,7 +126,10 @@ mod tests {
                 pub name: String,
             }
         });
-        assert!(s.contains(":: arcature :: inertia :: ClientData"), "got: {s}");
+        assert!(
+            s.contains(":: arcature :: inertia :: ClientData"),
+            "got: {s}"
+        );
         assert!(s.contains("exposure_schema"), "got: {s}");
     }
 
@@ -176,8 +179,11 @@ mod tests {
 
     #[test]
     fn rejects_attribute_arguments() {
-        let err = resource(quote! { name = "x" }, quote! { pub struct R { pub id: String } })
-            .unwrap_err();
+        let err = resource(
+            quote! { name = "x" },
+            quote! { pub struct R { pub id: String } },
+        )
+        .unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM009);
     }
 

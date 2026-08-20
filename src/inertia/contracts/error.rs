@@ -43,10 +43,7 @@ mod tests {
     #[test]
     fn duplicate_names_the_offending_page() {
         let error = ContractError::DuplicatePage("Home".into());
-        assert_eq!(
-            error.to_string(),
-            "duplicate Inertia page contract `Home`"
-        );
+        assert_eq!(error.to_string(), "duplicate Inertia page contract `Home`");
     }
 
     #[test]

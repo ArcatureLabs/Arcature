@@ -170,9 +170,7 @@ fn primitive_contract_call(type_path: &TypePath) -> Option<TokenStream> {
         }
         "bool" => Some(quote! { ::arcature::inertia::ContractType::boolean() }),
         "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
-        | "isize" | "f32" | "f64" => {
-            Some(quote! { ::arcature::inertia::ContractType::number() })
-        }
+        | "isize" | "f32" | "f64" => Some(quote! { ::arcature::inertia::ContractType::number() }),
         _ => None,
     }
 }
@@ -215,7 +213,10 @@ mod tests {
     #[test]
     fn option_of_named_type_is_nested_optional() {
         let s = map("avatar", "Option<AvatarResource>").unwrap();
-        assert!(s.contains("nested_optional :: < AvatarResource >"), "got: {s}");
+        assert!(
+            s.contains("nested_optional :: < AvatarResource >"),
+            "got: {s}"
+        );
     }
 
     #[test]
@@ -239,8 +240,16 @@ mod tests {
 
     #[test]
     fn qualified_paths_resolve_by_their_last_segment() {
-        assert!(map("name", "std::string::String").unwrap().contains("string ()"));
-        assert!(map("bio", "std::option::Option<String>").unwrap().contains("optional"));
+        assert!(
+            map("name", "std::string::String")
+                .unwrap()
+                .contains("string ()")
+        );
+        assert!(
+            map("bio", "std::option::Option<String>")
+                .unwrap()
+                .contains("optional")
+        );
     }
 
     #[test]

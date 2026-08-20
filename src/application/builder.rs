@@ -286,8 +286,7 @@ impl<S: RouterState> ApplicationBuilder<S> {
     #[cfg(feature = "dev-proxy")]
     #[must_use]
     pub fn dev_proxy_endpoint(mut self, endpoint: Option<std::path::PathBuf>) -> Self {
-        self.dev_proxy_endpoint =
-            endpoint.map(crate::dev_proxy::endpoint::IpcEndpoint::new);
+        self.dev_proxy_endpoint = endpoint.map(crate::dev_proxy::endpoint::IpcEndpoint::new);
         self
     }
 
@@ -356,9 +355,9 @@ impl<S: RouterState> ApplicationBuilder<S> {
     #[cfg(feature = "inertia")]
     #[must_use]
     pub fn inertia(mut self, config: crate::inertia::InertiaConfig) -> Self {
-        self.pipeline.inertia = Some(RouterLayer::from_layer(
-            crate::inertia::InertiaLayer::new(config),
-        ));
+        self.pipeline.inertia = Some(RouterLayer::from_layer(crate::inertia::InertiaLayer::new(
+            config,
+        )));
         self
     }
 

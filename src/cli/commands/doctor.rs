@@ -9,7 +9,11 @@
 pub fn run() -> Result<(), DoctorError> {
     let mut all_ok = true;
 
-    report("framework version", &format!("arcature {}", crate::FRAMEWORK_VERSION), true);
+    report(
+        "framework version",
+        &format!("arcature {}", crate::FRAMEWORK_VERSION),
+        true,
+    );
 
     // Rust toolchain.
     match rust_version() {

@@ -79,8 +79,7 @@ mod tests {
     #[test]
     fn rejects_sync_fn() {
         let f = parse_fn(quote! { pub fn handler() -> Response { todo!() } });
-        let err =
-            validate_public_async_fn(&f, MacroErrorCode::ArcM008, "#[listener]").unwrap_err();
+        let err = validate_public_async_fn(&f, MacroErrorCode::ArcM008, "#[listener]").unwrap_err();
         assert_eq!(err.code(), MacroErrorCode::ArcM008);
         assert!(err.to_compile_error().to_string().contains("async"));
     }
@@ -93,6 +92,4 @@ mod tests {
         assert_eq!(err.code(), MacroErrorCode::ArcM010);
         assert!(err.to_compile_error().to_string().contains("return type"));
     }
-
-
 }

@@ -194,8 +194,14 @@ mod tests {
                 state: AppState,
             }
         });
-        assert!(s.contains("-> :: arcature :: Routes < AppState >"), "got: {s}");
-        assert!(s.contains("accounts :: routes () . merge (links :: routes ())"), "got: {s}");
+        assert!(
+            s.contains("-> :: arcature :: Routes < AppState >"),
+            "got: {s}"
+        );
+        assert!(
+            s.contains("accounts :: routes () . merge (links :: routes ())"),
+            "got: {s}"
+        );
     }
 
     #[test]
@@ -213,7 +219,13 @@ mod tests {
             }
         });
         assert!(s.contains("fn app_page_contracts ()"), "got: {s}");
-        assert!(s.contains("home :: HomePage :: PAGE_CONTRACT_ENTRY"), "got: {s}");
-        assert!(s.contains("links :: NewLinkPage :: PAGE_CONTRACT_ENTRY"), "got: {s}");
+        assert!(
+            s.contains("home :: HomePage :: PAGE_CONTRACT_ENTRY"),
+            "got: {s}"
+        );
+        assert!(
+            s.contains("links :: NewLinkPage :: PAGE_CONTRACT_ENTRY"),
+            "got: {s}"
+        );
     }
 }
