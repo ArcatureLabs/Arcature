@@ -18,9 +18,13 @@
 use crate::application::lifecycle::Lifecycle;
 use crate::application::pipeline::Pipeline;
 use crate::application::resources::Resources;
+// Both are used only by `run`/`serve`/`run_with_state`, which need the
+// certified runtime and so are gated on `macros`.
+#[cfg(feature = "macros")]
 use crate::application::{EngineError, EngineResult};
 use crate::routing::{RouterLayer, RouterState, Routes};
 use axum::Router;
+#[cfg(feature = "macros")]
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -36,26 +40,70 @@ pub struct Application<S: RouterState = ()> {
     bind_addr: String,
     port: u16,
     // Subsystem configs (feature-gated). Each is `Some` when the app opts in.
+    //
+    // Every field below -- and `proxy` after them -- is consumed only by the
+    // `macros`-gated serve path (`run`/`serve`/`run_with_state`), which is the
+    // only code that starts subsystems and composes the service-level stages.
+    // An application built without the certified runtime is driven through
+    // `into_router`, which stops at the router level and reads none of them.
+    // Hence the repeated `expect`: with `macros` off these really are dead,
+    // and that is the intended shape rather than an oversight.
     #[cfg(feature = "database")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     database_config: Option<crate::database::DatabaseConfig>,
     #[cfg(feature = "jobs")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     jobs_registry: Option<crate::jobs::Registry>,
     #[cfg(feature = "jobs")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     worker_config: Option<crate::jobs::WorkerConfig>,
     #[cfg(feature = "jobs")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     scheduler: Option<crate::jobs::Scheduler>,
     #[cfg(feature = "cache")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     cache_config: Option<crate::cache::CacheConfig>,
     #[cfg(feature = "storage-fs")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     storage_config: Option<crate::storage::StorageConfig>,
     #[cfg(feature = "mail")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     mail_config: Option<crate::mail::SmtpConfig>,
     // The pre-routing proxy function (engine spec §4/§5). `None` → no proxy;
     // the request goes straight to the router.
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     proxy: Option<crate::proxy::ProxyFn>,
     // The Vite IPC endpoint for the one-port dev proxy (AP2.1-3). `None` →
     // pass-through. Only meaningful with the `dev-proxy` feature.
     #[cfg(feature = "dev-proxy")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
     dev_proxy_endpoint: Option<crate::dev_proxy::endpoint::IpcEndpoint>,
 }
 
@@ -337,6 +385,122 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
+    /// Compress responses (`gzip`, `br`) when the client asks for it.
+    ///
+    /// Outermost of the response-shaping stages, so it sees the final body --
+    /// including one produced by a layer below rather than by a handler.
+    /// Off unless called: compressing an already-compressed image or a
+    /// two-byte JSON response costs CPU and saves nothing, and `tower-http`
+    /// only skips the obvious cases.
+    #[must_use]
+    pub fn compression(mut self) -> Self {
+        self.pipeline.compression = true;
+        self
+    }
+
+    /// Add security headers to every response.
+    ///
+    /// Installed outside the body limit and the timeout, so a `413` and a
+    /// `408` carry them too -- a browser renders those pages as readily as it
+    /// renders a handler's. See [`SecurityHeaders`](crate::http::SecurityHeaders)
+    /// for which headers are always on and which are opt-in.
+    ///
+    /// ```ignore
+    /// Application::new()
+    ///     .routes(web::routes())
+    ///     .security_headers(SecurityHeaders::new().with_hsts())
+    /// ```
+    #[must_use]
+    pub fn security_headers(mut self, headers: crate::http::SecurityHeaders) -> Self {
+        self.pipeline.security_headers = Some(headers);
+        self
+    }
+
+    /// Install a CORS policy.
+    ///
+    /// The layer is a parameter rather than a set of builder options because
+    /// a CORS policy is entirely application-specific and `tower-http`'s
+    /// builder already expresses it -- wrapping it would only add a second
+    /// vocabulary for the same thing.
+    ///
+    /// ```ignore
+    /// use tower_http::cors::{Any, CorsLayer};
+    ///
+    /// Application::new()
+    ///     .routes(api::routes())
+    ///     .cors(CorsLayer::new().allow_origin("https://acme.test".parse::<HeaderValue>()?))
+    /// ```
+    #[must_use]
+    pub fn cors(mut self, layer: tower_http::cors::CorsLayer) -> Self {
+        self.pipeline.cors = Some(RouterLayer::from_layer(layer));
+        self
+    }
+
+    /// Give every request an id and echo it as `x-request-id`.
+    ///
+    /// An inbound `x-request-id` is reused so a trace survives the hop from a
+    /// reverse proxy; otherwise one is generated. Installed above the access
+    /// log, which reads the id out of request extensions -- switching this off
+    /// while leaving the log on produces log lines with an empty id rather
+    /// than an error.
+    #[cfg(feature = "observe")]
+    #[must_use]
+    pub fn request_id(mut self) -> Self {
+        self.pipeline.request_id = true;
+        self
+    }
+
+    /// Emit one `tracing` line per request: method, path, status, duration,
+    /// request id.
+    ///
+    /// Installed outside the panic catcher, the body limit and the timeout, so
+    /// a `500`, a `413` and a `408` are all logged. Pair with
+    /// [`request_id`](Self::request_id) for the id to be populated.
+    #[cfg(feature = "observe")]
+    #[must_use]
+    pub fn access_log(mut self) -> Self {
+        self.pipeline.access_log = true;
+        self
+    }
+
+    /// Turn a panic below this point into a `500` carrying an RFC 9457
+    /// `Problem`.
+    ///
+    /// Without it a panicking handler drops the connection, which a client
+    /// sees as a network failure rather than a server error -- and which no
+    /// access log line explains, because no response was ever produced.
+    ///
+    /// The panic payload never reaches the client: it is written for a
+    /// developer reading a backtrace and routinely contains a file path, a SQL
+    /// fragment, or the value that caused the panic. `tower-http` logs it for
+    /// the operator.
+    #[must_use]
+    pub fn catch_panic(mut self) -> Self {
+        self.pipeline.catch_panic = true;
+        self
+    }
+
+    /// Serve a document root for requests no route matched.
+    ///
+    /// Installs [`StaticFiles`](crate::assets::StaticFiles) as the router's
+    /// **fallback**, so it never shadows a route: a request reaches it only
+    /// after route matching has failed. `Cache-Control` is chosen per path --
+    /// a hashed file under the build prefix is immutable for a year, anything
+    /// else revalidates. See [`crate::assets`].
+    ///
+    /// This is the production half of the one-port story. In development the
+    /// dev proxy hands Vite requests to Vite; in production nothing is
+    /// running but this process, so the built assets have to come from here.
+    ///
+    /// Replaces any fallback the routes defined. An application that wants
+    /// its own 404 page should render it from a catch-all route rather than
+    /// from a fallback.
+    #[must_use]
+    pub fn static_files(mut self, config: &crate::assets::AssetsConfig) -> Self {
+        self.pipeline.static_files = Some(crate::assets::StaticFiles::new(config));
+        self
+    }
+
     /// Limit the request body to `bytes`.
     ///
     /// Applied outside everything that reads a body, so an oversized upload is
@@ -503,6 +667,19 @@ impl<S: RouterState> Application<S> {
     ///
     /// Requires the `macros` feature.
     #[cfg(feature = "macros")]
+    #[cfg_attr(
+        not(any(
+            feature = "database",
+            feature = "jobs",
+            feature = "cache",
+            feature = "storage-fs",
+            feature = "mail"
+        )),
+        expect(
+            unused_mut,
+            reason = "with no subsystem to start, neither `self` nor `resources` is mutated"
+        )
+    )]
     pub async fn run_with_state(mut self, state_fn: StateFn<S>) -> EngineResult<()> {
         use tokio::net::TcpListener;
 

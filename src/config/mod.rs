@@ -14,6 +14,16 @@
 
 use std::env;
 
+/// The environment variable `arc dev` sets to the IPC path Vite's
+/// `middlewareMode` server listens on.
+///
+/// It lives here rather than in [`crate::dev_proxy`] because two unrelated
+/// subsystems consult it and only one of them is feature-gated: the dev proxy
+/// decides whether to forward, and [`crate::assets`] decides whether entries
+/// resolve to source paths or to hashed build output. Two spellings of the
+/// same name would let those two disagree.
+pub const VITE_IPC_ENV: &str = "ARCATURE_VITE_IPC";
+
 /// Read an environment variable, returning the default when unset or empty.
 #[must_use]
 pub fn env_or(key: &str, default: &str) -> String {

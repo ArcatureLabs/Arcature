@@ -50,6 +50,11 @@ pub enum Subcommand {
 }
 
 /// The queue action selected on the command line for `arc queue`.
+///
+/// Gated with the [`Subcommand::Queue`] variant that carries it: without a
+/// database and a queue there is no `arc queue`, and an enum nothing can
+/// reach is dead weight in the build.
+#[cfg(all(feature = "database", feature = "jobs"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueueAction {
     /// Claim and run jobs until Ctrl-C.

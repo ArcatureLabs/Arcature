@@ -26,6 +26,11 @@
 //! - `HttpOnly=false` -> JavaScript must read the cookie to send it in the
 //!   header (the header is the proof the page is same-origin).
 //!
+//! Those are the [`CsrfConfig::new`] defaults. An Inertia application wants
+//! [`CsrfConfig::inertia`] instead, which renames the cookie and header to the
+//! two axios already looks for so no application JavaScript is needed; that
+//! doc records exactly which of the attributes above it gives up.
+//!
 //! It defends against **forged cross-site unsafe requests from an
 //! authenticated browser** (classic CSRF). It does **not** defend against XSS
 //! (same-origin script can read and send the token), and it is **not** a
@@ -39,9 +44,9 @@ use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode};
 use axum::response::{IntoResponse, Response};
 use tower::Layer;
 use tower::Service;
-use tower_sessions::cookie::{Cookie, SameSite};
+use tower_sessions::cookie::Cookie;
 
-use crate::auth::{CsrfConfigError, CsrfError};
+use crate::auth::{CsrfConfigError, CsrfError, SameSite};
 
 /// Resolved CSRF protection configuration.
 ///
@@ -54,6 +59,7 @@ pub struct CsrfConfig {
     cookie_name: String,
     header_name: String,
     secure: bool,
+    same_site: SameSite,
 }
 
 impl CsrfConfig {
@@ -65,6 +71,7 @@ impl CsrfConfig {
             cookie_name: "__Host-csrf".to_string(),
             header_name: "x-csrf-token".to_string(),
             secure: true,
+            same_site: SameSite::Strict,
         }
     }
 
@@ -77,6 +84,50 @@ impl CsrfConfig {
             cookie_name: "arcature-csrf".to_string(),
             header_name: "x-csrf-token".to_string(),
             secure: false,
+            same_site: SameSite::Strict,
+        }
+    }
+
+    /// Build CSRF configuration that an unmodified Inertia client already
+    /// speaks: cookie `XSRF-TOKEN`, header `x-xsrf-token`, `Secure = true`,
+    /// `SameSite=Lax`.
+    ///
+    /// # Why a second production preset
+    ///
+    /// Inertia's client is axios, and axios reads a cookie named `XSRF-TOKEN`
+    /// and echoes it in `X-XSRF-TOKEN` -- both hard-coded, neither
+    /// configurable without writing application JavaScript. [`Self::new`]
+    /// names them `__Host-csrf` and `x-csrf-token`, so an Inertia form posted
+    /// against it is rejected with 403 until the application ships a shim that
+    /// reads the token and reconfigures axios. That shim is exactly the kind of
+    /// framework-owned client package this project does not publish, so the
+    /// server moves to meet the client instead.
+    ///
+    /// # What it costs
+    ///
+    /// Two attributes weaken relative to [`Self::new`], deliberately:
+    ///
+    /// - **No `__Host-` prefix.** axios will not look for one. Without it a
+    ///   sibling subdomain that can set cookies on the parent domain can
+    ///   overwrite `XSRF-TOKEN` -- a *session-fixation-shaped* attack on the
+    ///   CSRF nonce, not a way to read it. It matters only if an attacker
+    ///   already controls a subdomain of the site.
+    /// - **`SameSite=Lax` rather than `Strict`.** Strict withholds the cookie
+    ///   on *any* cross-site navigation, including an OAuth callback or a link
+    ///   from email, so the first page load after one arrives without a token.
+    ///   Lax sends it on top-level GET navigations, which is precisely the
+    ///   case Strict breaks and not one CSRF exploits (a forged unsafe request
+    ///   is still cookie-less).
+    ///
+    /// An application that would rather keep [`Self::new`] and configure axios
+    /// itself can do so -- see the CSRF chapter in the guide.
+    #[must_use]
+    pub fn inertia() -> Self {
+        Self {
+            cookie_name: "XSRF-TOKEN".to_string(),
+            header_name: "x-xsrf-token".to_string(),
+            secure: true,
+            same_site: SameSite::Lax,
         }
     }
 
@@ -98,6 +149,18 @@ impl CsrfConfig {
     #[must_use]
     pub fn with_header_name(mut self, name: impl Into<String>) -> Self {
         self.header_name = name.into();
+        self
+    }
+
+    /// Override the `SameSite` attribute on the CSRF cookie.
+    ///
+    /// [`SameSite::Strict`] is the default and the safest. [`SameSite::Lax`]
+    /// is what [`Self::inertia`] uses, and is needed when the site is reached
+    /// by cross-site top-level navigation (an OAuth callback, a link from
+    /// email) -- under `Strict` that first request arrives with no cookie.
+    #[must_use]
+    pub fn with_same_site(mut self, same_site: SameSite) -> Self {
+        self.same_site = same_site;
         self
     }
 
@@ -133,6 +196,12 @@ impl CsrfConfig {
     pub fn secure(&self) -> bool {
         self.secure
     }
+
+    /// The `SameSite` attribute the injected CSRF cookie carries.
+    #[must_use]
+    pub fn same_site(&self) -> SameSite {
+        self.same_site
+    }
 }
 
 impl Default for CsrfConfig {
@@ -148,6 +217,7 @@ impl fmt::Debug for CsrfConfig {
             .field("cookie_name", &self.cookie_name)
             .field("header_name", &self.header_name)
             .field("secure", &self.secure)
+            .field("same_site", &self.same_site)
             .finish()
     }
 }
@@ -381,7 +451,7 @@ fn inject_csrf_cookie(mut response: Response, config: &CsrfConfig) -> Response {
         Err(_) => return response,
     };
     let cookie = Cookie::build((config.cookie_name().to_string(), token.as_str().to_string()))
-        .same_site(SameSite::Strict)
+        .same_site(config.same_site().as_tower())
         .secure(config.secure())
         .http_only(false)
         .path("/")
@@ -413,6 +483,47 @@ fn is_safe_method(method: &Method) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_inertia_preset_uses_the_names_axios_hard_codes() {
+        // These two strings are not a preference -- axios looks for exactly
+        // them, and nothing in an unmodified Inertia app can change that.
+        let config = CsrfConfig::inertia();
+        assert_eq!(config.cookie_name(), "XSRF-TOKEN");
+        assert_eq!(config.header_name(), "x-xsrf-token");
+    }
+
+    #[test]
+    fn the_inertia_preset_is_still_secure_and_lax_not_none() {
+        let config = CsrfConfig::inertia();
+        assert!(
+            config.secure(),
+            "the cookie must not travel over plain HTTP"
+        );
+        // Lax is the concession; None would send the cookie cross-site and
+        // defeat the whole mechanism.
+        assert_eq!(config.same_site(), SameSite::Lax);
+    }
+
+    #[test]
+    fn the_same_site_attribute_reaches_the_cookie() {
+        // Without this the config field would be inert and every cookie would
+        // silently stay Strict, breaking the Inertia preset it exists for.
+        let response = inject_csrf_cookie(
+            Response::new(axum::body::Body::empty()),
+            &CsrfConfig::inertia(),
+        );
+        let cookie = response
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .expect("a cookie is injected")
+            .to_str()
+            .expect("ascii");
+        assert!(cookie.contains("XSRF-TOKEN="), "{cookie}");
+        assert!(cookie.contains("SameSite=Lax"), "{cookie}");
+        assert!(cookie.contains("Secure"), "{cookie}");
+        assert!(!cookie.contains("HttpOnly"), "JS must read it: {cookie}");
+    }
 
     #[test]
     fn safe_methods_recognized() {
@@ -465,6 +576,7 @@ mod tests {
         assert_eq!(config.cookie_name(), "__Host-csrf");
         assert_eq!(config.header_name(), "x-csrf-token");
         assert!(config.secure());
+        assert_eq!(config.same_site(), SameSite::Strict);
     }
 
     #[test]

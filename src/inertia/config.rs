@@ -138,17 +138,61 @@ impl InertiaConfig {
     }
 }
 
-/// A default root document renderer for generated apps. Produces a minimal
-/// HTML document with the Inertia script body and the `#app` mount point,
-/// plus a `<div id="app">` and Vite client/module scripts.
-pub fn default_root_document(title: &str) -> impl RootDocument {
+/// A minimal root document that references fixed asset paths.
+///
+/// Kept for applications with no build step, where `public/css/app.css` and
+/// `public/js/app.js` are files that genuinely exist. A Vite application
+/// wants [`vite_root_document`] instead: a production build emits hashed
+/// names that nothing can spell in advance.
+// `use<>`: the returned document owns a copy of everything it needs, so it
+// must not capture the argument lifetime. Without the bound, Rust 2024
+// captures `'_` and a caller cannot build a config that outlives its title.
+pub fn default_root_document(title: &str) -> impl RootDocument + use<> {
     let title = title.to_string();
     move |body: ScriptBody| {
         format!(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
              <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
              <title>{title}</title>\n  <link rel=\"stylesheet\" href=\"/css/app.css\" />\n</head>\n\
-             <body>\n  {body}\n  <script type=\"module\" src=\"/js/app.tsx\"></script>\n</body>\n</html>"
+             <body>\n  {body}\n  <script type=\"module\" src=\"/js/app.js\"></script>\n</body>\n</html>"
+        )
+    }
+}
+
+/// A root document that gets its asset URLs from [`Assets`].
+///
+/// `entry` is the manifest key -- the entry's path relative to the project
+/// root, `resources/js/app.tsx` in a scaffolded app. In development that
+/// resolves to the source path plus Vite's HMR client; in production it
+/// resolves through `manifest.json` to the hashed build output, which is the
+/// only way the reference can still be correct after a rebuild.
+///
+/// The tags are resolved **once**, here, not per request: [`Assets`] is
+/// already the loaded manifest, and the answer cannot change while the
+/// process runs.
+///
+/// ```ignore
+/// let assets = Assets::detect(&AssetsConfig::new())?;
+/// let config = InertiaConfig::builder()
+///     .root_document(vite_root_document("Acme", &assets, "resources/js/app.tsx"))
+///     .build();
+/// ```
+///
+/// [`Assets`]: crate::assets::Assets
+pub fn vite_root_document(
+    title: &str,
+    assets: &crate::assets::Assets,
+    entry: &str,
+) -> impl RootDocument + use<> {
+    let title = title.to_string();
+    let head = assets.head_tags(entry);
+    let scripts = assets.body_tags(entry);
+    move |body: ScriptBody| {
+        format!(
+            "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
+             <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
+             <title>{title}</title>\n  {head}\n</head>\n\
+             <body>\n  {body}\n  {scripts}\n</body>\n</html>"
         )
     }
 }

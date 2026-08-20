@@ -31,7 +31,7 @@ use crate::dev_proxy::endpoint::IpcEndpoint;
 ///
 /// Set by `arc dev` to the IPC path Vite's `middlewareMode` server listens
 /// on. Unset in production -> the dev proxy is inactive.
-pub(crate) const IPC_ENV: &str = "ARCATURE_VITE_IPC";
+pub(crate) const IPC_ENV: &str = crate::config::VITE_IPC_ENV;
 
 /// Resolve the Vite IPC endpoint from the environment.
 ///

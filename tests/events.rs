@@ -1,5 +1,7 @@
 //! Tests for the events Dispatcher (in-process typed dispatch).
 
+#![cfg(feature = "events")]
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

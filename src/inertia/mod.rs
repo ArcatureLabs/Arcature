@@ -36,7 +36,10 @@ pub mod render;
 pub mod request;
 pub mod response;
 
-pub use config::{AssetVersion, InertiaConfig, RootDocument, ScriptBody, default_root_document};
+pub use config::{
+    AssetVersion, InertiaConfig, RootDocument, ScriptBody, default_root_document,
+    vite_root_document,
+};
 pub use contracts::{
     ClientData, ContractArtifact, ContractError, ContractType, PageContract, PageContractEntry,
     PageProps, PageSchema, PropSchema, PropsSchema,

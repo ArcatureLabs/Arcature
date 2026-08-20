@@ -10,7 +10,10 @@
 //! startup failure tears down whatever was already started.
 
 pub mod builder;
-#[cfg(feature = "jobs")]
+// Spawning and stopping the worker is part of the serve path, so this module
+// follows `macros`: without the certified runtime nothing ever starts a job
+// runtime, and the module would compile only to sit unused.
+#[cfg(all(feature = "jobs", feature = "macros"))]
 pub mod jobs_runtime;
 pub mod lifecycle;
 pub mod pipeline;

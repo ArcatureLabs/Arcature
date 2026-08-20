@@ -66,6 +66,14 @@ jobs:
       - name: Build (no DB, no macros subset)
         run: cargo build --no-default-features --features "macros,inertia,auth,validation,cache,storage-fs,mail,jobs,events,api,observe,pages,realtime,cli,templates"
 
+      # Every feature on its own. The powerset below is the thorough check,
+      # but it is slow and `--keep-going`, so a single broken feature is easy
+      # to miss in its output; this one fails fast and names the culprit.
+      # `--no-dev-deps` keeps it to the library: a test file that forgets its
+      # own `#![cfg(feature = ...)]` is a test-file bug, not a library one.
+      - name: Each feature alone (library only)
+        run: cargo hack check --each-feature --no-dev-deps
+
       - name: Feature powerset (build only, skip DB-needing subsets)
         run: cargo hack build --feature-powerset --skip database --keep-going
 

@@ -43,6 +43,7 @@ pub const FRAMEWORK_VERSION: &str = env!("CARGO_PKG_VERSION");
 // --- Always-on kernel -------------------------------------------------------
 
 pub mod application;
+pub mod assets;
 pub mod config;
 mod error;
 pub mod http;
@@ -115,7 +116,7 @@ pub mod inertia;
 #[cfg(feature = "inertia")]
 pub use inertia::{
     AssetVersion, Inertia, InertiaConfig, InertiaError, InertiaLayer, InertiaRequest, RootDocument,
-    ScriptBody, default_root_document,
+    ScriptBody, default_root_document, vite_root_document,
 };
 // The `inertia!()` macro is `#[macro_export]` inside `inertia::mod`, so it is
 // reachable as `arcature::inertia!(...)` at the crate root.

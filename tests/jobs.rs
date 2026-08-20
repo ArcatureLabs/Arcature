@@ -1,5 +1,7 @@
 //! Tests for the jobs subsystem (model, retry policy, worker config, registry).
 
+#![cfg(feature = "jobs")]
+
 use std::time::Duration;
 
 use arcature::jobs::{

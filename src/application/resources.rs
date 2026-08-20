@@ -2,6 +2,15 @@
 //! state closure. Each field is `Some` only when the corresponding feature is
 //! enabled and the subsystem connected successfully during startup.
 
+// Every handle this bundle holds is behind a feature; with none enabled
+// the struct has no fields and nothing to reference-count.
+#[cfg(any(
+    feature = "database",
+    feature = "jobs",
+    feature = "cache",
+    feature = "storage-fs",
+    feature = "mail"
+))]
 use std::sync::Arc;
 
 /// The resources available to the application state closure after startup.
@@ -39,6 +48,10 @@ impl Resources {
     }
 
     #[cfg(feature = "database")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "called only by the `macros`-gated startup path")
+    )]
     pub(crate) fn set_db(&mut self, db: crate::database::Db) {
         self.db = Some(Arc::new(db));
     }
@@ -52,6 +65,10 @@ impl Resources {
     }
 
     #[cfg(feature = "jobs")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "called only by the `macros`-gated startup path")
+    )]
     pub(crate) fn set_jobs(&mut self, jobs: crate::jobs::Jobs) {
         self.jobs = Some(Arc::new(jobs));
     }
@@ -64,6 +81,10 @@ impl Resources {
     }
 
     #[cfg(feature = "cache")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "called only by the `macros`-gated startup path")
+    )]
     pub(crate) fn set_cache(&mut self, cache: crate::cache::Cache) {
         self.cache = Some(Arc::new(cache));
     }
@@ -76,6 +97,10 @@ impl Resources {
     }
 
     #[cfg(feature = "storage-fs")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "called only by the `macros`-gated startup path")
+    )]
     pub(crate) fn set_storage(&mut self, storage: crate::storage::Storage) {
         self.storage = Some(Arc::new(storage));
     }
@@ -88,6 +113,10 @@ impl Resources {
     }
 
     #[cfg(feature = "mail")]
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "called only by the `macros`-gated startup path")
+    )]
     pub(crate) fn set_mail(&mut self, mail: crate::mail::Mailer) {
         self.mail = Some(Arc::new(mail));
     }

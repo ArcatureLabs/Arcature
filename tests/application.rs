@@ -15,6 +15,9 @@
 //! comment drifts, so the observable order is asserted here — including that
 //! it does *not* depend on the order the builder methods were called in.
 
+#![cfg(all(feature = "inertia", feature = "auth", feature = "observe"))]
+
+use arcature::assets::{Assets, AssetsConfig};
 use arcature::routing::{Route, Routes};
 use arcature::{Application, InertiaConfig, default_root_document};
 use axum::body::Body;
@@ -490,4 +493,392 @@ async fn csrf_leaves_safe_requests_alone() {
 
     let response = send(app.into_router(), get("/")).await;
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+// --- the document root -----------------------------------------------------
+//
+// The production half of the one-port story. In development the dev proxy
+// hands Vite requests to Vite; in production this process is the only thing
+// running, so the built assets have to come from the router's fallback. Until
+// this landed nothing in the crate served a file at all -- the default root
+// document referenced `/css/app.css` and `/js/app.js` with nothing behind
+// either.
+
+/// A scaffold-shaped document root: one hashed bundle, one plain file, and
+/// the manifest that names the bundle.
+fn document_root() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let public = dir.path().join("public");
+    std::fs::create_dir_all(public.join("build").join("assets")).expect("assets dir");
+    std::fs::create_dir_all(public.join("build").join(".vite")).expect("manifest dir");
+    std::fs::write(
+        public.join("build").join("assets").join("app-C7xk91Qa.js"),
+        "export default 1;\n",
+    )
+    .expect("bundle");
+    std::fs::write(public.join("robots.txt"), "User-agent: *\n").expect("robots.txt");
+    std::fs::write(
+        public.join("build").join(".vite").join("manifest.json"),
+        r#"{"resources/js/app.tsx":{"file":"assets/app-C7xk91Qa.js","isEntry":true}}"#,
+    )
+    .expect("manifest");
+    dir
+}
+
+fn assets_config(root: &tempfile::TempDir) -> AssetsConfig {
+    AssetsConfig::new().public_dir(root.path().join("public"))
+}
+
+fn cache_control(response: &Response) -> &str {
+    response
+        .headers()
+        .get(axum::http::header::CACHE_CONTROL)
+        .map_or("", |v| v.to_str().expect("utf-8"))
+}
+
+#[tokio::test]
+async fn a_hashed_bundle_is_served_and_cached_forever() {
+    let root = document_root();
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .static_files(&assets_config(&root))
+        .build();
+
+    let response = send(app.into_router(), get("/build/assets/app-C7xk91Qa.js")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        cache_control(&response),
+        "public, max-age=31536000, immutable"
+    );
+}
+
+#[tokio::test]
+async fn a_plain_public_file_revalidates_instead() {
+    // Same server, same fallback -- the difference is only the name. A
+    // `robots.txt` frozen for a year would be uneditable.
+    let root = document_root();
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .static_files(&assets_config(&root))
+        .build();
+
+    let response = send(app.into_router(), get("/robots.txt")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(cache_control(&response), "no-cache");
+}
+
+#[tokio::test]
+async fn a_missing_file_is_still_a_404() {
+    let root = document_root();
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .static_files(&assets_config(&root))
+        .build();
+
+    let response = send(app.into_router(), get("/build/assets/gone-A1b2C3d4.js")).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    // Not cached: a mistyped asset name must not become permanent.
+    assert_eq!(cache_control(&response), "");
+}
+
+#[tokio::test]
+async fn a_route_wins_over_a_file_of_the_same_name() {
+    // The document root is the *fallback*, so it only sees what routing
+    // missed. Were it a layer or a merged route, this would be ambiguous.
+    let root = document_root();
+    std::fs::write(root.path().join("public").join("greet"), "from disk\n").expect("file");
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/greet", ok)]))
+        .static_files(&assets_config(&root))
+        .build();
+
+    let response = send(app.into_router(), get("/greet")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .expect("body");
+    assert_eq!(&body[..], b"ok");
+}
+
+#[tokio::test]
+async fn the_pipeline_wraps_the_document_root_too() {
+    // The fallback is installed before any layer is applied, so a served file
+    // gets the same headers, compression and logging as a handler response.
+    // If it were installed after, this header would be missing.
+    let root = document_root();
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .static_files(&assets_config(&root))
+        .layer(Mark("user"))
+        .build();
+
+    let response = send(app.into_router(), get("/robots.txt")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(order(&response), ["user"]);
+}
+
+#[tokio::test]
+async fn the_root_document_references_the_hashed_name_from_the_manifest() {
+    // The whole point of reading the manifest: `resources/js/app.tsx` is what
+    // the app author writes, `assets/app-C7xk91Qa.js` is what exists on disk,
+    // and only the manifest connects them.
+    let root = document_root();
+    let config = assets_config(&root);
+    let assets = Assets::from_manifest(&config).expect("manifest");
+    assert!(!assets.is_dev());
+
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", render)]))
+        .inertia(
+            InertiaConfig::new(
+                "test-version",
+                arcature::vite_root_document("Acme", &assets, "resources/js/app.tsx"),
+            )
+            .expect("config"),
+        )
+        .static_files(&config)
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .expect("body");
+    let html = String::from_utf8(body.to_vec()).expect("utf-8");
+    assert!(
+        html.contains("/build/assets/app-C7xk91Qa.js"),
+        "the page must reference the built file, not the source path: {html}"
+    );
+    assert!(
+        !html.contains("/@vite/client"),
+        "no HMR client in a production build: {html}"
+    );
+
+    // And that reference is actually servable by the same application.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .static_files(&config)
+        .build();
+    let response = send(app.into_router(), get("/build/assets/app-C7xk91Qa.js")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+// --- the production stages -------------------------------------------------
+//
+// Security headers, the panic catcher, the access log and compression are all
+// off unless asked for. What these lock down is not that they work in
+// isolation -- each has unit tests next to it -- but *where* they sit, because
+// the whole value of a fixed pipeline order is that the answer does not depend
+// on how the builder was called.
+
+async fn boom() -> &'static str {
+    panic!("a handler panicked");
+}
+
+fn header<'a>(response: &'a Response, name: &str) -> Option<&'a str> {
+    response
+        .headers()
+        .get(name)
+        .map(|v| v.to_str().expect("ascii"))
+}
+
+#[tokio::test]
+async fn nothing_is_installed_unless_it_is_asked_for() {
+    // The counterpart to every test below: a bare application has none of
+    // this, so each header that appears later appeared because of a call.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(header(&response, "x-content-type-options"), None);
+    assert_eq!(header(&response, "x-frame-options"), None);
+    assert_eq!(header(&response, "x-request-id"), None);
+}
+
+#[tokio::test]
+async fn security_headers_reach_a_handler_response() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .security_headers(arcature::http::SecurityHeaders::new())
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(header(&response, "x-content-type-options"), Some("nosniff"));
+    assert_eq!(header(&response, "x-frame-options"), Some("DENY"));
+}
+
+#[tokio::test]
+async fn security_headers_reach_a_response_no_handler_produced() {
+    // This is the reason the stage sits outside the body limit rather than
+    // inside it, and the assertion that would fail if it were moved back: a
+    // 413 is a page a browser renders, and it needs the headers too.
+    async fn echo(body: String) -> String {
+        body
+    }
+
+    let app = Application::new()
+        .routes(Routes::new([Route::post("/", echo)]))
+        .body_limit(8)
+        .security_headers(arcature::http::SecurityHeaders::new())
+        .build();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/")
+        .body(Body::from("far more than eight bytes"))
+        .expect("request");
+    let response = send(app.into_router(), request).await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(header(&response, "x-content-type-options"), Some("nosniff"));
+}
+
+#[tokio::test]
+async fn security_headers_reach_a_served_file() {
+    let root = document_root();
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .static_files(&assets_config(&root))
+        .security_headers(arcature::http::SecurityHeaders::new())
+        .build();
+
+    let response = send(app.into_router(), get("/robots.txt")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(header(&response, "x-content-type-options"), Some("nosniff"));
+}
+
+#[tokio::test]
+async fn a_request_id_is_generated_and_echoed() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .request_id()
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    let id = header(&response, "x-request-id").expect("an id is echoed");
+    assert!(!id.is_empty());
+}
+
+#[tokio::test]
+async fn an_inbound_request_id_survives_the_hop() {
+    // A reverse proxy in front of the app has already assigned one; minting a
+    // second breaks the trace at exactly the boundary it is meant to cross.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .request_id()
+        .build();
+
+    let request = Request::builder()
+        .uri("/")
+        .header("x-request-id", "from-the-edge")
+        .body(Body::empty())
+        .expect("request");
+    let response = send(app.into_router(), request).await;
+    assert_eq!(header(&response, "x-request-id"), Some("from-the-edge"));
+}
+
+#[tokio::test]
+async fn a_panic_becomes_a_problem_response() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/boom", boom)]))
+        .catch_panic()
+        .build();
+
+    let response = send(app.into_router(), get("/boom")).await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        header(&response, "content-type"),
+        Some(arcature::PROBLEM_JSON)
+    );
+}
+
+#[tokio::test]
+async fn a_panic_response_does_not_carry_the_panic_message() {
+    // A panic payload is written for a developer with a backtrace. It
+    // routinely names a file, a query, or the value that caused the panic --
+    // none of which is the client's business.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/boom", boom)]))
+        .catch_panic()
+        .build();
+
+    let response = send(app.into_router(), get("/boom")).await;
+    let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .expect("body");
+    let text = String::from_utf8(body.to_vec()).expect("utf-8");
+    assert!(
+        !text.contains("a handler panicked"),
+        "the panic payload leaked: {text}"
+    );
+}
+
+#[tokio::test]
+async fn the_security_headers_survive_a_caught_panic() {
+    // The panic catcher is inside the header stage, so its 500 is decorated
+    // like any other response. If the two were swapped, the one response most
+    // likely to be rendered raw in a browser would be the one without them.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/boom", boom)]))
+        .catch_panic()
+        .security_headers(arcature::http::SecurityHeaders::new())
+        .request_id()
+        .build();
+
+    let response = send(app.into_router(), get("/boom")).await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(header(&response, "x-content-type-options"), Some("nosniff"));
+    assert!(header(&response, "x-request-id").is_some());
+}
+
+#[tokio::test]
+async fn the_production_stages_wrap_a_user_layer_not_the_other_way_round() {
+    // User layers are innermost. Called first or last, the answer is the same.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .security_headers(arcature::http::SecurityHeaders::new())
+        .layer(Mark("user"))
+        .build();
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(order(&response), ["user"]);
+    assert_eq!(header(&response, "x-content-type-options"), Some("nosniff"));
+
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .layer(Mark("user"))
+        .security_headers(arcature::http::SecurityHeaders::new())
+        .build();
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(order(&response), ["user"]);
+    assert_eq!(header(&response, "x-content-type-options"), Some("nosniff"));
+}
+
+#[tokio::test]
+async fn compression_applies_when_the_client_asks_and_not_otherwise() {
+    // Long enough to clear `tower-http`'s minimum-size threshold; a two-byte
+    // body would be left alone whatever the pipeline did.
+    async fn long() -> String {
+        "compress me ".repeat(64)
+    }
+
+    let build = || {
+        Application::new()
+            .routes(Routes::new([Route::get("/", long)]))
+            .compression()
+            .build()
+            .into_router()
+    };
+
+    let request = Request::builder()
+        .uri("/")
+        .header("accept-encoding", "gzip")
+        .body(Body::empty())
+        .expect("request");
+    let response = send(build(), request).await;
+    assert_eq!(header(&response, "content-encoding"), Some("gzip"));
+
+    // No `Accept-Encoding`, no compression: the response must stay readable
+    // to a client that never said it could decode one.
+    let response = send(build(), get("/")).await;
+    assert_eq!(header(&response, "content-encoding"), None);
 }
