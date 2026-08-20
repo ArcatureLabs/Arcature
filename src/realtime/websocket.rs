@@ -164,8 +164,6 @@ async fn run_connection(
     limits: WsLimits,
     shutdown: ShutdownConfig,
 ) {
-    use futures::sink::SinkExt;
-
     let mut sub = broadcast.subscribe();
     let mut heartbeat = tokio::time::interval(limits.heartbeat_interval);
     heartbeat.tick().await; // first tick is immediate

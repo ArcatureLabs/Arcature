@@ -143,23 +143,33 @@ impl AppConfig {
             .port(env_parsed("APP_PORT", 3000))
     }
 
-    // Accessors used internally by the framework. Named to avoid clashing
-    // with the fluent builder methods above.
+    // Accessors named to avoid clashing with the fluent builder methods
+    // above.
+    //
+    // Nothing reads these yet: `AppConfig` parses `APP_NAME`, `APP_URL`,
+    // `APP_ENV` and `APP_PORT` and the application then ignores all four.
+    // They are the inputs the security headers, the HSTS decision and the
+    // release-mode error redaction all need, so they are kept rather than
+    // deleted.
+    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
     #[must_use]
     pub(crate) fn name_value(&self) -> &str {
         &self.name
     }
 
+    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
     #[must_use]
     pub(crate) fn url_value(&self) -> &str {
         &self.url
     }
 
+    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
     #[must_use]
     pub(crate) fn environment_value(&self) -> AppEnvironment {
         self.env
     }
 
+    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
     #[must_use]
     pub(crate) fn port_value(&self) -> u16 {
         self.port

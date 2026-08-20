@@ -233,7 +233,6 @@ impl<S: RouterState> RouteLayer<S> {
     }
 
     /// Apply the fold.
-    #[must_use]
     pub fn apply(&self, method_router: MethodRouter<S>) -> MethodRouter<S> {
         (self.inner)(method_router)
     }
@@ -277,7 +276,6 @@ impl<S: RouterState> RouterLayer<S> {
     }
 
     /// Apply the fold.
-    #[must_use]
     pub fn apply(&self, router: Router<S>) -> Router<S> {
         (self.inner)(router)
     }
@@ -491,13 +489,11 @@ impl<S: RouterState> Routes<S> {
 
     /// Consume the collection and return the underlying Axum router. This is
     /// the escape hatch to raw Axum.
-    #[must_use]
     pub fn into_router(self) -> Router<S> {
         self.router
     }
 
     /// Borrow the underlying Axum router.
-    #[must_use]
     pub fn router(&self) -> &Router<S> {
         &self.router
     }

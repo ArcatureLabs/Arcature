@@ -16,7 +16,6 @@ use axum::extract::{Form, FromRequest, FromRequestParts, Json, Path, Query};
 use axum::response::{IntoResponse, Response};
 use serde::de::DeserializeOwned;
 
-use crate::api::Problem;
 use crate::validation::errors::validation_problem;
 use crate::validation::rejection::{
     from_form_rejection, from_json_rejection, from_path_rejection, from_query_rejection,
@@ -26,7 +25,7 @@ use crate::validation::rejection::{
 ///
 /// Wraps [`axum::Json<T>`]: extracts and deserializes the JSON body, then
 /// validates `T` with [`validator::Validate`]. Rejections and validation
-/// failures are returned as RFC 9457 [`Problem`] responses
+/// failures are returned as RFC 9457 [`Problem`](crate::Problem) responses
 /// (`application/problem+json`).
 ///
 /// `T` must implement [`serde::de::DeserializeOwned`] (for the JSON body) and

@@ -564,10 +564,11 @@ async fn resolve_page(
         }
     };
 
-    if included && !reset_paths.contains(key) {
-        if let Some(strategy) = prop.merge() {
-            metadata.record_merge(strategy, key);
-        }
+    if included
+        && !reset_paths.contains(key)
+        && let Some(strategy) = prop.merge()
+    {
+        metadata.record_merge(strategy, key);
     }
 
     Ok(included)

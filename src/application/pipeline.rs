@@ -104,7 +104,10 @@ impl<S: RouterState> Pipeline<S> {
 
         // 4 — timeout.
         let router = match self.timeout {
-            Some(duration) => router.layer(tower_http::timeout::TimeoutLayer::new(duration)),
+            Some(duration) => router.layer(tower_http::timeout::TimeoutLayer::with_status_code(
+                axum::http::StatusCode::REQUEST_TIMEOUT,
+                duration,
+            )),
             None => router,
         };
 
@@ -143,7 +146,6 @@ pub(crate) fn compose_service(
 > + Clone
 + Send
 + 'static {
-    use crate::axum::ServiceExt as _;
     use tower::Layer as _;
 
     // 2 — the pre-routing proxy, immediately outside the router.

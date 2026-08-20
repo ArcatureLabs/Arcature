@@ -65,7 +65,14 @@ pub type StateFn<S> = Arc<dyn Fn(&Resources, &Lifecycle) -> S + Send + Sync>;
 
 impl<S: RouterState> Application<S> {
     /// Begin building an application.
-    #[must_use]
+    ///
+    /// Returns the builder rather than `Self`: an `Application` only exists
+    /// once `build()` has composed the pipeline, so there is no half-built
+    /// `Application` to hand back.
+    #[expect(
+        clippy::new_ret_no_self,
+        reason = "type-state builder: `Application` is only reachable via `build()`"
+    )]
     pub fn new() -> ApplicationBuilder<S> {
         ApplicationBuilder {
             router: Router::new(),
@@ -86,8 +93,14 @@ impl<S: RouterState> Application<S> {
             #[cfg(feature = "mail")]
             mail_config: None,
             proxy: None,
+            // Read `ARCATURE_VITE_IPC` once, here. `arc dev` sets it to the
+            // path Vite's `middlewareMode` server listens on, and an app that
+            // did nothing but `Application::new()` has to pick it up on its
+            // own -- otherwise the one-port dev topology needs an explicit
+            // call the scaffold does not make, and Vite requests 404.
+            // Unset (production) leaves the layer a pass-through.
             #[cfg(feature = "dev-proxy")]
-            dev_proxy_endpoint: None,
+            dev_proxy_endpoint: crate::dev_proxy::config::endpoint_from_env(),
             pipeline: Pipeline::new(),
             _state: std::marker::PhantomData,
         }
@@ -115,7 +128,6 @@ impl<S: RouterState> Application<S> {
     /// This exists so an application can be driven as a `tower::Service`
     /// without binding a socket — which is how the pipeline order is tested,
     /// and how the test kit will boot an app in-process.
-    #[must_use]
     pub fn into_router(self) -> Router<S> {
         self.router
     }
@@ -280,9 +292,10 @@ impl<S: RouterState> ApplicationBuilder<S> {
     /// IPC; everything else reaches the application pipeline. When `None`,
     /// the dev proxy is a zero-overhead pass-through.
     ///
-    /// Only available with the `dev-proxy` feature. The endpoint is
-    /// normally resolved from `ARCATURE_VITE_IPC` (set by `arc dev`); this
-    /// method lets a caller override it explicitly (e.g. tests).
+    /// Only available with the `dev-proxy` feature. The endpoint is already
+    /// resolved from `ARCATURE_VITE_IPC` (set by `arc dev`) when the builder
+    /// is created; this method overrides that, including back to `None` to
+    /// switch the dev proxy off in a process where the variable is set.
     #[cfg(feature = "dev-proxy")]
     #[must_use]
     pub fn dev_proxy_endpoint(mut self, endpoint: Option<std::path::PathBuf>) -> Self {
@@ -656,10 +669,10 @@ fn resolve_port(configured: u16) -> u16 {
     // Allow `PORT` and `ARCATURE_BACKEND_PORT` to override the configured port.
     use std::env;
     for key in ["PORT", "ARCATURE_BACKEND_PORT"] {
-        if let Ok(v) = env::var(key) {
-            if let Ok(p) = v.parse::<u16>() {
-                return p;
-            }
+        if let Ok(v) = env::var(key)
+            && let Ok(p) = v.parse::<u16>()
+        {
+            return p;
         }
     }
     configured

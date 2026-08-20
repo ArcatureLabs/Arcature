@@ -49,7 +49,11 @@ impl RequestId {
 
     /// Parse a request id from a string. Returns an error if the string is
     /// empty, too large, or contains disallowed characters.
-    pub fn from_str(s: &str) -> Result<Self, RequestIdError> {
+    ///
+    /// Named `parse_str` rather than `from_str` so it cannot be mistaken for
+    /// [`FromStr::from_str`](std::str::FromStr::from_str), which it delegates
+    /// to.
+    pub fn parse_str(s: &str) -> Result<Self, RequestIdError> {
         s.parse()
     }
 
@@ -59,10 +63,9 @@ impl RequestId {
     pub fn from_header(headers: &HeaderMap) -> Self {
         if let Some(value) = headers.get(&REQUEST_ID_HEADER)
             && let Ok(s) = value.to_str()
+            && let Ok(id) = Self::parse_str(s)
         {
-            if let Ok(id) = Self::from_str(s) {
-                return id;
-            }
+            return id;
         }
         Self::generate()
     }

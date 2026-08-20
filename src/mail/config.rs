@@ -15,9 +15,12 @@ use lettre::transport::smtp::extension::ClientId;
 use crate::mail::error::{MailConfigError, SmtpError};
 
 /// The TLS mode for an SMTP connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TlsMode {
     /// Implicit TLS (port 465): the connection is TLS from the start.
+    /// The default: the strictest mode, so an unconfigured transport does not
+    /// silently fall back to plaintext.
+    #[default]
     Implicit,
     /// STARTTLS required (port 587): upgrade to TLS after the greeting.
     Starttls,
@@ -42,12 +45,6 @@ impl TlsMode {
     #[must_use]
     pub fn is_encrypted(self) -> bool {
         matches!(self, Self::Implicit | Self::Starttls)
-    }
-}
-
-impl Default for TlsMode {
-    fn default() -> Self {
-        Self::Implicit
     }
 }
 

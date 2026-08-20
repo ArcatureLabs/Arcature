@@ -49,7 +49,6 @@ impl IpcEndpoint {
 
     /// The raw path (for diagnostics — never logged with secrets, as the IPC
     /// path carries no secret; it is process-private and per-invocation).
-    #[cfg_attr(not(test), expect(dead_code))]
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path

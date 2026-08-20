@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 
 // --- #[derive(Event)] ---
 
+// `pub`, not private: `#[listener]` expands to a `pub` handler taking this
+// type, and a private parameter on a public fn is a leak clippy rejects.
 #[derive(Debug, Clone, Serialize, Deserialize, arcature::Event)]
-struct UserRegistered {
+pub struct UserRegistered {
     user_id: u64,
     email: String,
 }

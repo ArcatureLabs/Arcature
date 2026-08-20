@@ -50,9 +50,10 @@ pub enum OriginDecision {
 }
 
 /// The origin policy: deny all, allow an exact origin, or allow a set.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum OriginPolicy {
     /// Deny all origins (the default).
+    #[default]
     DenyAll,
     /// Allow a single exact origin.
     AllowExact { origin: VerifiedOrigin },
@@ -105,11 +106,5 @@ impl OriginPolicy {
                 }
             }
         }
-    }
-}
-
-impl Default for OriginPolicy {
-    fn default() -> Self {
-        Self::DenyAll
     }
 }

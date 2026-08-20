@@ -2,8 +2,6 @@
 
 #![cfg(feature = "realtime")]
 
-use std::time::Duration;
-
 use arcature::realtime::{Broadcast, ChannelError, ChannelPayload, OriginPolicy, VerifiedOrigin};
 
 #[test]

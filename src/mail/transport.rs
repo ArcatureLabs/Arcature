@@ -13,13 +13,11 @@
 use std::sync::Arc;
 
 use lettre::message::Mailbox;
-use lettre::transport::smtp::client::Tls;
-use lettre::transport::smtp::client::TlsParameters;
 use lettre::transport::smtp::extension::ClientId;
 use lettre::transport::stub::AsyncStubTransport;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
-use crate::mail::config::{SmtpConfig, TlsMode};
+use crate::mail::config::SmtpConfig;
 use crate::mail::error::{EmailError, MailConfigError, MailSendError};
 use crate::mail::message::Email;
 
@@ -252,7 +250,7 @@ impl<'a> MailBuilder<'a> {
                 MailSendError::build(EmailError::address(e))
             })?;
         let email = Email::builder().from(self.mail.from.clone()).to(to_mailbox);
-        let message = mailable.build(email).map_err(|e| MailSendError::build(e))?;
+        let message = mailable.build(email).map_err(MailSendError::build)?;
         self.mail.mailer.send(&message).await
     }
 }

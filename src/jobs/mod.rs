@@ -38,7 +38,7 @@ mod complete;
 mod config;
 mod enqueue;
 mod error;
-mod jobs;
+mod facade;
 mod migrate;
 mod observe;
 mod registry;
@@ -61,7 +61,7 @@ pub use error::{
     EnqueueError, JobError, MigrateError, RegisterError, RetryPolicyError, SchedulerError,
     WorkerConfigError, WorkerError,
 };
-pub use jobs::Jobs;
+pub use facade::Jobs;
 pub use observe::{Event, FailReason, NoopObserver, Observer, SharedObserver};
 pub use registry::Registry;
 pub use scheduler::{ScheduleBinding, ScheduleCadence, Scheduler};

@@ -38,13 +38,13 @@ impl JobsRuntime {
                 source: crate::Error::Job(format!("worker task panicked: {join_err}")),
             });
         }
-        if let Some(scheduler) = self.scheduler {
-            if let Err(join_err) = scheduler.await {
-                return Err(EngineError::Shutdown {
-                    subsystem: "jobs",
-                    source: crate::Error::Job(format!("scheduler task panicked: {join_err}")),
-                });
-            }
+        if let Some(scheduler) = self.scheduler
+            && let Err(join_err) = scheduler.await
+        {
+            return Err(EngineError::Shutdown {
+                subsystem: "jobs",
+                source: crate::Error::Job(format!("scheduler task panicked: {join_err}")),
+            });
         }
         Ok(())
     }

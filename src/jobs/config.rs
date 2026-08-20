@@ -205,7 +205,7 @@ impl RetryPolicy {
         if self.jitter && !delay.is_zero() {
             // Full jitter: random in [0, delay]. Uses uuid::Uuid for the
             // random source (no new dependency; uuid is already a dep).
-            let cap_nanos = delay.as_nanos() as u128;
+            let cap_nanos = delay.as_nanos();
             if cap_nanos > 0 {
                 let rand = uuid::Uuid::new_v4().as_u128() % (cap_nanos + 1);
                 delay = Duration::from_nanos(u64::try_from(rand).unwrap_or(0));

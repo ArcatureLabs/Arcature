@@ -26,6 +26,7 @@ pub struct RedirectResponse {
 #[derive(Debug, Clone)]
 enum RedirectTarget {
     Path(String),
+    #[expect(dead_code, reason = "read by `resolve`, which awaits the mapper")]
     Route {
         name: String,
         params: Vec<RouteParam>,
@@ -33,10 +34,15 @@ enum RedirectTarget {
     Back,
 }
 
+/// One filled route parameter.
+///
+/// An implementation detail of [`IntoRouteParams`], public only because that
+/// trait's method names it. The inner field is crate-private, so no outside
+/// type can produce one -- which is what seals the trait, without a separate
+/// `Sealed` supertrait that has to be kept in step with the impl list.
+#[doc(hidden)]
 #[derive(Debug, Clone)]
-pub(crate) enum RouteParam {
-    Owned(String),
-}
+pub struct RouteParam(pub(crate) String);
 
 impl RedirectResponse {
     /// Redirect to a path.
@@ -48,6 +54,13 @@ impl RedirectResponse {
 
     /// Redirect to a named route. `params` fill the route's URI parameters in
     /// declaration order.
+    ///
+    /// # Not yet implemented
+    ///
+    /// Resolving a name to a path needs the application's route table, which
+    /// reaches a response only through a mapper layer that does not exist
+    /// yet. Until it does, this returns **400 Bad Request** at runtime. Use
+    /// [`to`](Self::to) with an explicit path.
     #[must_use]
     pub fn route(mut self, name: impl Into<String>, params: impl IntoRouteParams) -> Self {
         self.target = RedirectTarget::Route {
@@ -73,6 +86,12 @@ impl RedirectResponse {
 
     /// Attach flash data carried over the redirect (stored in the session by
     /// the framework and surfaced on the next request). Repeated calls append.
+    ///
+    /// # Not yet implemented
+    ///
+    /// Same missing mapper as [`route`](Self::route): the flash data is
+    /// recorded on the builder and then dropped when the redirect becomes a
+    /// response. Write to the session directly in the meantime.
     #[must_use]
     pub fn with(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.flash.push((key.into(), value.into()));
@@ -80,7 +99,16 @@ impl RedirectResponse {
     }
 
     /// Resolve the redirect to an axum [`Redirect`], given the application's
-    /// route table (for named routes). Used by the framework response mapper.
+    /// route table (for named routes).
+    ///
+    /// Not yet reachable: the response mapper that would supply the route
+    /// table does not exist, so [`route`](Self::route) currently produces a
+    /// 400 and [`with`](Self::with) drops its flash data. Both are documented
+    /// as such on those methods.
+    #[expect(
+        dead_code,
+        reason = "reachable once the redirect response mapper lands;                   keeping the resolution logic beside the builder it serves"
+    )]
     pub(crate) fn resolve(&self, routes: &crate::routing::Routes<()>) -> Result<Redirect> {
         let redirect = match &self.target {
             RedirectTarget::Path(p) => {
@@ -97,7 +125,7 @@ impl RedirectResponse {
                     &params
                         .iter()
                         .map(|p| match p {
-                            RouteParam::Owned(s) => s.as_str(),
+                            RouteParam(s) => s.as_str(),
                         })
                         .collect::<Vec<_>>(),
                 )?;
@@ -155,38 +183,43 @@ fn validate_redirect_target(path: &str) -> Result<()> {
 }
 
 /// Trait for values that can fill a named route's parameters.
-pub(crate) trait IntoRouteParams {
+///
+/// Public because it is the bound on [`RedirectResponse::route`]. Effectively
+/// sealed: implementing it requires producing a [`RouteParam`], whose field is
+/// crate-private.
+pub trait IntoRouteParams {
+    #[doc(hidden)]
     fn into_params(self) -> Vec<RouteParam>;
 }
 
 impl IntoRouteParams for &str {
     fn into_params(self) -> Vec<RouteParam> {
-        vec![RouteParam::Owned(self.to_string())]
+        vec![RouteParam(self.to_string())]
     }
 }
 
 impl IntoRouteParams for String {
     fn into_params(self) -> Vec<RouteParam> {
-        vec![RouteParam::Owned(self)]
+        vec![RouteParam(self)]
     }
 }
 
 impl IntoRouteParams for i64 {
     fn into_params(self) -> Vec<RouteParam> {
-        vec![RouteParam::Owned(self.to_string())]
+        vec![RouteParam(self.to_string())]
     }
 }
 
 impl IntoRouteParams for u64 {
     fn into_params(self) -> Vec<RouteParam> {
-        vec![RouteParam::Owned(self.to_string())]
+        vec![RouteParam(self.to_string())]
     }
 }
 
 #[cfg(feature = "database")]
 impl IntoRouteParams for uuid::Uuid {
     fn into_params(self) -> Vec<RouteParam> {
-        vec![RouteParam::Owned(self.to_string())]
+        vec![RouteParam(self.to_string())]
     }
 }
 
@@ -199,6 +232,9 @@ impl<T: IntoRouteParams> IntoRouteParams for Vec<T> {
 macro_rules! impl_into_route_params_tuple {
     ($($T:ident),* $(,)?) => {
         impl<$($T: IntoRouteParams),*> IntoRouteParams for ($($T,)*) {
+            // The destructuring below reuses each type parameter's name as a
+            // value binding, which is upper-case by necessity.
+            #[allow(non_snake_case, reason = "bindings are named after the type parameters")]
             fn into_params(self) -> Vec<RouteParam> {
                 let ($($T,)*) = self;
                 let mut out = Vec::new();

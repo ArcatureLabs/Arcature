@@ -88,7 +88,7 @@ impl SseEndpoint {
         };
 
         let limits = self.limits;
-        let mut sub = self.broadcast.subscribe();
+        let sub = self.broadcast.subscribe();
         let shutdown = self.shutdown.clone();
         let _ = guard; // held for the lifetime of the stream
 

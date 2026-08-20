@@ -81,7 +81,7 @@ async fn apply_pending(pool: &sqlx::PgPool) -> Result<(), MigrateError> {
 
 /// Apply migrations within a caller's transaction.
 pub async fn apply_tx(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), MigrateError> {
-    let conn: &mut PgConnection = &mut **tx;
+    let conn: &mut PgConnection = tx;
     sqlx::Executor::execute(&mut *conn, CREATE_HISTORY_SQL).await?;
 
     sqlx::query("SELECT pg_advisory_lock($1)")
