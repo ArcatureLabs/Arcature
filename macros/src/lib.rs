@@ -16,15 +16,39 @@
 //! the downstream app crate. This crate must NOT depend on `arcature` (would
 //! create a cycle); it depends only on `syn`, `quote`, and `proc-macro2`.
 
+mod command;
+mod component;
 mod controller;
+mod diagnostic;
 mod event;
 mod job;
+mod job_handler;
 mod listener;
+mod middleware;
 mod model;
+mod policy;
+mod provider;
+mod redirect;
 mod request;
+mod route_model;
+mod service;
+mod signature;
 mod util;
 
 use proc_macro::TokenStream;
+
+use crate::diagnostic::MacroResult;
+
+/// Converts a macro implementation's [`MacroResult`] into the token stream
+/// the compiler consumes: the expansion on success, a `compile_error!`
+/// invocation carrying the `ARC-M<NNN>` code on failure. No Arcature macro
+/// panics on an ordinary syntax mistake.
+fn finish(result: MacroResult) -> TokenStream {
+    match result {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
+}
 
 /// `#[model(table = "users")]` — see `model.rs`.
 #[proc_macro_attribute]
@@ -60,4 +84,58 @@ pub fn derive_event(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn listener(attr: TokenStream, item: TokenStream) -> TokenStream {
     listener::listener(attr, item)
+}
+
+/// `#[derive(DxComponent)]` — see `component.rs`.
+#[proc_macro_derive(DxComponent, attributes(component))]
+pub fn derive_dx_component(input: TokenStream) -> TokenStream {
+    finish(component::derive(input.into()))
+}
+
+/// `#[service]` — see `service.rs`.
+#[proc_macro_attribute]
+pub fn service(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(service::service(attr.into(), item.into()))
+}
+
+/// `#[provider]` — see `provider.rs`.
+#[proc_macro_attribute]
+pub fn provider(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(provider::provider(attr.into(), item.into()))
+}
+
+/// `#[policy(Model)]` — see `policy.rs`.
+#[proc_macro_attribute]
+pub fn policy(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(policy::policy(attr.into(), item.into()))
+}
+
+/// `#[middleware]` — see `middleware.rs`.
+#[proc_macro_attribute]
+pub fn middleware(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(middleware::middleware(attr.into(), item.into()))
+}
+
+/// `#[command("name")]` — see `command.rs`.
+#[proc_macro_attribute]
+pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(command::command(attr.into(), item.into()))
+}
+
+/// `#[job_handler]` — see `job_handler.rs`.
+#[proc_macro_attribute]
+pub fn job_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(job_handler::job_handler(attr.into(), item.into()))
+}
+
+/// `#[route_model(entity = ..., key_type = ...)]` — see `route_model.rs`.
+#[proc_macro_attribute]
+pub fn route_model(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(route_model::route_model(attr.into(), item.into()))
+}
+
+/// `redirect!(route::...)` — see `redirect.rs`.
+#[proc_macro]
+pub fn redirect(input: TokenStream) -> TokenStream {
+    finish(redirect::redirect(input.into()))
 }

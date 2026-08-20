@@ -52,6 +52,28 @@ impl Inertia {
             .await
     }
 
+    /// Render a page behind the Client Exposure Firewall.
+    ///
+    /// Identical to [`render`](Self::render) except for the bound: `P` must
+    /// implement [`ClientData`](crate::inertia::contracts::ClientData), the
+    /// explicit browser-safety opt-in the `#[page]` macro generates. A type
+    /// that merely derives `Serialize` -- an internal domain model, say --
+    /// does not compile here, so it cannot reach the browser by accident.
+    ///
+    /// `render` stays available for ad-hoc JSON props (the `inertia!()`
+    /// macro path); `render_page` is the typed path a `#[page]` prop struct
+    /// travels.
+    pub async fn render_page<P>(
+        &self,
+        contract: crate::inertia::contracts::PageContract<P>,
+        props: P,
+    ) -> Result<Response, InertiaError>
+    where
+        P: crate::inertia::contracts::ClientData,
+    {
+        self.render(contract.name(), props).await
+    }
+
     /// Render with page-level options (history flags, flash data).
     pub async fn render_with_options(
         &self,
