@@ -125,9 +125,8 @@ events = []
 # API: problem details (RFC 9457), typed API responses, OpenAPI.
 api = ["dep:http", "dep:validator"]
 
-# Observability: tracing; OpenTelemetry exporter opt-in.
+# Observability: tracing.
 observe = ["dep:tracing", "dep:tracing-subscriber"]
-opentelemetry = ["observe", "dep:opentelemetry"]
 
 # Static pages / assets / root HTML document.
 pages = ["dep:http"]
@@ -226,7 +225,6 @@ percent-encoding = { version = "2.3", default-features = false, optional = true 
 # Observability.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"], optional = true }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry"], optional = true }
-opentelemetry = { version = "0.29", default-features = false, optional = true }
 
 # Error handling.
 thiserror = { version = "2.0", default-features = false }

@@ -21,12 +21,14 @@ pub fn request(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
     // Tell the validator derive to emit code against Arcature's re-export of
     // the `validator` crate, so downstream apps don't need `validator` as a
-    // direct dependency.
+    // direct dependency. The `#[validate(...)]` helper attribute MUST come
+    // after `#[derive(Validate)]` (Rust requires helper attributes to follow
+    // the derive that introduces them).
     let crate_attr: syn::Attribute = syn::parse_quote! {
         #[validate(crate = "::arcature::validator")]
     };
     item_struct.attrs.insert(0, derive_attr);
-    item_struct.attrs.insert(0, crate_attr);
+    item_struct.attrs.insert(1, crate_attr);
 
     quote! { #item_struct }.into()
 }
