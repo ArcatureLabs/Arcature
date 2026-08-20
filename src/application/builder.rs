@@ -49,6 +49,13 @@ pub struct Application<S: RouterState = ()> {
     storage_config: Option<crate::storage::StorageConfig>,
     #[cfg(feature = "mail")]
     mail_config: Option<crate::mail::SmtpConfig>,
+    // The pre-routing proxy function (engine spec §4/§5). `None` → no proxy;
+    // the request goes straight to the router.
+    proxy: Option<crate::proxy::ProxyFn>,
+    // The Vite IPC endpoint for the one-port dev proxy (AP2.1-3). `None` →
+    // pass-through. Only meaningful with the `dev-proxy` feature.
+    #[cfg(feature = "dev-proxy")]
+    dev_proxy_endpoint: Option<crate::dev_proxy::endpoint::IpcEndpoint>,
 }
 
 /// The state closure: given the started [`Resources`] and the [`Lifecycle`],
@@ -77,6 +84,9 @@ impl<S: RouterState> Application<S> {
             storage_config: None,
             #[cfg(feature = "mail")]
             mail_config: None,
+            proxy: None,
+            #[cfg(feature = "dev-proxy")]
+            dev_proxy_endpoint: None,
             _state: std::marker::PhantomData,
         }
     }
@@ -122,6 +132,9 @@ pub struct ApplicationBuilder<S: RouterState = ()> {
     storage_config: Option<crate::storage::StorageConfig>,
     #[cfg(feature = "mail")]
     mail_config: Option<crate::mail::SmtpConfig>,
+    proxy: Option<crate::proxy::ProxyFn>,
+    #[cfg(feature = "dev-proxy")]
+    dev_proxy_endpoint: Option<crate::dev_proxy::endpoint::IpcEndpoint>,
     _state: std::marker::PhantomData<S>,
 }
 
@@ -221,6 +234,42 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
+    /// Install the pre-routing proxy function (engine spec §4/§5).
+    ///
+    /// The `proxy` function runs *before* route selection and can continue,
+    /// redirect, rewrite, mutate request headers, or short-circuit with an
+    /// early response. It is a pure, synchronous decision from a
+    /// [`ProxyRequest`](crate::proxy::ProxyRequest) borrow to a
+    /// [`ProxyAction`](crate::proxy::ProxyAction) — no async, no I/O. The
+    /// engine performs the actual HTTP work (setting status/headers,
+    /// rewriting the URI, delegating to the router). Pass `None` (the
+    /// default) to leave the router as the outermost layer.
+    #[must_use]
+    pub fn proxy<F>(mut self, proxy: F) -> Self
+    where
+        F: Fn(crate::proxy::ProxyRequest<'_>) -> crate::proxy::ProxyAction + Send + Sync + 'static,
+    {
+        self.proxy = Some(std::sync::Arc::new(proxy));
+        self
+    }
+
+    /// Set the Vite IPC endpoint for the one-port dev proxy (AP2.1-3). When
+    /// `Some(path)`, the dev proxy forwards Vite-looking requests
+    /// (`/@vite/`, `/src/...`, HMR WebSocket) to the Vite dev server over
+    /// IPC; everything else reaches the application pipeline. When `None`,
+    /// the dev proxy is a zero-overhead pass-through.
+    ///
+    /// Only available with the `dev-proxy` feature. The endpoint is
+    /// normally resolved from `ARCATURE_VITE_IPC` (set by `arc dev`); this
+    /// method lets a caller override it explicitly (e.g. tests).
+    #[cfg(feature = "dev-proxy")]
+    #[must_use]
+    pub fn dev_proxy_endpoint(mut self, endpoint: Option<std::path::PathBuf>) -> Self {
+        self.dev_proxy_endpoint =
+            endpoint.map(crate::dev_proxy::endpoint::IpcEndpoint::new);
+        self
+    }
+
     /// Build the application. For the stateless app (`S = ()`) this is the
     /// final step before `run()`. For a stateful app, the state is produced
     /// at run time from the started resources.
@@ -244,6 +293,9 @@ impl<S: RouterState> ApplicationBuilder<S> {
             storage_config: self.storage_config,
             #[cfg(feature = "mail")]
             mail_config: self.mail_config,
+            proxy: self.proxy,
+            #[cfg(feature = "dev-proxy")]
+            dev_proxy_endpoint: self.dev_proxy_endpoint,
         }
     }
 
@@ -274,7 +326,16 @@ impl Application<()> {
         let lifecycle = Lifecycle::new();
         let _resources = Resources::empty();
         lifecycle.mark_ready();
-        axum::serve(listener, self.router)
+        use crate::axum::ServiceExt as _;
+        use tower::Layer as _;
+        let service = self.router.into_service();
+        let service = crate::proxy::ProxyLayer::new(self.proxy.clone()).layer(service);
+        #[cfg(feature = "dev-proxy")]
+        let service = {
+            let endpoint = self.dev_proxy_endpoint.clone();
+            crate::dev_proxy::DevProxyLayer::new(endpoint).layer(service)
+        };
+        axum::serve(listener, service.into_make_service())
             .with_graceful_shutdown(shutdown_signal())
             .await
             .map_err(|source| EngineError::Serve { source })?;
@@ -386,9 +447,24 @@ impl<S: RouterState> Application<S> {
         // Collapse the stateful router to a stateless one for serving.
         let router: Router<()> = self.router.with_state(state);
 
+        // Compose the request pipeline. The pre-routing `ProxyLayer` wraps the
+        // router-as-service so the application's proxy function runs *before*
+        // route selection; the `DevProxyLayer` is the outermost layer, forwarding
+        // Vite requests to the IPC endpoint when `arc dev` set one (AP2.1-3).
+        // When neither is configured both layers are zero-overhead pass-throughs.
+        use crate::axum::ServiceExt as _;
+        use tower::Layer as _;
+        let service = router.into_service();
+        let service = crate::proxy::ProxyLayer::new(self.proxy.clone()).layer(service);
+        #[cfg(feature = "dev-proxy")]
+        let service = {
+            let endpoint = self.dev_proxy_endpoint.clone();
+            crate::dev_proxy::DevProxyLayer::new(endpoint).layer(service)
+        };
+
         lifecycle.mark_ready();
 
-        axum::serve(listener, router)
+        axum::serve(listener, service.into_make_service())
             .with_graceful_shutdown(shutdown_signal())
             .await
             .map_err(|source| EngineError::Serve { source })?;

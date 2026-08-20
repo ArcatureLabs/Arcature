@@ -16,6 +16,11 @@ pub use crate::error::{Error, Result, ValidationError, bad_request, forbidden, n
 pub use crate::http::{RedirectResponse, no_content, redirect, text};
 pub use crate::routing::{Middleware, Next, Route, RouteGroup, RouterState, Routes};
 
+// The pre-routing proxy contract (engine spec §4/§5). The application's
+// proxy function maps a `ProxyRequest` borrow to a `ProxyAction`; the engine
+// performs the actual HTTP work. Installed via `ApplicationBuilder::proxy`.
+pub use crate::proxy::{ProxyAction, ProxyRequest};
+
 // Routing constructors (the certified Axum functions, re-exported).
 pub use crate::{any, delete, from_fn, get, head, options, patch, post, put};
 

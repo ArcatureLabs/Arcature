@@ -46,7 +46,14 @@ pub mod application;
 pub mod config;
 mod error;
 pub mod http;
+pub mod proxy;
 pub mod routing;
+
+// The one-port development proxy (Vite over IPC). Engine plumbing, gated
+// behind the `dev-proxy` feature so production builds pay nothing. The layer
+// is a zero-overhead pass-through when `ARCATURE_VITE_IPC` is unset.
+#[cfg(feature = "dev-proxy")]
+pub mod dev_proxy;
 
 pub use application::{
     Application, ApplicationBuilder, EngineError, Lifecycle, LifecycleState, Resources,
