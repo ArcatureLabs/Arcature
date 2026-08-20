@@ -2,6 +2,9 @@
 
 use arcature::prelude::*;
 
+/// The home controller.
+pub struct HomeController;
+
 #[controller]
 impl HomeController {
     /// `GET /`

@@ -36,7 +36,7 @@ pub fn model(attr: TokenStream, item: TokenStream) -> TokenStream {
         #item_struct
 
         impl ::arcature::database::Model for #ident {
-            type Entity = #ident::Entity;
+            type Entity = <#ident as ::arcature::sea_orm::EntityTrait>::Entity;
         }
     }
     .into()

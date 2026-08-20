@@ -88,3 +88,16 @@ pub use crate::observe::RequestId;
 // The `#[arcature::main]` runtime entry point (requires the `macros` feature).
 #[cfg(feature = "macros")]
 pub use crate::main;
+
+// The attribute macros (`#[controller]`, `#[model]`, `#[request]`,
+// `#[listener]`) are re-exported at the crate root; pull them into the prelude
+// so `use arcature::prelude::*` brings them into scope. The derive macros
+// `#[derive(Job)]` and `#[derive(Event)]` are NOT re-exported here: they share
+// names with the `Job`/`Event` traits (already imported above) in the type
+// namespace, so a glob re-export would conflict. Users who derive them add
+// `use arcature::Job;` / `use arcature::Event;` explicitly.
+#[cfg(feature = "macros")]
+pub use crate::{controller, model, request};
+
+#[cfg(all(feature = "macros", feature = "events"))]
+pub use crate::listener;

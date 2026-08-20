@@ -19,7 +19,14 @@ pub fn request(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let derive_attr: syn::Attribute = syn::parse_quote! {
         #[derive(::arcature::validator::Validate)]
     };
+    // Tell the validator derive to emit code against Arcature's re-export of
+    // the `validator` crate, so downstream apps don't need `validator` as a
+    // direct dependency.
+    let crate_attr: syn::Attribute = syn::parse_quote! {
+        #[validate(crate = "::arcature::validator")]
+    };
     item_struct.attrs.insert(0, derive_attr);
+    item_struct.attrs.insert(0, crate_attr);
 
     quote! { #item_struct }.into()
 }

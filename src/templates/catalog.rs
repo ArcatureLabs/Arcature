@@ -16,6 +16,19 @@ pub fn files() -> Vec<TemplateFile> {
             path: "Cargo.toml",
             content: include_str!("files/Cargo.toml"),
         },
+        // --- Dotfiles (env + git) ---
+        TemplateFile {
+            path: ".env",
+            content: include_str!("files/.env"),
+        },
+        TemplateFile {
+            path: ".env.example",
+            content: include_str!("files/.env.example"),
+        },
+        TemplateFile {
+            path: ".gitignore",
+            content: include_str!("files/.gitignore"),
+        },
         // --- Rust entry points ---
         TemplateFile {
             path: "src/main.rs",
@@ -25,9 +38,37 @@ pub fn files() -> Vec<TemplateFile> {
             path: "src/lib.rs",
             content: include_str!("files/src/lib.rs"),
         },
+        // --- bootstrap/ (compose the Application) ---
         TemplateFile {
-            path: "src/routes/mod.rs",
-            content: include_str!("files/src/routes/mod.rs"),
+            path: "bootstrap/mod.rs",
+            content: include_str!("files/bootstrap/mod.rs"),
+        },
+        TemplateFile {
+            path: "bootstrap/app.rs",
+            content: include_str!("files/bootstrap/app.rs"),
+        },
+        TemplateFile {
+            path: "bootstrap/state.rs",
+            content: include_str!("files/bootstrap/state.rs"),
+        },
+        // --- config/ (typed Config from env) ---
+        TemplateFile {
+            path: "config/mod.rs",
+            content: include_str!("files/config/mod.rs"),
+        },
+        // --- database/ (SeaORM migrations) ---
+        TemplateFile {
+            path: "database/mod.rs",
+            content: include_str!("files/database/mod.rs"),
+        },
+        TemplateFile {
+            path: "database/migrations/mod.rs",
+            content: include_str!("files/database/migrations/mod.rs"),
+        },
+        // --- routes/ (route registration) ---
+        TemplateFile {
+            path: "routes/mod.rs",
+            content: include_str!("files/routes/mod.rs"),
         },
         // --- app/ (backend application layer) ---
         TemplateFile {
@@ -47,44 +88,20 @@ pub fn files() -> Vec<TemplateFile> {
             content: include_str!("files/app/models/mod.rs"),
         },
         TemplateFile {
-            path: "app/models/user.rs",
-            content: include_str!("files/app/models/user.rs"),
-        },
-        TemplateFile {
             path: "app/services/mod.rs",
             content: include_str!("files/app/services/mod.rs"),
-        },
-        TemplateFile {
-            path: "app/services/user_service.rs",
-            content: include_str!("files/app/services/user_service.rs"),
         },
         TemplateFile {
             path: "app/requests/mod.rs",
             content: include_str!("files/app/requests/mod.rs"),
         },
         TemplateFile {
-            path: "app/requests/create_user_request.rs",
-            content: include_str!("files/app/requests/create_user_request.rs"),
-        },
-        TemplateFile {
-            path: "app/requests/update_user_request.rs",
-            content: include_str!("files/app/requests/update_user_request.rs"),
-        },
-        TemplateFile {
             path: "app/policies/mod.rs",
             content: include_str!("files/app/policies/mod.rs"),
         },
         TemplateFile {
-            path: "app/policies/user_policy.rs",
-            content: include_str!("files/app/policies/user_policy.rs"),
-        },
-        TemplateFile {
             path: "app/resources/mod.rs",
             content: include_str!("files/app/resources/mod.rs"),
-        },
-        TemplateFile {
-            path: "app/resources/user_resource.rs",
-            content: include_str!("files/app/resources/user_resource.rs"),
         },
         // --- resources/ (frontend) ---
         TemplateFile {
@@ -106,6 +123,33 @@ pub fn files() -> Vec<TemplateFile> {
         TemplateFile {
             path: "resources/css/app.css",
             content: include_str!("files/resources/css/app.css"),
+        },
+        // --- public/ (static assets) ---
+        TemplateFile {
+            path: "public/robots.txt",
+            content: include_str!("files/public/robots.txt"),
+        },
+        TemplateFile {
+            path: "public/.gitkeep",
+            content: include_str!("files/public/.gitkeep"),
+        },
+        // --- storage/ (runtime artifacts) ---
+        TemplateFile {
+            path: "storage/logs/.gitkeep",
+            content: include_str!("files/storage/logs/.gitkeep"),
+        },
+        TemplateFile {
+            path: "storage/uploads/.gitkeep",
+            content: include_str!("files/storage/uploads/.gitkeep"),
+        },
+        TemplateFile {
+            path: "storage/framework/.gitkeep",
+            content: include_str!("files/storage/framework/.gitkeep"),
+        },
+        // --- tests/ (integration tests) ---
+        TemplateFile {
+            path: "tests/smoke.rs",
+            content: include_str!("files/tests/smoke.rs"),
         },
     ]
 }

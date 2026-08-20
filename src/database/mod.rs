@@ -31,6 +31,12 @@ pub use sea_orm;
 pub use sea_orm_migration;
 pub use sqlx;
 
+// Re-export the date/time and UUID crates pulled in by the `database`
+// feature, so downstream models reference the pinned versions through
+// Arcature (e.g. `arcature::database::chrono::DateTime`).
+pub use chrono;
+pub use uuid;
+
 /// The marker trait for a SeaORM entity model.
 ///
 /// The `#[model(table = "...")]` macro generates `impl Model for T` where
