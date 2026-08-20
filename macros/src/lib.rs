@@ -16,6 +16,7 @@
 //! the downstream app crate. This crate must NOT depend on `arcature` (would
 //! create a cycle); it depends only on `syn`, `quote`, and `proc-macro2`.
 
+mod application;
 mod command;
 mod component;
 mod controller;
@@ -27,6 +28,7 @@ mod job_handler;
 mod listener;
 mod middleware;
 mod model;
+mod module;
 mod page;
 mod page_macro;
 mod policy;
@@ -164,6 +166,18 @@ pub fn page(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn page_macro(input: TokenStream) -> TokenStream {
     finish(self::page_macro::page_macro(input.into()))
+}
+
+/// `application! { pub App { .. } }` — see `application/mod.rs`.
+#[proc_macro]
+pub fn application(input: TokenStream) -> TokenStream {
+    finish(self::application::application(input.into()))
+}
+
+/// `module! { pub Accounts { .. } }` — see `module/mod.rs`.
+#[proc_macro]
+pub fn module(input: TokenStream) -> TokenStream {
+    finish(self::module::module(input.into()))
 }
 
 /// `redirect!(route::...)` — see `redirect.rs`.
