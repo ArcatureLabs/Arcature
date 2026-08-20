@@ -1,7 +1,8 @@
-use arcature::prelude::*;
+//! Route registration.
 
-use crate::controllers;
+use arcature::prelude::*;
+use crate::app::controllers::home_controller::HomeController;
 
 pub fn routes() -> Routes {
-    Routes::new([Route::get("/", controllers::index).name("home")])
+    Routes::new([Route::get("/", HomeController::index).name("home")])
 }

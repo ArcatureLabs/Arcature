@@ -116,3 +116,27 @@ fn controller_macro_emits_impl_unchanged() {
     let result = rt.block_on(HomeController::index());
     assert_eq!(result, "hello");
 }
+
+// --- #[listener(Event)] ---
+
+#[arcature::listener(UserRegistered)]
+pub async fn send_welcome_email(event: UserRegistered) -> Result<(), arcature::events::DispatchError> {
+    let _ = event;
+    Ok(())
+}
+
+#[test]
+fn listener_macro_emits_binding() {
+    // The macro generates a `LISTENER_BINDING` static next to the fn.
+    assert_eq!(LISTENER_BINDING.event, "UserRegistered");
+    assert_eq!(LISTENER_BINDING.listener, "send_welcome_email");
+}
+
+#[test]
+fn listener_macro_emits_fn_unchanged() {
+    // If the macro worked, the fn is still callable.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let event = UserRegistered { user_id: 1, email: "a@b.com".into() };
+    let result = rt.block_on(send_welcome_email(event));
+    assert!(result.is_ok());
+}

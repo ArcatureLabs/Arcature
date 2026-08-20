@@ -69,9 +69,28 @@ fn generate_creates_a_project_tree() {
     assert!(target.join("Cargo.toml").exists());
     assert!(target.join("src/main.rs").exists());
     assert!(target.join("src/lib.rs").exists());
-    assert!(target.join("src/controllers/mod.rs").exists());
-    assert!(target.join("src/pages/mod.rs").exists());
     assert!(target.join("src/routes/mod.rs").exists());
+    // app/ structure
+    assert!(target.join("app/mod.rs").exists());
+    assert!(target.join("app/controllers/mod.rs").exists());
+    assert!(target.join("app/controllers/home_controller.rs").exists());
+    assert!(target.join("app/models/mod.rs").exists());
+    assert!(target.join("app/models/user.rs").exists());
+    assert!(target.join("app/services/mod.rs").exists());
+    assert!(target.join("app/services/user_service.rs").exists());
+    assert!(target.join("app/requests/mod.rs").exists());
+    assert!(target.join("app/requests/create_user_request.rs").exists());
+    assert!(target.join("app/requests/update_user_request.rs").exists());
+    assert!(target.join("app/policies/mod.rs").exists());
+    assert!(target.join("app/policies/user_policy.rs").exists());
+    assert!(target.join("app/resources/mod.rs").exists());
+    assert!(target.join("app/resources/user_resource.rs").exists());
+    // resources/ structure (frontend)
+    assert!(target.join("resources/js/app.tsx").exists());
+    assert!(target.join("resources/js/pages/home.tsx").exists());
+    assert!(target.join("resources/js/layouts/default.tsx").exists());
+    assert!(target.join("resources/js/components/.gitkeep").exists());
+    assert!(target.join("resources/css/app.css").exists());
 }
 
 #[test]

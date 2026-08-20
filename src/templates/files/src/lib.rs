@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
-pub mod controllers;
-pub mod pages;
+pub mod app;
 pub mod routes;
 
 use arcature::prelude::*;

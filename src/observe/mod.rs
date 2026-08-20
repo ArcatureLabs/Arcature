@@ -8,13 +8,17 @@
 //! The [`RequestId`] type is a validated, low-cardinality identifier echoed
 //! on every application response via the `x-request-id` header (wire-
 //! compatible, no `X-Arcature-*` prefix). The [`RequestIdLayer`] Tower
-//! layer resolves the id from the upstream header or generates one.
+//! layer resolves the id from the upstream header or generates one. The
+//! [`AccessLogLayer`] emits one structured access log line per request.
+
+mod access_log;
 
 use std::fmt;
 use std::str::FromStr;
 
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 
+pub use access_log::{AccessLogLayer, AccessLogService};
 pub use tracing;
 
 // ---------------------------------------------------------------------------

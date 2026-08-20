@@ -193,7 +193,7 @@ pub use macros::main;
 // `Job` and `Event` share names with the traits `jobs::Job` and
 // `events::Event` in different namespaces (the same trick `serde` uses).
 #[cfg(feature = "macros")]
-pub use arcature_macros::{Event, Job, controller, model, request};
+pub use arcature_macros::{Event, Job, controller, listener, model, request};
 
 // --- The curated prelude ----------------------------------------------------
 

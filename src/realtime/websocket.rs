@@ -150,23 +150,32 @@ impl<A: Authorizer> WebSocketEndpoint<A> {
         let shutdown = self.shutdown.clone();
         ws.max_message_size(limits.max_message_size)
             .max_frame_size(limits.max_frame_size)
-            .on_upgrade(move |socket| run_connection(socket, broadcast, guard, shutdown))
+            .on_upgrade(move |socket| {
+                run_connection(socket, broadcast, guard, limits, shutdown)
+            })
     }
 }
 
 /// The connection loop. Reads from the client and the broadcast, pings on
-/// heartbeat, and closes gracefully on drain.
+/// heartbeat (from `WsLimits`), and closes gracefully on drain or when a
+/// pong is not received within the heartbeat timeout.
 async fn run_connection(
     mut socket: WebSocket,
     broadcast: Broadcast,
     _guard: super::registry::ConnectionGuard,
+    limits: WsLimits,
     shutdown: ShutdownConfig,
 ) {
     use futures::sink::SinkExt;
 
     let mut sub = broadcast.subscribe();
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(20));
+    let mut heartbeat = tokio::time::interval(limits.heartbeat_interval);
     heartbeat.tick().await; // first tick is immediate
+
+    // Track the last pong time. A healthy client responds to pings; if the
+    // time since the last pong exceeds the heartbeat timeout, the peer is
+    // presumed dead and the connection is closed.
+    let mut last_pong = tokio::time::Instant::now();
 
     loop {
         tokio::select! {
@@ -177,8 +186,12 @@ async fn run_connection(
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(msg)) => {
-                        if let Message::Close(_) = msg {
-                            break;
+                        match msg {
+                            Message::Close(_) => break,
+                            Message::Pong(_) => {
+                                last_pong = tokio::time::Instant::now();
+                            }
+                            _ => {}
                         }
                     }
                     Some(Err(_)) | None => break,
@@ -187,7 +200,11 @@ async fn run_connection(
             res = sub.recv() => {
                 match res {
                     Ok(payload) => {
-                        let _ = socket.send(Message::Binary(bytes::Bytes::from(payload.as_bytes().to_vec()))).await;
+                        let _ = socket
+                            .send(Message::Binary(bytes::Bytes::from(
+                                payload.as_bytes().to_vec(),
+                            )))
+                            .await;
                     }
                     Err(ChannelError::Closed) => break,
                     Err(ChannelError::Lagged) => continue,
@@ -195,6 +212,13 @@ async fn run_connection(
                 }
             }
             _ = heartbeat.tick() => {
+                // Enforce pong timeout: if no pong within the timeout window,
+                // the peer is dead. Close the connection.
+                let elapsed = tokio::time::Instant::now().duration_since(last_pong);
+                if elapsed > limits.heartbeat_timeout {
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
+                }
                 let _ = socket.send(Message::Ping(bytes::Bytes::new())).await;
             }
         }
