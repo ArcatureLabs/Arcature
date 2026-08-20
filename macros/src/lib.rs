@@ -38,6 +38,7 @@ mod request;
 mod request_cache;
 mod resource;
 mod route_model;
+mod routes;
 mod schema;
 mod service;
 mod signature;
@@ -178,6 +179,12 @@ pub fn application(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn module(input: TokenStream) -> TokenStream {
     finish(self::module::module(input.into()))
+}
+
+/// `routes! { pub app { .. } }` — see `routes/mod.rs`.
+#[proc_macro]
+pub fn routes(input: TokenStream) -> TokenStream {
+    finish(self::routes::routes(input.into()))
 }
 
 /// `redirect!(route::...)` — see `redirect.rs`.

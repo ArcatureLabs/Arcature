@@ -72,7 +72,7 @@ pub use error::{Error, Result, ValidationError, bad_request, forbidden, not_foun
 #[cfg(any(feature = "api", feature = "inertia"))]
 pub use http::json;
 pub use http::{RedirectResponse, no_content, redirect, text};
-pub use routing::{Middleware, Next, Route, RouteGroup, RouterState, Routes};
+pub use routing::{IntoRoutes, Middleware, Next, Route, RouteGroup, RouterState, Routes};
 
 // Re-export axum method-routing constructors at the crate root so the kernel
 // compiles without a direct `axum::routing` import in user code.
@@ -233,6 +233,19 @@ pub use macros::main;
 // `events::Event` in different namespaces (the same trick `serde` uses).
 #[cfg(feature = "macros")]
 pub use arcature_macros::{Event, Job, controller, listener, model, request};
+
+// The unified DSL macros. A macro and a value may share a name because they
+// live in different namespaces: `page` is both the `#[page("Name")]`
+// attribute and the `page(props)` constructor, and `redirect` is both the
+// `redirect!()` macro and the `redirect()` response builder. The one pairing
+// Rust cannot express is two macros with one name, so the `page!` bang is
+// exported as `page_macro!` -- `#[page]` already owns `page` in the macro
+// namespace.
+#[cfg(all(feature = "macros", feature = "dx"))]
+pub use arcature_macros::{
+    DxComponent, application, command, job_handler, middleware, module, page, page_macro, policy,
+    provider, redirect, request_cache, resource, route_model, routes, service,
+};
 
 // --- The curated prelude ----------------------------------------------------
 

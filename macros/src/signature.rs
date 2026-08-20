@@ -52,45 +52,6 @@ pub fn validate_public_async_fn(
     Ok(())
 }
 
-/// Returns the parameter names of a function signature, in declaration
-/// order. `self` receivers are skipped; non-identifier patterns (e.g.
-/// destructuring) render as `"_"`.
-///
-/// Used by the metadata-emitting macros (`#[controller]`,
-/// `#[request_cache]`) to record handler parameter names for `arc check` /
-/// UAG inspection without parsing function bodies.
-pub fn parameter_names(sig: &syn::Signature) -> Vec<String> {
-    sig.inputs
-        .iter()
-        .filter_map(|arg| match arg {
-            syn::FnArg::Receiver(_) => None,
-            syn::FnArg::Typed(pat_type) => Some(match &*pat_type.pat {
-                syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
-                _ => "_".to_string(),
-            }),
-        })
-        .collect()
-}
-
-/// Converts a `PascalCase` / `camelCase` identifier to `snake_case`.
-///
-/// Used to derive default kind / name strings from type names (e.g.
-/// `SendVerificationEmail` -> `send_verification_email`).
-pub fn to_snake_case(input: &str) -> String {
-    let mut out = String::with_capacity(input.len() + 4);
-    for (i, ch) in input.char_indices() {
-        if ch.is_ascii_uppercase() {
-            if i != 0 {
-                out.push('_');
-            }
-            out.push(ch.to_ascii_lowercase());
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,22 +94,5 @@ mod tests {
         assert!(err.to_compile_error().to_string().contains("return type"));
     }
 
-    #[test]
-    fn parameter_names_lists_idents_in_order() {
-        let f = parse_fn(quote! { pub async fn show(auth: Auth, link: Bound<Link>) -> R { todo!() } });
-        assert_eq!(parameter_names(&f.sig), vec!["auth", "link"]);
-    }
 
-    #[test]
-    fn parameter_names_renders_patterns_as_underscore() {
-        let f = parse_fn(quote! { pub async fn show((a, b): (u8, u8)) -> R { todo!() } });
-        assert_eq!(parameter_names(&f.sig), vec!["_"]);
-    }
-
-    #[test]
-    fn snake_case_conversion() {
-        assert_eq!(to_snake_case("SendVerificationEmail"), "send_verification_email");
-        assert_eq!(to_snake_case("User"), "user");
-        assert_eq!(to_snake_case("already_snake"), "already_snake");
-    }
 }

@@ -128,3 +128,13 @@ pub use crate::{controller, model, request};
 
 #[cfg(all(feature = "macros", feature = "events"))]
 pub use crate::listener;
+
+// The unified DSL macros. `page` and `redirect` are absent from this list on
+// purpose: a `use` names every namespace at once, and the imports above
+// already bring in `crate::page` and `crate::redirect` -- which carry the
+// macro of each name along with the value.
+#[cfg(all(feature = "macros", feature = "dx"))]
+pub use crate::{
+    DxComponent, application, command, job_handler, middleware, module, page_macro, policy,
+    provider, request_cache, resource, route_model, routes, service,
+};

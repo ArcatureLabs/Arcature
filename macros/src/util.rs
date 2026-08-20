@@ -20,3 +20,46 @@ pub fn to_snake_case(s: &str) -> String {
     }
     result
 }
+
+/// Convert a snake_case name to PascalCase.
+///
+/// Used by `#[middleware]` to derive the generated middleware type's name
+/// from the annotated function's name (`require_auth` -> `RequireAuth`).
+pub fn to_pascal_case(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut capitalize = true;
+    for ch in s.chars() {
+        if ch == '_' {
+            capitalize = true;
+        } else if capitalize {
+            result.extend(ch.to_uppercase());
+            capitalize = false;
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{to_pascal_case, to_snake_case};
+
+    #[test]
+    fn snake_case_splits_on_capitals() {
+        assert_eq!(to_snake_case("SendVerificationEmail"), "send_verification_email");
+        assert_eq!(to_snake_case("User"), "user");
+        assert_eq!(to_snake_case("already_snake"), "already_snake");
+    }
+
+    #[test]
+    fn pascal_case_capitalizes_each_word() {
+        assert_eq!(to_pascal_case("require_auth"), "RequireAuth");
+        assert_eq!(to_pascal_case("auth"), "Auth");
+    }
+
+    #[test]
+    fn pascal_case_leaves_an_already_pascal_name_alone() {
+        assert_eq!(to_pascal_case("RequireAuth"), "RequireAuth");
+    }
+}

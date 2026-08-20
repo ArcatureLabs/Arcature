@@ -20,10 +20,17 @@
 
 use crate::error::{Error, Result};
 use axum::Router;
-use axum::extract::Request;
 use axum::handler::Handler as AxumHandler;
 use axum::middleware::from_fn;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
+
+// The request and response types a handler or middleware is written against.
+// Re-exported (not merely imported) so a `#[middleware]` expansion can name
+// them as `::arcature::routing::Request` without the user's crate depending
+// on axum directly. They stay on the `routing` path rather than the crate
+// root because `arcature::Request` is already the validated-request contract.
+pub use axum::extract::Request;
+pub use axum::response::Response;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
