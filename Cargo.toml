@@ -49,6 +49,7 @@ default = [
     "dx",
     "inertia",
     "database",
+    "db-postgres",
     "auth",
     "validation",
     "cache",
@@ -88,14 +89,40 @@ dx = ["macros", "events", "jobs"]
 # Native Inertia.js server protocol implementation.
 inertia = ["dep:http"]
 
-# Database: single PostgreSQL pool shared by SeaORM + SQLx, models,
-# migrations, transactions, raw-SQL escape hatch.
+# Database: one pool shared by SeaORM + SQLx, models, migrations,
+# transactions, raw-SQL escape hatch.
+#
+# Driver-neutral on its own: it brings the crates but not a driver, so
+# enabling `database` alone gives a build that cannot connect to anything.
+# Pick exactly one of `db-postgres` / `db-sqlite` / `db-mysql` -- `default`
+# picks `db-postgres`. Splitting them is what lets one crate serve all three
+# without SQLite users compiling the Postgres protocol.
 database = [
     "dep:sqlx",
     "dep:sea-orm",
     "dep:sea-orm-migration",
     "dep:chrono",
     "dep:uuid",
+]
+
+# The database drivers. Exactly one belongs in a given build.
+db-postgres = [
+    "database",
+    "sqlx/postgres",
+    "sea-orm/sqlx-postgres",
+    "sea-orm-migration/sqlx-postgres",
+]
+db-sqlite = [
+    "database",
+    "sqlx/sqlite",
+    "sea-orm/sqlx-sqlite",
+    "sea-orm-migration/sqlx-sqlite",
+]
+db-mysql = [
+    "database",
+    "sqlx/mysql",
+    "sea-orm/sqlx-mysql",
+    "sea-orm-migration/sqlx-mysql",
 ]
 
 # Authentication, sessions, authorization policies, password hashing.
@@ -145,11 +172,42 @@ pages = ["dep:http", "dep:tokio"]
 realtime = ["dep:tokio", "dep:futures", "dep:bytes"]
 
 # The `arc` CLI, generators, and the canonical application templates.
-cli = ["dep:clap", "dep:tokio", "dep:tokio-util", "templates"]
+cli = ["dep:clap", "dep:tokio", "dep:tokio-util", "dep:notify", "templates"]
 templates = []
 
 # Developer one-port proxy (framework internal; powers `arc dev`).
 dev-proxy = ["dep:hyper", "dep:hyper-util", "dep:tokio"]
+
+# The Unified Application Graph: one deterministic artifact assembled from
+# the `&'static` metadata the DSL macros already emit, and the codegen that
+# turns it into TypeScript and OpenAPI. Consumed by `arc typegen` / `arc dev`
+# / `arc routes`; nothing on the request path reads it.
+uag = ["dx", "inertia"]
+
+# In-process test harness: `TestApp`, the fluent client, the assertions, and
+# the fakes. A dev-dependency feature -- an application enables it under
+# `[dev-dependencies]`, never under `[dependencies]`.
+test-kit = ["macros", "dep:http-body-util", "dep:tower-sessions-memory-store"]
+
+# OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
+# names its own endpoints, and the bundled presets are plain consts.
+oauth = ["dep:oauth2", "dep:reqwest", "dep:url", "dep:getrandom"]
+
+# OpenTelemetry traces over OTLP, plus the Prometheus text endpoint.
+# An operator opt-in: the exporter stack is large and most apps never
+# enable it.
+otel = [
+    "observe",
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
+
+# Serve the generated OpenAPI document and an interactive reference at
+# `/_arcature/openapi.json` and `/_arcature/docs`. Off in production
+# builds by default -- an API description is a map of the attack surface.
+api-docs = ["api", "uag"]
 
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
@@ -157,6 +215,7 @@ fullstack = [
     "dx",
     "inertia",
     "database",
+    "db-postgres",
     "auth",
     "validation",
     "cache",
@@ -172,6 +231,7 @@ fullstack = [
     "cli",
     "templates",
     "dev-proxy",
+    "uag",
 ]
 
 [lints.rust]
@@ -214,9 +274,11 @@ serde_json = { version = "1.0.145" }
 clap = { version = "4.6.6", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"], optional = true }
 
 # Database.
-sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros", "json", "uuid", "chrono"], optional = true }
-sea-orm = { version = "2.0.1", default-features = false, features = ["macros", "runtime-tokio", "sqlx-postgres", "with-json", "with-uuid", "with-chrono"], optional = true }
-sea-orm-migration = { version = "2.0.1", default-features = false, features = ["runtime-tokio", "sqlx-postgres"], optional = true }
+# No driver feature here on purpose -- the `db-*` features add it. See the
+# comment on the `database` feature.
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "macros", "json", "uuid", "chrono"], optional = true }
+sea-orm = { version = "2.0.1", default-features = false, features = ["macros", "runtime-tokio", "with-json", "with-uuid", "with-chrono"], optional = true }
+sea-orm-migration = { version = "2.0.1", default-features = false, features = ["runtime-tokio"], optional = true }
 chrono = { version = "0.4.45", default-features = false, features = ["serde"], optional = true }
 uuid = { version = "1.24.0", default-features = false, features = ["v4", "serde"], optional = true }
 
@@ -247,6 +309,25 @@ percent-encoding = { version = "2.3", default-features = false, optional = true 
 # Observability.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"], optional = true }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry"], optional = true }
+
+# OAuth (feature `oauth`). `oauth2` owns the protocol; `reqwest` is the
+# HTTP client it drives for the token exchange.
+oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest", "rustls-tls", "timing-resistant-secret-traits"], optional = true }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json"], optional = true }
+
+# OpenTelemetry (feature `otel`).
+opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.32.1", default-features = false, features = ["trace", "rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["trace", "grpc-tonic"], optional = true }
+tracing-opentelemetry = { version = "0.33.0", default-features = false, optional = true }
+
+# The test kit (feature `test-kit`): collecting a response body without a
+# socket, and a session store that lives for one test.
+http-body-util = { version = "0.1.5", default-features = false, optional = true }
+tower-sessions-memory-store = { version = "0.15.0", default-features = false, optional = true }
+
+# `arc dev` file watching (feature `cli`).
+notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"], optional = true }
 
 # Error handling.
 thiserror = { version = "2.0", default-features = false }

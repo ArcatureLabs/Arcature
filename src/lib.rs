@@ -223,6 +223,18 @@ pub mod templates;
 #[cfg(feature = "cli")]
 pub mod cli;
 
+#[cfg(feature = "uag")]
+pub mod uag;
+
+#[cfg(feature = "oauth")]
+pub mod oauth;
+
+// The harness is a development tool. It is gated so it cannot be reached
+// from a production build even by accident -- a test double that answers
+// like the real subsystem is exactly the thing that must not ship.
+#[cfg(feature = "test-kit")]
+pub mod test_kit;
+
 #[cfg(feature = "macros")]
 mod macros;
 #[cfg(feature = "macros")]
