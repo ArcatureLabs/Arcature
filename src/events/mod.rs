@@ -99,7 +99,11 @@ type ErasedListener = Arc<dyn Fn(serde_json::Value) -> BoxFuture + Send + Sync>;
 /// inspection. This is metadata only; it does not register the listener at
 /// runtime. The application registers listeners explicitly via
 /// [`Dispatcher::register`] at startup.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Serialize` so the `module!` macro's `listeners:` metadata can be
+/// aggregated into the `ModuleDescriptor` and serialized into the Unified
+/// Application Graph by `arcature-build`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ListenerBinding {
     /// The event type name (e.g. `"UserRegistered"`).
     pub event: &'static str,

@@ -46,6 +46,7 @@ members = [".", "macros"]
 [features]
 default = [
     "macros",
+    "dx",
     "inertia",
     "database",
     "auth",
@@ -74,6 +75,16 @@ macros = [
     "dep:hyper",
     "dep:hyper-util",
 ]
+
+# The Arcature application DX layer: the unified DSL (`module!`,
+# `application!`, `routes!`, `#[service]`, `#[resource]`, `#[page]`, etc.)
+# and the runtime contracts those macros generate code against
+# (`ApplicationGraph`, `ModuleDescriptor`, `Resolve<S>`, `Service`, `Bound`,
+# `Command`, etc.). Implies `macros` (the DSL macros) and `events` + `jobs`
+# (the runtime modules whose binding-metadata types `ModuleDescriptor`
+# aggregates). Database-bound contracts (`RouteModel`, `Bound<T>`,
+# `DbFromState`) are cross-gated on `dx` + `database` (+ `api` for `Bound`).
+dx = ["macros", "events", "jobs"]
 
 # Native Inertia.js server protocol implementation.
 inertia = ["dep:http"]
@@ -144,6 +155,7 @@ dev-proxy = ["dep:hyper", "dep:hyper-util", "dep:tokio", "dep:tower-http"]
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
     "macros",
+    "dx",
     "inertia",
     "database",
     "auth",

@@ -49,6 +49,16 @@ pub mod http;
 pub mod proxy;
 pub mod routing;
 
+// The Arcature application DX layer: the unified DSL (`module!`,
+// `application!`, `routes!`, `#[service]`, `#[resource]`, `#[page]`, ...)
+// and the runtime contracts those macros generate code against
+// (`ApplicationGraph`, `ModuleDescriptor`, `Resolve<S>`, `Service`,
+// `Bound<T>`, `Command`, ...). Gated behind the `dx` feature, which pulls
+// in the `arcature-macros` DSL macros and the `events` + `jobs` subsystems
+// whose binding-metadata types `ModuleDescriptor` aggregates.
+#[cfg(feature = "dx")]
+pub mod dx;
+
 // The one-port development proxy (Vite over IPC). Engine plumbing, gated
 // behind the `dev-proxy` feature so production builds pay nothing. The layer
 // is a zero-overhead pass-through when `ARCATURE_VITE_IPC` is unset.
@@ -76,6 +86,28 @@ pub trait DxComponent {
     /// The static component name (e.g. the type name).
     const NAME: &'static str;
 }
+
+// --- The Arcature application DX layer (feature `dx`) ----------------------
+//
+// Runtime contracts the DSL macros (`module!`, `application!`, `routes!`,
+// `#[service]`, `#[resource]`, `#[page]`, `#[route_model]`, ...) generate
+// code against. These are re-exported at the crate root so downstream code
+// references them as `arcature::ApplicationGraph`, `arcature::Resolve`, etc.
+#[cfg(feature = "dx")]
+pub use dx::{
+    ApplicationGraph, ControllerMetadata, ControllerMethod, Empty, FieldShape, GraphError, Inject,
+    Json, ModuleDescriptor, ModuleNode, Page, Provider, RequestCacheDescriptor, RequestMetadata,
+    ResourceMetadata, Resolve, RouteDescriptor, RouteMethod, Service,
+    page,
+};
+#[cfg(all(feature = "dx", feature = "database"))]
+pub use dx::{DbFromState, RouteModel};
+#[cfg(all(feature = "dx", feature = "database", feature = "api"))]
+pub use dx::Bound;
+#[cfg(feature = "dx")]
+pub use dx::{Command, CommandError, CommandRegistry};
+#[cfg(feature = "dx")]
+pub use dx::{CommandBinding, JobBinding};
 
 // --- Feature-gated subsystems ----------------------------------------------
 
