@@ -13,6 +13,8 @@ use std::sync::Arc;
 pub struct Resources {
     #[cfg(feature = "database")]
     db: Option<Arc<crate::database::Db>>,
+    #[cfg(feature = "jobs")]
+    jobs: Option<Arc<crate::jobs::Jobs>>,
     #[cfg(feature = "cache")]
     cache: Option<Arc<crate::cache::Cache>>,
     #[cfg(feature = "storage-fs")]
@@ -39,6 +41,19 @@ impl Resources {
     #[cfg(feature = "database")]
     pub(crate) fn set_db(&mut self, db: crate::database::Db) {
         self.db = Some(Arc::new(db));
+    }
+
+    /// The job queue facade, when the `jobs` feature is enabled and the queue
+    /// connected. Use this to enqueue jobs from controllers and handlers.
+    #[cfg(feature = "jobs")]
+    #[must_use]
+    pub fn jobs(&self) -> Option<&crate::jobs::Jobs> {
+        self.jobs.as_deref()
+    }
+
+    #[cfg(feature = "jobs")]
+    pub(crate) fn set_jobs(&mut self, jobs: crate::jobs::Jobs) {
+        self.jobs = Some(Arc::new(jobs));
     }
 
     /// The cache handle, when the `cache` feature is enabled and connected.

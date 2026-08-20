@@ -12,6 +12,8 @@
 pub mod builder;
 pub mod lifecycle;
 pub mod resources;
+#[cfg(feature = "jobs")]
+pub mod jobs_runtime;
 
 pub use builder::{Application, ApplicationBuilder};
 pub use lifecycle::{Lifecycle, LifecycleState};

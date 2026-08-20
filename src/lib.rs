@@ -212,3 +212,8 @@ pub mod prelude;
     feature = "pages"
 ))]
 pub use serde::{Deserialize, Serialize};
+
+// Re-export serde_json so the `inertia!()` macro's `$crate::serde_json::json!`
+// path resolves from downstream code. Always available (serde_json is a
+// non-optional dependency).
+pub use serde_json;

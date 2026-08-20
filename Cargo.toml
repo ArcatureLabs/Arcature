@@ -136,7 +136,7 @@ pages = ["dep:http"]
 realtime = ["dep:tokio", "dep:futures", "dep:bytes"]
 
 # The `arc` CLI, generators, and the canonical application templates.
-cli = ["dep:clap", "dep:tokio", "dep:tokio-util"]
+cli = ["dep:clap", "dep:tokio", "dep:tokio-util", "templates"]
 templates = []
 
 # Developer one-port proxy (framework internal; powers `arc dev`).

@@ -37,6 +37,12 @@ pub struct Application<S: RouterState = ()> {
     // Subsystem configs (feature-gated). Each is `Some` when the app opts in.
     #[cfg(feature = "database")]
     database_config: Option<crate::database::DatabaseConfig>,
+    #[cfg(feature = "jobs")]
+    jobs_registry: Option<crate::jobs::Registry>,
+    #[cfg(feature = "jobs")]
+    worker_config: Option<crate::jobs::WorkerConfig>,
+    #[cfg(feature = "jobs")]
+    scheduler: Option<crate::jobs::Scheduler>,
     #[cfg(feature = "cache")]
     cache_config: Option<crate::cache::CacheConfig>,
     #[cfg(feature = "storage-fs")]
@@ -59,6 +65,12 @@ impl<S: RouterState> Application<S> {
             port: DEFAULT_PORT,
             #[cfg(feature = "database")]
             database_config: None,
+            #[cfg(feature = "jobs")]
+            jobs_registry: None,
+            #[cfg(feature = "jobs")]
+            worker_config: None,
+            #[cfg(feature = "jobs")]
+            scheduler: None,
             #[cfg(feature = "cache")]
             cache_config: None,
             #[cfg(feature = "storage-fs")]
@@ -98,6 +110,12 @@ pub struct ApplicationBuilder<S: RouterState = ()> {
     port: u16,
     #[cfg(feature = "database")]
     database_config: Option<crate::database::DatabaseConfig>,
+    #[cfg(feature = "jobs")]
+    jobs_registry: Option<crate::jobs::Registry>,
+    #[cfg(feature = "jobs")]
+    worker_config: Option<crate::jobs::WorkerConfig>,
+    #[cfg(feature = "jobs")]
+    scheduler: Option<crate::jobs::Scheduler>,
     #[cfg(feature = "cache")]
     cache_config: Option<crate::cache::CacheConfig>,
     #[cfg(feature = "storage-fs")]
@@ -145,6 +163,40 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
+    /// Enable the job queue subsystem with a handler registry. The worker and
+    /// optional scheduler are started automatically from the shared database
+    /// pool during startup, so the `database` feature must also be enabled.
+    ///
+    /// When `scheduler` is also set via [`scheduler`](Self::scheduler), both
+    /// the worker and the scheduler run until shutdown.
+    #[cfg(feature = "jobs")]
+    #[must_use]
+    pub fn jobs(mut self, registry: crate::jobs::Registry) -> Self {
+        self.jobs_registry = Some(registry);
+        self
+    }
+
+    /// Override the worker configuration (concurrency, lease, heartbeat, etc.).
+    /// Only meaningful when [`jobs`](Self::jobs) is set. If omitted, the worker
+    /// uses [`WorkerConfig::default`](crate::jobs::WorkerConfig::default).
+    #[cfg(feature = "jobs")]
+    #[must_use]
+    pub fn worker_config(mut self, config: crate::jobs::WorkerConfig) -> Self {
+        self.worker_config = Some(config);
+        self
+    }
+
+    /// Register a recurring-job scheduler. The scheduler enqueues jobs on a
+    /// cadence; the worker (started via [`jobs`](Self::jobs)) claims and runs
+    /// them. Without a worker the scheduler would only enqueue jobs that no
+    /// one runs, so this is only meaningful when [`jobs`](Self::jobs) is set.
+    #[cfg(feature = "jobs")]
+    #[must_use]
+    pub fn scheduler(mut self, scheduler: crate::jobs::Scheduler) -> Self {
+        self.scheduler = Some(scheduler);
+        self
+    }
+
     /// Enable the cache subsystem.
     #[cfg(feature = "cache")]
     #[must_use]
@@ -180,6 +232,12 @@ impl<S: RouterState> ApplicationBuilder<S> {
             port: self.port,
             #[cfg(feature = "database")]
             database_config: self.database_config,
+            #[cfg(feature = "jobs")]
+            jobs_registry: self.jobs_registry,
+            #[cfg(feature = "jobs")]
+            worker_config: self.worker_config,
+            #[cfg(feature = "jobs")]
+            scheduler: self.scheduler,
             #[cfg(feature = "cache")]
             cache_config: self.cache_config,
             #[cfg(feature = "storage-fs")]
@@ -228,13 +286,16 @@ impl Application<()> {
 
 impl<S: RouterState> Application<S> {
     /// Run the application with a state closure. Starts subsystems in order
-    /// (database, cache, storage, mail), builds the state from the started
-    /// resources, applies it to the router, marks readiness, serves with
-    /// graceful shutdown, and tears subsystems down in reverse.
+    /// (database, jobs, cache, storage, mail), builds the state from the
+    /// started resources, applies it to the router, marks readiness, serves
+    /// with graceful shutdown, and tears subsystems down in reverse.
+    ///
+    /// The job worker (and optional scheduler) reuse the database pool and
+    /// are spawned as managed tasks that exit on shutdown.
     ///
     /// Requires the `macros` feature.
     #[cfg(feature = "macros")]
-    pub async fn run_with_state(self, state_fn: StateFn<S>) -> EngineResult<()> {
+    pub async fn run_with_state(mut self, state_fn: StateFn<S>) -> EngineResult<()> {
         use tokio::net::TcpListener;
 
         let port = resolve_port(self.port);
@@ -252,6 +313,16 @@ impl<S: RouterState> Application<S> {
 
         let lifecycle = Lifecycle::new();
 
+        // Take ownership of the jobs fields up front: the worker needs the
+        // registry by value and the scheduler is not Clone (its entries hold
+        // boxed closures). Everything else borrows `&self`.
+        #[cfg(feature = "jobs")]
+        let jobs_registry = self.jobs_registry.take();
+        #[cfg(feature = "jobs")]
+        let worker_config = self.worker_config;
+        #[cfg(feature = "jobs")]
+        let scheduler = self.scheduler.take();
+
         // Ordered startup: database → cache → storage → mail.
         let mut resources = Resources::empty();
         #[cfg(feature = "database")]
@@ -265,6 +336,17 @@ impl<S: RouterState> Application<S> {
                 })?;
             resources.set_db(db);
         }
+
+        // Jobs reuse the database pool: migrate, build the facade, spawn the
+        // worker (and optional scheduler) as managed tasks.
+        #[cfg(feature = "jobs")]
+        let jobs_runtime = crate::application::jobs_runtime::start_jobs(
+            jobs_registry,
+            worker_config,
+            scheduler,
+            &mut resources,
+        )
+        .await?;
         #[cfg(feature = "cache")]
         if let Some(cfg) = &self.cache_config {
             let cache = crate::cache::Cache::connect(cfg.clone())
@@ -313,7 +395,7 @@ impl<S: RouterState> Application<S> {
 
         lifecycle.begin_drain();
 
-        // Reverse-order shutdown: mail → storage → cache → database.
+        // Reverse-order shutdown: mail → storage → cache → jobs → database.
         #[cfg(feature = "mail")]
         if let Some(mailer) = resources.mail() {
             let _ = mailer.shutdown().await;
@@ -325,6 +407,10 @@ impl<S: RouterState> Application<S> {
         #[cfg(feature = "cache")]
         if let Some(cache) = resources.cache() {
             let _ = cache.close().await;
+        }
+        #[cfg(feature = "jobs")]
+        if let Some(runtime) = jobs_runtime {
+            runtime.shutdown().await?;
         }
         #[cfg(feature = "database")]
         if let Some(db) = resources.db() {
