@@ -115,8 +115,8 @@ pub use dx::{CommandBinding, JobBinding};
 pub mod inertia;
 #[cfg(feature = "inertia")]
 pub use inertia::{
-    AssetVersion, Inertia, InertiaConfig, InertiaError, InertiaLayer, RootDocument, ScriptBody,
-    default_root_document,
+    AssetVersion, Inertia, InertiaConfig, InertiaError, InertiaLayer, InertiaRequest, RootDocument,
+    ScriptBody, default_root_document,
 };
 // The `inertia!()` macro is `#[macro_export]` inside `inertia::mod`, so it is
 // reachable as `arcature::inertia!(...)` at the crate root.
@@ -232,7 +232,7 @@ pub use macros::main;
 // `Job` and `Event` share names with the traits `jobs::Job` and
 // `events::Event` in different namespaces (the same trick `serde` uses).
 #[cfg(feature = "macros")]
-pub use arcature_macros::{Event, Job, controller, listener, model, request};
+pub use arcature_macros::{Event, Job, listener, model, request};
 
 // The unified DSL macros. A macro and a value may share a name because they
 // live in different namespaces: `page` is both the `#[page("Name")]`
@@ -243,8 +243,8 @@ pub use arcature_macros::{Event, Job, controller, listener, model, request};
 // namespace.
 #[cfg(all(feature = "macros", feature = "dx"))]
 pub use arcature_macros::{
-    DxComponent, application, command, job_handler, middleware, module, page, page_macro, policy,
-    provider, redirect, request_cache, resource, route_model, routes, service,
+    DxComponent, application, command, controller, job_handler, middleware, module, page,
+    page_macro, policy, provider, redirect, request_cache, resource, route_model, routes, service,
 };
 
 // --- The curated prelude ----------------------------------------------------

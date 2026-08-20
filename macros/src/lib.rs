@@ -74,7 +74,7 @@ pub fn request(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// `#[controller]` — see `controller.rs`.
 #[proc_macro_attribute]
 pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
-    controller::controller(attr, item)
+    finish(controller::controller(attr.into(), item.into()))
 }
 
 /// `#[derive(Job)]` — see `job.rs`.

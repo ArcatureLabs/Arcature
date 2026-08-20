@@ -116,15 +116,15 @@ pub use crate::observe::RequestId;
 #[cfg(feature = "macros")]
 pub use crate::main;
 
-// The attribute macros (`#[controller]`, `#[model]`, `#[request]`,
-// `#[listener]`) are re-exported at the crate root; pull them into the prelude
-// so `use arcature::prelude::*` brings them into scope. The derive macros
+// The attribute macros (`#[model]`, `#[request]`, `#[listener]`) are
+// re-exported at the crate root; pull them into the prelude so
+// `use arcature::prelude::*` brings them into scope. The derive macros
 // `#[derive(Job)]` and `#[derive(Event)]` are NOT re-exported here: they share
 // names with the `Job`/`Event` traits (already imported above) in the type
 // namespace, so a glob re-export would conflict. Users who derive them add
 // `use arcature::Job;` / `use arcature::Event;` explicitly.
 #[cfg(feature = "macros")]
-pub use crate::{controller, model, request};
+pub use crate::{model, request};
 
 #[cfg(all(feature = "macros", feature = "events"))]
 pub use crate::listener;
@@ -133,8 +133,10 @@ pub use crate::listener;
 // purpose: a `use` names every namespace at once, and the imports above
 // already bring in `crate::page` and `crate::redirect` -- which carry the
 // macro of each name along with the value.
+// `controller` sits in this group, not the one above: its expansion names
+// `::arcature::ControllerMetadata`, which exists only under `dx`.
 #[cfg(all(feature = "macros", feature = "dx"))]
 pub use crate::{
-    DxComponent, application, command, job_handler, middleware, module, page_macro, policy,
-    provider, request_cache, resource, route_model, routes, service,
+    DxComponent, application, command, controller, job_handler, middleware, module, page_macro,
+    policy, provider, request_cache, resource, route_model, routes, service,
 };

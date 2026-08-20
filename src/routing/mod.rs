@@ -23,6 +23,7 @@ use axum::Router;
 use axum::handler::Handler as AxumHandler;
 use axum::middleware::from_fn;
 use axum::response::IntoResponse;
+use axum::routing::MethodRouter;
 
 // The request and response types a handler or middleware is written against.
 // Re-exported (not merely imported) so a `#[middleware]` expansion can name
@@ -41,22 +42,19 @@ use std::sync::Arc;
 pub trait RouterState: Clone + Send + Sync + 'static {}
 impl<T: Clone + Send + Sync + 'static> RouterState for T {}
 
-/// A type-erased route entry: a closure that folds an `axum::Router<S>` by
-/// adding this route, plus the path template and optional name for URL
-/// generation. The closure captures the handler (an `async fn`), which is
-/// `'static` and `Send`.
+/// A single route: the path template, an optional name for URL generation,
+/// and the `axum::routing::MethodRouter` that dispatches it.
+///
+/// The method router — not the whole `axum::Router` — is what a route owns,
+/// and that is what makes per-route middleware *per route*. An earlier design
+/// held a closure folding `Router<S>`; because `Routes::new` folds routes into
+/// one accumulating router, layering inside that closure wrapped every route
+/// registered so far. A route's middleware silently applied to its siblings.
+/// Layering a `MethodRouter` cannot reach past the one path it serves.
 pub struct Route<S: RouterState = ()> {
     path: String,
     name: Option<String>,
-    apply: Box<dyn FnOnce(Router<S>) -> Router<S> + Send + 'static>,
-}
-
-fn box_apply<S, F>(f: F) -> Box<dyn FnOnce(Router<S>) -> Router<S> + Send + 'static>
-where
-    S: RouterState,
-    F: FnOnce(Router<S>) -> Router<S> + Send + 'static,
-{
-    Box::new(f)
+    method_router: MethodRouter<S>,
 }
 
 impl<S: RouterState> Route<S> {
@@ -66,14 +64,10 @@ impl<S: RouterState> Route<S> {
         H: AxumHandler<T, S> + Send + 'static,
         T: 'static,
     {
-        let path_str: String = path.into();
-        let path_clone = path_str.clone();
-        let router_method = method_router_for(method, handler);
-        let apply = box_apply(move |router: Router<S>| router.route(&path_clone, router_method));
         Route {
-            path: path_str,
+            path: path.into(),
             name: None,
-            apply,
+            method_router: method_router_for(method, handler),
         }
     }
 
@@ -141,18 +135,34 @@ impl<S: RouterState> Route<S> {
         self
     }
 
-    /// Attach middleware to this route.
+    /// Attach middleware to this route, and only this route.
     #[must_use]
     pub fn middleware<M>(mut self, middleware: M) -> Self
     where
         M: Middleware,
     {
-        let prev = self.apply;
-        let apply = box_apply(move |router: Router<S>| {
-            let inner = prev(router);
-            middleware_layer(middleware.clone(), inner)
-        });
-        self.apply = apply;
+        self.method_router = middleware_layer(middleware, self.method_router);
+        self
+    }
+
+    /// Attach a raw [`tower::Layer`] to this route, and only this route.
+    ///
+    /// The escape hatch for middleware that is not a [`Middleware`] — a
+    /// `tower_http` layer, say. Prefer [`middleware`](Self::middleware) for
+    /// application middleware.
+    #[must_use]
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: tower::Layer<axum::routing::Route> + Clone + Send + Sync + 'static,
+        L::Service: tower::Service<Request, Error = std::convert::Infallible>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+        <L::Service as tower::Service<Request>>::Response: IntoResponse + 'static,
+        <L::Service as tower::Service<Request>>::Future: Send + 'static,
+    {
+        self.method_router = self.method_router.layer(layer);
         self
     }
 }
@@ -182,31 +192,99 @@ where
 /// A group of routes sharing a path prefix and/or middleware.
 pub struct RouteGroup<S: RouterState = ()> {
     prefix: String,
-    apply_mw: Vec<MiddlewareLayer<S>>,
+    apply_mw: Vec<RouteLayer<S>>,
     routes: Vec<Route<S>>,
 }
 
-/// A cloneable middleware layer-builder: a closure that folds an
-/// `axum::Router<S>` to apply a layer. Cloneable (Arc-backed) so the same
-/// group middleware can apply to every route in a group.
+/// A cloneable layer-builder over a single route's `MethodRouter<S>`.
+///
+/// Cloneable (Arc-backed) so one group's middleware applies to every route in
+/// the group *individually* -- a group layer must not reach routes outside the
+/// group, which is exactly what folding the whole `Router` used to do.
 #[derive(Clone)]
-pub struct MiddlewareLayer<S: RouterState> {
+pub struct RouteLayer<S: RouterState> {
+    #[allow(clippy::type_complexity)]
+    inner: Arc<dyn Fn(MethodRouter<S>) -> MethodRouter<S> + Send + Sync + 'static>,
+}
+
+impl<S: RouterState> RouteLayer<S> {
+    /// Wrap a fold over a route's method router.
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(MethodRouter<S>) -> MethodRouter<S> + Send + Sync + 'static,
+    {
+        RouteLayer { inner: Arc::new(f) }
+    }
+
+    /// Wrap a [`tower::Layer`] so it can be stored alongside other route
+    /// layers regardless of its concrete type.
+    pub fn from_layer<L>(layer: L) -> Self
+    where
+        L: tower::Layer<axum::routing::Route> + Clone + Send + Sync + 'static,
+        L::Service: tower::Service<Request, Error = std::convert::Infallible>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+        <L::Service as tower::Service<Request>>::Response: IntoResponse + 'static,
+        <L::Service as tower::Service<Request>>::Future: Send + 'static,
+    {
+        RouteLayer::new(move |method_router: MethodRouter<S>| method_router.layer(layer.clone()))
+    }
+
+    /// Apply the fold.
+    #[must_use]
+    pub fn apply(&self, method_router: MethodRouter<S>) -> MethodRouter<S> {
+        (self.inner)(method_router)
+    }
+}
+
+/// A cloneable layer-builder over a whole `axum::Router<S>`.
+///
+/// This is the collection-level counterpart of [`RouteLayer`]: it wraps every
+/// route in the router it is applied to. The application pipeline
+/// ([`crate::application::pipeline`]) stores its layers as these, which is how
+/// `InertiaLayer`, `SessionLayer`, `CsrfLayer` and a user's own
+/// [`tower::Layer`] sit in one ordered list despite having unrelated types.
+#[derive(Clone)]
+pub struct RouterLayer<S: RouterState> {
     #[allow(clippy::type_complexity)]
     inner: Arc<dyn Fn(Router<S>) -> Router<S> + Send + Sync + 'static>,
 }
 
-impl<S: RouterState> MiddlewareLayer<S> {
-    fn new<F>(f: F) -> Self
+impl<S: RouterState> RouterLayer<S> {
+    /// Wrap a fold over the router.
+    pub fn new<F>(f: F) -> Self
     where
         F: Fn(Router<S>) -> Router<S> + Send + Sync + 'static,
     {
-        MiddlewareLayer { inner: Arc::new(f) }
+        RouterLayer { inner: Arc::new(f) }
     }
 
-    fn apply(&self, router: Router<S>) -> Router<S> {
+    /// Wrap a [`tower::Layer`] applicable to an `axum::Router`.
+    pub fn from_layer<L>(layer: L) -> Self
+    where
+        L: tower::Layer<axum::routing::Route> + Clone + Send + Sync + 'static,
+        L::Service: tower::Service<Request, Error = std::convert::Infallible>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+        <L::Service as tower::Service<Request>>::Response: IntoResponse + 'static,
+        <L::Service as tower::Service<Request>>::Future: Send + 'static,
+    {
+        RouterLayer::new(move |router: Router<S>| router.layer(layer.clone()))
+    }
+
+    /// Apply the fold.
+    #[must_use]
+    pub fn apply(&self, router: Router<S>) -> Router<S> {
         (self.inner)(router)
     }
 }
+
+/// Retained name for [`RouterLayer`].
+pub type MiddlewareLayer<S> = RouterLayer<S>;
 
 impl<S: RouterState> RouteGroup<S> {
     /// Begin a group under `prefix`.
@@ -218,7 +296,7 @@ impl<S: RouterState> RouteGroup<S> {
         }
     }
 
-    /// Attach middleware to the whole group.
+    /// Attach middleware to every route in the group.
     #[must_use]
     pub fn middleware<M>(mut self, middleware: M) -> Self
     where
@@ -226,9 +304,26 @@ impl<S: RouterState> RouteGroup<S> {
     {
         let m = middleware.clone();
         self.apply_mw
-            .push(MiddlewareLayer::new(move |router: Router<S>| {
-                middleware_layer(m.clone(), router)
+            .push(RouteLayer::new(move |method_router: MethodRouter<S>| {
+                middleware_layer(m.clone(), method_router)
             }));
+        self
+    }
+
+    /// Attach a raw [`tower::Layer`] to every route in the group.
+    #[must_use]
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: tower::Layer<axum::routing::Route> + Clone + Send + Sync + 'static,
+        L::Service: tower::Service<Request, Error = std::convert::Infallible>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+        <L::Service as tower::Service<Request>>::Response: IntoResponse + 'static,
+        <L::Service as tower::Service<Request>>::Future: Send + 'static,
+    {
+        self.apply_mw.push(RouteLayer::from_layer(layer));
         self
     }
 }
@@ -245,12 +340,9 @@ impl<S: RouterState> IntoRoutes<S> for RouteGroup<S> {
             .into_iter()
             .map(move |mut r| {
                 r.path = join_path(&prefix, &r.path);
-                let prev = r.apply;
-                let group_mw = group_mw.clone();
-                r.apply = box_apply(move |router: Router<S>| {
-                    let router = prev(router);
-                    group_mw.iter().fold(router, |router, mw| mw.apply(router))
-                });
+                r.method_router = group_mw
+                    .iter()
+                    .fold(r.method_router, |method_router, mw| mw.apply(method_router));
                 r
             })
             .collect()
@@ -306,7 +398,7 @@ impl<S: RouterState> Routes<S> {
             if let Some(name) = r.name {
                 out.names.insert(name, r.path.clone());
             }
-            out.router = (r.apply)(out.router);
+            out.router = out.router.route(&r.path, r.method_router);
         }
         out
     }
@@ -328,6 +420,51 @@ impl<S: RouterState> Routes<S> {
             self.names.insert(name, path);
         }
         self.router = self.router.merge(other.router);
+        self
+    }
+
+    /// Attach middleware to every route in this collection.
+    ///
+    /// Collection-level, unlike [`Route::middleware`] and
+    /// [`RouteGroup::middleware`]: it wraps the routes present *at the time of
+    /// the call*. Routes merged in afterwards are not covered, which is what
+    /// lets a public and a guarded collection be merged without the guard
+    /// spreading.
+    #[must_use]
+    pub fn middleware<M>(mut self, middleware: M) -> Self
+    where
+        M: Middleware,
+    {
+        let m = middleware.clone();
+        self.router = self.router.layer(from_fn(move |request, next| {
+            let m = m.clone();
+            async move {
+                match m.handle(request, Next(next)).await {
+                    Ok(response) => response,
+                    Err(error) => error.into_response(),
+                }
+            }
+        }));
+        self
+    }
+
+    /// Attach a raw [`tower::Layer`] to every route in this collection.
+    ///
+    /// Same scope rule as [`middleware`](Self::middleware): routes present at
+    /// the time of the call.
+    #[must_use]
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: tower::Layer<axum::routing::Route> + Clone + Send + Sync + 'static,
+        L::Service: tower::Service<Request, Error = std::convert::Infallible>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+        <L::Service as tower::Service<Request>>::Response: IntoResponse + 'static,
+        <L::Service as tower::Service<Request>>::Future: Send + 'static,
+    {
+        self.router = self.router.layer(layer);
         self
     }
 
@@ -414,12 +551,12 @@ impl Next {
     }
 }
 
-fn middleware_layer<S, M>(middleware: M, router: Router<S>) -> Router<S>
+fn middleware_layer<S, M>(middleware: M, method_router: MethodRouter<S>) -> MethodRouter<S>
 where
     S: RouterState,
     M: Middleware,
 {
-    router.layer(from_fn(move |request, next| {
+    method_router.layer(from_fn(move |request, next| {
         let middleware = middleware.clone();
         async move {
             match middleware.handle(request, Next(next)).await {

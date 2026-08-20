@@ -16,9 +16,10 @@
 //! returns the application state struct.
 
 use crate::application::lifecycle::Lifecycle;
+use crate::application::pipeline::Pipeline;
 use crate::application::resources::Resources;
 use crate::application::{EngineError, EngineResult};
-use crate::routing::{RouterState, Routes};
+use crate::routing::{RouterLayer, RouterState, Routes};
 use axum::Router;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -87,6 +88,7 @@ impl<S: RouterState> Application<S> {
             proxy: None,
             #[cfg(feature = "dev-proxy")]
             dev_proxy_endpoint: None,
+            pipeline: Pipeline::new(),
             _state: std::marker::PhantomData,
         }
     }
@@ -101,6 +103,21 @@ impl<S: RouterState> Application<S> {
     #[must_use]
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// Consume the application and return the fully composed router.
+    ///
+    /// The router-level pipeline (body limit, timeout, session, CSRF, Inertia,
+    /// user layers) is already applied; the service-level stages (proxy, dev
+    /// proxy) are not, because they wrap the router as a service rather than
+    /// as a `Router`.
+    ///
+    /// This exists so an application can be driven as a `tower::Service`
+    /// without binding a socket — which is how the pipeline order is tested,
+    /// and how the test kit will boot an app in-process.
+    #[must_use]
+    pub fn into_router(self) -> Router<S> {
+        self.router
     }
 }
 
@@ -135,6 +152,10 @@ pub struct ApplicationBuilder<S: RouterState = ()> {
     proxy: Option<crate::proxy::ProxyFn>,
     #[cfg(feature = "dev-proxy")]
     dev_proxy_endpoint: Option<crate::dev_proxy::endpoint::IpcEndpoint>,
+    // The router-level layers, held in slots so their order is the documented
+    // one rather than the order the builder methods were called in. See
+    // [`crate::application::pipeline`].
+    pipeline: Pipeline<S>,
     _state: std::marker::PhantomData<S>,
 }
 
@@ -270,13 +291,129 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
+    /// Attach a [`tower::Layer`] to the whole application.
+    ///
+    /// This is the general escape hatch, and the one method the rest of the
+    /// pipeline is built on: `tower_http` layers, third-party Tower
+    /// middleware, and anything else that wraps an `axum::Router`.
+    ///
+    /// User layers are the innermost stage of the pipeline — a request
+    /// reaching one has already passed the body limit, the timeout, the
+    /// session, CSRF, and Inertia. Among themselves they nest in call order,
+    /// first call outermost. See [`crate::application::pipeline`] for the full
+    /// order and the reasoning behind it.
+    ///
+    /// ```ignore
+    /// Application::new()
+    ///     .routes(web::routes())
+    ///     .layer(tower_http::compression::CompressionLayer::new())
+    /// ```
+    #[must_use]
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: tower::Layer<axum::routing::Route> + Clone + Send + Sync + 'static,
+        L::Service: tower::Service<crate::routing::Request, Error = std::convert::Infallible>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+        <L::Service as tower::Service<crate::routing::Request>>::Response:
+            axum::response::IntoResponse + 'static,
+        <L::Service as tower::Service<crate::routing::Request>>::Future: Send + 'static,
+    {
+        self.pipeline.user.push(RouterLayer::from_layer(layer));
+        self
+    }
+
+    /// Limit the request body to `bytes`.
+    ///
+    /// Applied outside everything that reads a body, so an oversized upload is
+    /// refused with `413 Payload Too Large` without being buffered. No limit
+    /// is applied unless this is called.
+    #[must_use]
+    pub fn body_limit(mut self, bytes: usize) -> Self {
+        self.pipeline.body_limit = Some(bytes);
+        self
+    }
+
+    /// Bound the total time spent on a request.
+    ///
+    /// A request still in flight when the deadline passes gets
+    /// `408 Request Timeout`. No timeout is applied unless this is called.
+    #[must_use]
+    pub fn timeout(mut self, duration: std::time::Duration) -> Self {
+        self.pipeline.timeout = Some(duration);
+        self
+    }
+
+    /// Enable native Inertia with the given configuration.
+    ///
+    /// Installs [`InertiaLayer`](crate::inertia::InertiaLayer), which puts the
+    /// resolved config and the parsed request context into request extensions.
+    /// **The [`Inertia`](crate::inertia::Inertia) extractor fails without
+    /// it**: a handler taking `inertia: Inertia` in an application that never
+    /// called this method returns `500 inertia adapter error`.
+    #[cfg(feature = "inertia")]
+    #[must_use]
+    pub fn inertia(mut self, config: crate::inertia::InertiaConfig) -> Self {
+        self.pipeline.inertia = Some(RouterLayer::from_layer(
+            crate::inertia::InertiaLayer::new(config),
+        ));
+        self
+    }
+
+    /// Enable sessions, backed by `store`.
+    ///
+    /// The store is a parameter because the session layer is generic over it
+    /// and Arcature does not pick one for you: an in-memory store for tests, a
+    /// database or Redis store in production.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionBuildError`](crate::auth::SessionBuildError) if the
+    /// configuration is internally inconsistent — a `__Host-` cookie without
+    /// `Secure`, a zero max-age, a signing key of the wrong length. Failing
+    /// here rather than at request time means a misconfigured session cannot
+    /// reach production silently.
+    #[cfg(feature = "auth")]
+    pub fn session<Store>(
+        mut self,
+        config: crate::auth::SessionConfig,
+        store: Store,
+    ) -> std::result::Result<Self, crate::auth::SessionBuildError>
+    where
+        Store: tower_sessions::SessionStore + Clone,
+    {
+        let layer = config.into_layer(store)?;
+        self.pipeline.session = Some(RouterLayer::from_layer(layer));
+        Ok(self)
+    }
+
+    /// Enable double-submit-cookie CSRF protection.
+    ///
+    /// Runs after the session and before the handler, so an unsafe request
+    /// with a missing or mismatched token is rejected before it can act.
+    /// Bearer-token requests are exempt (an `Authorization: Bearer` request is
+    /// not sent automatically by a browser, so it is not forgeable the same
+    /// way).
+    #[cfg(feature = "auth")]
+    #[must_use]
+    pub fn csrf(mut self, config: crate::auth::CsrfConfig) -> Self {
+        self.pipeline.csrf = Some(RouterLayer::from_layer(
+            crate::auth::CsrfLayer::with_config(config),
+        ));
+        self
+    }
+
     /// Build the application. For the stateless app (`S = ()`) this is the
     /// final step before `run()`. For a stateful app, the state is produced
     /// at run time from the started resources.
     #[must_use]
     pub fn build(self) -> Application<S> {
         Application {
-            router: self.router,
+            // The router-level pipeline is composed here, once, so that
+            // `serve` and `run_with_state` cannot disagree about it.
+            router: self.pipeline.apply(self.router),
             bind_addr: self.bind_addr,
             port: self.port,
             #[cfg(feature = "database")]
@@ -326,15 +463,13 @@ impl Application<()> {
         let lifecycle = Lifecycle::new();
         let _resources = Resources::empty();
         lifecycle.mark_ready();
+        let service = crate::application::pipeline::compose_service(
+            self.router,
+            self.proxy.clone(),
+            #[cfg(feature = "dev-proxy")]
+            self.dev_proxy_endpoint.clone(),
+        );
         use crate::axum::ServiceExt as _;
-        use tower::Layer as _;
-        let service = self.router.into_service();
-        let service = crate::proxy::ProxyLayer::new(self.proxy.clone()).layer(service);
-        #[cfg(feature = "dev-proxy")]
-        let service = {
-            let endpoint = self.dev_proxy_endpoint.clone();
-            crate::dev_proxy::DevProxyLayer::new(endpoint).layer(service)
-        };
         axum::serve(listener, service.into_make_service())
             .with_graceful_shutdown(shutdown_signal())
             .await
@@ -447,20 +582,17 @@ impl<S: RouterState> Application<S> {
         // Collapse the stateful router to a stateless one for serving.
         let router: Router<()> = self.router.with_state(state);
 
-        // Compose the request pipeline. The pre-routing `ProxyLayer` wraps the
-        // router-as-service so the application's proxy function runs *before*
-        // route selection; the `DevProxyLayer` is the outermost layer, forwarding
-        // Vite requests to the IPC endpoint when `arc dev` set one (AP2.1-3).
-        // When neither is configured both layers are zero-overhead pass-throughs.
+        // Compose the service-level stages of the pipeline. The router-level
+        // stages were composed in `build()`; these two wrap the router as a
+        // service because the proxy rewrites the URI before route selection.
+        // See [`crate::application::pipeline`] for the full order.
+        let service = crate::application::pipeline::compose_service(
+            router,
+            self.proxy.clone(),
+            #[cfg(feature = "dev-proxy")]
+            self.dev_proxy_endpoint.clone(),
+        );
         use crate::axum::ServiceExt as _;
-        use tower::Layer as _;
-        let service = router.into_service();
-        let service = crate::proxy::ProxyLayer::new(self.proxy.clone()).layer(service);
-        #[cfg(feature = "dev-proxy")]
-        let service = {
-            let endpoint = self.dev_proxy_endpoint.clone();
-            crate::dev_proxy::DevProxyLayer::new(endpoint).layer(service)
-        };
 
         lifecycle.mark_ready();
 

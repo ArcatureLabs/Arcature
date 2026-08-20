@@ -11,6 +11,7 @@
 
 pub mod builder;
 pub mod lifecycle;
+pub mod pipeline;
 pub mod resources;
 #[cfg(feature = "jobs")]
 pub mod jobs_runtime;
