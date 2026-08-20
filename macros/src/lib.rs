@@ -21,16 +21,22 @@ mod component;
 mod controller;
 mod diagnostic;
 mod event;
+mod field_shape;
 mod job;
 mod job_handler;
 mod listener;
 mod middleware;
 mod model;
+mod page;
+mod page_macro;
 mod policy;
 mod provider;
 mod redirect;
 mod request;
+mod request_cache;
+mod resource;
 mod route_model;
+mod schema;
 mod service;
 mod signature;
 mod util;
@@ -59,7 +65,7 @@ pub fn model(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// `#[request]` — see `request.rs`.
 #[proc_macro_attribute]
 pub fn request(attr: TokenStream, item: TokenStream) -> TokenStream {
-    request::request(attr, item)
+    finish(request::request(attr.into(), item.into()))
 }
 
 /// `#[controller]` — see `controller.rs`.
@@ -132,6 +138,32 @@ pub fn job_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn route_model(attr: TokenStream, item: TokenStream) -> TokenStream {
     finish(route_model::route_model(attr.into(), item.into()))
+}
+
+/// `#[request_cache(name = "...", key = "...")]` — see `request_cache.rs`.
+#[proc_macro_attribute]
+pub fn request_cache(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(self::request_cache::request_cache(attr.into(), item.into()))
+}
+
+/// `#[resource]` — see `resource.rs`.
+#[proc_macro_attribute]
+pub fn resource(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(resource::resource(attr.into(), item.into()))
+}
+
+/// `#[page("users/show")]` — see `page.rs`.
+#[proc_macro_attribute]
+pub fn page(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(page::page(attr.into(), item.into()))
+}
+
+/// `page_macro!(ShowUserPage { .. })` — see `page_macro.rs`. Named
+/// `page_macro` rather than `page` because attribute and function-like
+/// macros share one namespace, and `#[page("name")]` already owns `page`.
+#[proc_macro]
+pub fn page_macro(input: TokenStream) -> TokenStream {
+    finish(self::page_macro::page_macro(input.into()))
 }
 
 /// `redirect!(route::...)` — see `redirect.rs`.

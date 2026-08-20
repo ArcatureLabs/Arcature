@@ -26,6 +26,7 @@ use crate::diagnostic::{MacroError, MacroErrorCode};
 ///
 /// This is the macro-side intermediate representation; the macro emits one
 /// `::arcature::FieldShape` (the `&'static` runtime type) per entry.
+#[derive(Debug)]
 pub struct FieldShapeData {
     /// The field name (e.g. `"url"`).
     pub name: String,
