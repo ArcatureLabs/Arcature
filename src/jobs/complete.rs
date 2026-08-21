@@ -285,3 +285,166 @@ pub async fn requeue_dead(
         .rows_affected();
     Ok(rows)
 }
+
+// The fencing above is one `WHERE` clause, repeated across four statements in
+// each of the three dialect files, and evaluated by the database rather than
+// by the worker. Reading the code cannot tell you whether it matches nothing
+// at the moment it must: only the server can. These tests need one; see
+// `crate::jobs::test_support` for how they skip without one.
+#[cfg(all(test, feature = "test-kit"))]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::jobs::test_support::{enqueue, queue, row};
+
+    /// A lease short enough to expire inside a test. The schema's
+    /// `lease_seconds >= 1` check is the floor.
+    const SHORT_LEASE: Duration = Duration::from_secs(1);
+
+    /// Long enough that the server's clock has passed `locked_at + 1s`
+    /// however the two disagree about the sub-second part.
+    const PAST_THE_LEASE: Duration = Duration::from_millis(1_600);
+
+    /// Produce the situation fencing exists for: a job whose original worker
+    /// still believes it owns the claim, and a second worker that actually
+    /// does.
+    ///
+    /// The zombie is made the way production makes one -- the lease elapses
+    /// and the sweep requeues the job -- rather than by inventing a token.
+    /// A fabricated token would prove the `WHERE` clause rejects a value that
+    /// was never in the column, which is not the failure that happens.
+    async fn zombie_and_owner(
+        pool: &JobPool,
+    ) -> (
+        /* job */ Uuid,
+        /* zombie */ Uuid,
+        /* owner */ Uuid,
+    ) {
+        let enqueued = enqueue(pool, 1).await;
+        let job = enqueued[0];
+
+        let first = crate::jobs::admin::claim_jobs(pool, "zombie", SHORT_LEASE, 1)
+            .await
+            .expect("the first claim");
+        assert_eq!(first.len(), 1, "the only pending job was not claimed");
+        let zombie = first[0].claim_token;
+
+        tokio::time::sleep(PAST_THE_LEASE).await;
+        let swept = sweep_expired_leases(pool, 10)
+            .await
+            .expect("sweep expired leases");
+        assert_eq!(swept, 1, "the expired lease was not swept");
+
+        let second = crate::jobs::admin::claim_jobs(pool, "owner", Duration::from_secs(60), 1)
+            .await
+            .expect("the second claim");
+        assert_eq!(second.len(), 1, "the requeued job was not claimable again");
+        let owner = second[0].claim_token;
+
+        assert_ne!(zombie, owner, "the reclaim reused the token it fences on");
+        (job, zombie, owner)
+    }
+
+    /// The zombie's success is refused, and the owner's is not.
+    ///
+    /// This is the whole point of the token. Without it the second worker's
+    /// run would be overwritten by the first worker's stale result -- the job
+    /// would be marked succeeded by a process whose work nobody waited for,
+    /// and the row would look identical to a correct completion.
+    #[tokio::test]
+    async fn a_zombie_worker_cannot_complete_a_job_it_no_longer_owns() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+        let (job, zombie, owner) = zombie_and_owner(pool).await;
+
+        let refused = mark_succeeded(pool, job, zombie)
+            .await
+            .expect("run the fenced update");
+        assert_eq!(
+            refused,
+            ClaimTransition::Lost,
+            "a stale worker completed a job it had lost"
+        );
+
+        let (status, attempts, token) = row(pool, job).await;
+        assert_eq!(status, "running", "the row left the owner's hands");
+        assert_eq!(attempts, 2, "the reclaim did not count as an attempt");
+        assert_eq!(
+            token,
+            Some(owner),
+            "the row is no longer fenced to the owner"
+        );
+
+        let accepted = mark_succeeded(pool, job, owner)
+            .await
+            .expect("run the fenced update");
+        assert_eq!(
+            accepted,
+            ClaimTransition::Updated,
+            "the current owner was fenced out of its own job"
+        );
+
+        let (status, _, token) = row(pool, job).await;
+        assert_eq!(status, "succeeded");
+        assert_eq!(token, None, "a finished job kept its claim token");
+    }
+
+    /// Every completion path is fenced, not only the successful one.
+    ///
+    /// A retry or a death written by a zombie is worse than a stale success:
+    /// it moves a job another worker is actively running back to `pending`,
+    /// so the same work runs a third time, or buries it in `dead` while the
+    /// owner is about to report that it worked.
+    #[tokio::test]
+    async fn a_zombie_worker_cannot_retry_kill_or_heartbeat_a_lost_job() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+        let (job, zombie, owner) = zombie_and_owner(pool).await;
+
+        let retried = mark_retry(pool, job, zombie, Utc::now(), "stale retry".to_owned())
+            .await
+            .expect("run the fenced update");
+        assert_eq!(
+            retried,
+            ClaimTransition::Lost,
+            "a stale worker requeued a job"
+        );
+
+        let killed = mark_dead(
+            pool,
+            job,
+            zombie,
+            ErrorKind::Unknown,
+            "stale death".to_owned(),
+        )
+        .await
+        .expect("run the fenced update");
+        assert_eq!(killed, ClaimTransition::Lost, "a stale worker killed a job");
+
+        let refreshed = heartbeat(pool, job, zombie, Duration::from_secs(600))
+            .await
+            .expect("run the fenced update");
+        assert!(
+            !refreshed,
+            "a stale worker extended a lease it did not hold"
+        );
+
+        // None of the three may have touched the row.
+        let (status, attempts, token) = row(pool, job).await;
+        assert_eq!(status, "running");
+        assert_eq!(attempts, 2);
+        assert_eq!(token, Some(owner));
+
+        // And the owner's own heartbeat still works, so the assertions above
+        // are about the token rather than about the statements being broken.
+        let refreshed = heartbeat(pool, job, owner, Duration::from_secs(600))
+            .await
+            .expect("run the fenced update");
+        assert!(refreshed, "the owner could not refresh its own lease");
+    }
+}

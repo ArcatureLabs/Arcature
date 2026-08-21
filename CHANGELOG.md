@@ -75,6 +75,15 @@ therefore its first.
   than an empty batch, a `SESSION_SETUP` that stopped reaching the
   connection now fails the suite with `SQLITE_BUSY` instead of quietly
   losing throughput.
+- **The fencing token is proven to reject a zombie worker.** Every
+  completion mutation in `src/jobs/complete.rs` fences on `id = ? AND
+  status = 'running' AND claim_token = ?`, and whether that clause matches
+  nothing is a question only the server can answer. The new tests build a
+  zombie the way production does -- let the lease expire, sweep, let a
+  second worker reclaim -- and then require the first worker's success,
+  retry, death and heartbeat all to be refused while the second worker's
+  are accepted. The claim token is per claim, so the reclaim's token
+  differs and the stale writes land on nothing.
 
 ### Deprecated
 
