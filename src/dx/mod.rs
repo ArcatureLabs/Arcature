@@ -13,6 +13,27 @@
 //! `#[page]`, etc.) and the runtime contracts those macros generate
 //! against.
 //!
+//! # What `dx` means, and where it is allowed to mean it
+//!
+//! In this crate `dx` names exactly one thing: **the runtime contract layer
+//! the macro DSL generates code against** -- the contents of this module and
+//! nothing else. The word is two letters because it is the name of the Cargo
+//! feature that switches the layer on, and the module and the feature are
+//! deliberately the same word: `--features dx` turns on `arcature::dx`.
+//!
+//! It is *not* used here as an abbreviation of "developer experience" in the
+//! general sense. That reading names a goal rather than a thing, so a module
+//! called `dx` under it could hold anything, and one did: `auth::dx` grew to
+//! about nine hundred lines covering four unrelated concerns -- the auth
+//! extractors, the session API, flash messages and authorization -- under a
+//! name that described none of them. Those now live in `auth::extract`,
+//! `auth::session_api`, `auth::flash` and `auth::policy`, and `auth::dx` is
+//! a deprecated re-export shim.
+//!
+//! **No other module may take the name for a second meaning.** A module
+//! named `dx` that is not this one is a defect, and the fix is always the
+//! same: name the module after what is inside it.
+//!
 //! # Current surface
 //!
 //! - [`DxComponent`](crate::DxComponent) -- a marker trait with a static

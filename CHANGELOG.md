@@ -82,6 +82,15 @@ therefore its first.
 
 ### Documentation
 
+- **`arcature::dx` says what `dx` means, once.** The module now opens by
+  stating that the name covers exactly one thing -- the runtime contract
+  layer the macro DSL generates code against, which is also precisely what
+  the `dx` Cargo feature switches on -- and that no other module may take the
+  name for a second meaning. It was worth writing down because a second
+  meaning had already appeared: `auth::dx` read `dx` as "developer
+  experience" in general, which names a goal rather than a thing and so
+  admitted four unrelated concerns into one file. A module named `dx` that is
+  not this one is now documented as a defect.
 - **`arcature-macros` has a README.** The crates.io page for `0.1.0` is
   blank, which for a proc-macro crate that nobody should depend on
   directly is the wrong first impression: the page now opens by saying so
