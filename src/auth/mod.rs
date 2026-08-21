@@ -60,6 +60,9 @@ pub use dx::{
     Auth, AuthError, AuthManager, AuthzError, Current, Flash, FlashError, FlashLevel, FlashMessage,
     LoginBuilder, OptionalAuth, OptionalCurrent, Policy, Session, SessionError, UserLoader,
 };
+// The redirect mapper writes the same session key the `Flash` extractor
+// reads, and one spelling of it has to be authoritative.
+pub(crate) use dx::FLASH_DATA_KEY;
 pub use error::{
     CsrfConfigError, CsrfError, PasswordHashError, PasswordVerifyError, SessionBuildError,
     SessionConfigError, SigningKeyReason,

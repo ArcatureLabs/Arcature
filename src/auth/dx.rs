@@ -590,6 +590,7 @@ where
 pub struct Flash {
     session: TowerSession,
     messages: Vec<FlashMessage>,
+    data: std::collections::BTreeMap<String, String>,
 }
 
 /// A single flash message.
@@ -615,8 +616,20 @@ pub enum FlashLevel {
     Info,
 }
 
-/// The session key under which flash messages are stored.
+/// The session key under which levelled flash messages are stored.
 const FLASH_KEY: &str = "_flash";
+
+/// The session key under which `redirect().with(..)` key/value data is stored.
+///
+/// Separate from [`FLASH_KEY`] because the two are different shapes with
+/// different writers: this one is a `BTreeMap<String, String>` written by the
+/// [`RedirectMapper`](crate::routing::RedirectMapper) above the handler, that
+/// one is a `Vec<FlashMessage>` written by the handler itself. Sharing a key
+/// would mean one of them silently clobbering the other.
+///
+/// `pub(crate)` rather than private: the mapper writes it, and it must be the
+/// same string in both places.
+pub(crate) const FLASH_DATA_KEY: &str = "_flash_data";
 
 impl Flash {
     /// Get the flash messages read from the session (already cleared).
@@ -625,10 +638,28 @@ impl Flash {
         &self.messages
     }
 
-    /// True if there are no flash messages.
+    /// True if there are neither messages nor key/value data.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.messages.is_empty()
+        self.messages.is_empty() && self.data.is_empty()
+    }
+
+    /// Read one key of the data flashed by
+    /// [`redirect().with(..)`](crate::http::response::RedirectResponse::with).
+    ///
+    /// Already cleared from the session by the time the handler sees it, so
+    /// this is the one and only request that can read it.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.data.get(key).map(String::as_str)
+    }
+
+    /// Every key/value pair flashed by
+    /// [`redirect().with(..)`](crate::http::response::RedirectResponse::with),
+    /// in key order.
+    #[must_use]
+    pub fn data(&self) -> &std::collections::BTreeMap<String, String> {
+        &self.data
     }
 
     /// Add a success flash message. Persists in the session for the next
@@ -713,7 +744,24 @@ where
         // Clear the flash from the session.
         let _ = session.remove::<Vec<FlashMessage>>(FLASH_KEY).await;
 
-        Ok(Flash { session, messages })
+        // The same read-then-clear for the `redirect().with(..)` half, which
+        // the mapper wrote on the *previous* request.
+        let data: std::collections::BTreeMap<String, String> = session
+            .get(FLASH_DATA_KEY)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_default();
+        if !data.is_empty() {
+            let _ = session
+                .remove::<std::collections::BTreeMap<String, String>>(FLASH_DATA_KEY)
+                .await;
+        }
+
+        Ok(Flash {
+            session,
+            messages,
+            data,
+        })
     }
 }
 
