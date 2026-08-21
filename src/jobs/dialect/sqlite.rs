@@ -166,3 +166,61 @@ VALUES (?, ?, ?, ?, ?, ?, ?)"#;
     /// The schema, one statement per `--;;` separated chunk.
     pub(crate) const SCHEMA: &str = include_str!("../migrations/sqlite/0001_jobs.sql");
 }
+
+// SQLite reaches the same guarantee from the opposite direction: the other two
+// dialects let claimers past each other, SQLite refuses to let them overlap at
+// all. These tests need a SQLite file, which every machine has, but they still
+// go through the same fixture as the other two so that the URL comes from the
+// same place and the safety check applies; see `crate::jobs::test_support`.
+#[cfg(all(test, feature = "test-kit"))]
+mod tests {
+    use crate::jobs::test_support::{
+        JOBS, WORKERS, assert_claimed_exactly_once, drain_concurrently, enqueue, queue,
+    };
+
+    /// The property, with exclusion instead of skipping.
+    ///
+    /// `BEGIN IMMEDIATE` takes the database write lock before the pick, so no
+    /// second claimer can read the rows this one is about to mark. A deferred
+    /// `BEGIN` would take that lock only at the first write -- after the pick
+    /// -- and two claimers could read the same head of the queue before either
+    /// wrote. That is the failure this asserts is absent.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn every_job_goes_to_exactly_one_worker() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let enqueued = enqueue(pool, JOBS).await;
+        let claimed = drain_concurrently(pool, (JOBS / WORKERS) as i64).await;
+
+        assert_claimed_exactly_once(pool, &enqueued, &claimed).await;
+    }
+
+    /// Contention is waited out, not failed.
+    ///
+    /// The cost of `BEGIN IMMEDIATE` is that claimers serialise: seven of the
+    /// eight are blocked on the write lock at any moment, and SQLite's answer
+    /// to a blocked writer is `SQLITE_BUSY` unless `busy_timeout` says to
+    /// wait. `SESSION_SETUP` sets it, and this is what proves the setting is
+    /// actually reaching the connection -- `drain_concurrently` propagates a
+    /// claim error rather than treating it as an empty batch, so a lost
+    /// `PRAGMA` fails here instead of quietly halving the throughput.
+    ///
+    /// A batch of one maximises the number of transactions, and so the number
+    /// of chances to collide: forty claims across eight connections, each one
+    /// a separate exclusive write transaction.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn claimers_wait_for_the_write_lock_rather_than_failing() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let enqueued = enqueue(pool, JOBS).await;
+        let claimed = drain_concurrently(pool, 1).await;
+
+        assert_claimed_exactly_once(pool, &enqueued, &claimed).await;
+    }
+}

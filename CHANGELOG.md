@@ -65,6 +65,16 @@ therefore its first.
   test that `CLAIM_MARK`'s `AND status = 'pending'` refuses a row another
   claimer already took. Drop `FOR UPDATE SKIP LOCKED` from the pick and
   these fail with two workers holding one job.
+- **The SQLite `BEGIN IMMEDIATE` claim is proven exclusive, and proven to
+  wait.** SQLite has neither `SKIP LOCKED` nor `RETURNING`: it excludes
+  claimers instead of letting them past each other, which is only correct
+  if the write lock is taken before the pick rather than at the first
+  write. `src/jobs/dialect/sqlite.rs` now runs the same race as the other
+  two dialects, with a batch of one so all eight connections contend for
+  every row. Because the fixture treats a claim error as a failure rather
+  than an empty batch, a `SESSION_SETUP` that stopped reaching the
+  connection now fails the suite with `SQLITE_BUSY` instead of quietly
+  losing throughput.
 
 ### Deprecated
 
