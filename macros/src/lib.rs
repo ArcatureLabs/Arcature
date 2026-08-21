@@ -42,6 +42,7 @@ mod routes;
 mod schema;
 mod service;
 mod signature;
+mod test_attr;
 mod util;
 
 use proc_macro::TokenStream;
@@ -153,6 +154,12 @@ pub fn request_cache(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn resource(attr: TokenStream, item: TokenStream) -> TokenStream {
     finish(resource::resource(attr.into(), item.into()))
+}
+
+/// `#[arcature::test(app = ...)]` — see `test_attr.rs`.
+#[proc_macro_attribute]
+pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
+    finish(test_attr::test_attr(attr.into(), item.into()))
 }
 
 /// `#[page("users/show")]` — see `page.rs`.
