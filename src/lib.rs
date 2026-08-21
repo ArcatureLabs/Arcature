@@ -6,13 +6,15 @@
 //!
 //! # Quick start
 //!
-//! ```ignore
+//! ```no_run
+//! use arcature::application::EngineResult;
 //! use arcature::prelude::*;
 //!
 //! #[arcature::main]
-//! async fn main() -> Result<()> {
-//!     Application::new()
+//! async fn main() -> EngineResult<()> {
+//!     Application::<()>::new()
 //!         .routes(Routes::new([Route::get("/", index).name("home")]))
+//!         .build()
 //!         .run()
 //!         .await
 //! }

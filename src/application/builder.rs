@@ -2,13 +2,34 @@
 //!
 //! A normal generated app builds an `Application` in `bootstrap/app.rs`:
 //!
-//! ```ignore
-//! pub fn app() -> Application<AppState> {
+//! ```
+//! use arcature::prelude::*;
+//!
+//! #[derive(Clone)]
+//! struct AppState;
+//!
+//! mod web {
+//!     use super::AppState;
+//!     use arcature::prelude::*;
+//!
+//!     pub fn routes() -> Routes<AppState> {
+//!         Routes::new([Route::get("/", index).name("home")])
+//!     }
+//!
+//!     async fn index() -> Result<Response> {
+//!         Ok(text(StatusCode::OK, "hello"))
+//!     }
+//! }
+//!
+//! // Note the return type: every builder method hands back the *builder*.
+//! // `Application<AppState>` is what `.build()` produces, one step later.
+//! pub fn app() -> ApplicationBuilder<AppState> {
 //!     Application::new()
 //!         .routes(web::routes())
 //!         .bind("127.0.0.1")
 //!         .port(3000)
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! `main.rs` then calls `app().run_with_state(state_fn).await`, where
@@ -480,10 +501,12 @@ impl<S: RouterState> ApplicationBuilder<S> {
     /// first call outermost. See [`crate::application::pipeline`] for the full
     /// order and the reasoning behind it.
     ///
-    /// ```ignore
-    /// Application::new()
-    ///     .routes(web::routes())
+    /// ```no_run
+    /// use arcature::Application;
+    ///
+    /// let app = Application::<()>::new()
     ///     .layer(tower_http::compression::CompressionLayer::new())
+    ///     .build();
     /// ```
     #[must_use]
     pub fn layer<L>(mut self, layer: L) -> Self
@@ -522,10 +545,13 @@ impl<S: RouterState> ApplicationBuilder<S> {
     /// renders a handler's. See [`SecurityHeaders`](crate::http::SecurityHeaders)
     /// for which headers are always on and which are opt-in.
     ///
-    /// ```ignore
-    /// Application::new()
-    ///     .routes(web::routes())
+    /// ```no_run
+    /// use arcature::http::SecurityHeaders;
+    /// use arcature::Application;
+    ///
+    /// let app = Application::<()>::new()
     ///     .security_headers(SecurityHeaders::new().with_hsts())
+    ///     .build();
     /// ```
     #[must_use]
     pub fn security_headers(mut self, headers: crate::http::SecurityHeaders) -> Self {
@@ -540,12 +566,17 @@ impl<S: RouterState> ApplicationBuilder<S> {
     /// builder already expresses it -- wrapping it would only add a second
     /// vocabulary for the same thing.
     ///
-    /// ```ignore
-    /// use tower_http::cors::{Any, CorsLayer};
+    /// ```no_run
+    /// use arcature::axum::http::HeaderValue;
+    /// use arcature::Application;
+    /// use tower_http::cors::CorsLayer;
     ///
-    /// Application::new()
-    ///     .routes(api::routes())
-    ///     .cors(CorsLayer::new().allow_origin("https://acme.test".parse::<HeaderValue>()?))
+    /// let origin: HeaderValue = "https://acme.test".parse()?;
+    ///
+    /// let app = Application::<()>::new()
+    ///     .cors(CorsLayer::new().allow_origin(origin))
+    ///     .build();
+    /// # Ok::<(), arcature::axum::http::header::InvalidHeaderValue>(())
     /// ```
     #[must_use]
     pub fn cors(mut self, layer: tower_http::cors::CorsLayer) -> Self {

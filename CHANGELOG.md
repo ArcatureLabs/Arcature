@@ -166,6 +166,14 @@ therefore its first.
     both halves are foreign and the orphan rule reserves it for Arcature --
     the prose now says so and the example shows the `#[service]`-generated
     impl, which a reader *can* write.
+  - **The crate-root quick start and the application builder.** The first
+    example a reader meets did not compile: it called `.run()` on the
+    builder, where `run` is on `Application`, and gave `main` the framework
+    `Result` where `run` returns `EngineResult`. The builder module's own
+    example claimed `pub fn app() -> Application<AppState>` for a function
+    that returns an `ApplicationBuilder<AppState>`. Both are corrected, and
+    the `layer`, `security_headers` and `cors` examples are now `no_run`
+    programs rather than floating expressions.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no
