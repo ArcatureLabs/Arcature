@@ -9,6 +9,15 @@ on:
     # on the pull-request path.
     - cron: "17 4 * * *"
 
+# Every job here checks out the repository, compiles it, and reports through
+# the check run the platform creates on its own. None of them writes an issue,
+# a comment, a release, or a package, so the token they are handed should not
+# be able to. Declared once at the top rather than nine times: a job added
+# later inherits the restriction instead of inheriting the default, which is
+# the failure mode this block exists to prevent.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
