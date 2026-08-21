@@ -19,49 +19,7 @@
 //! -- the timestamp column is a real timestamp on PostgreSQL and MySQL and
 //! epoch milliseconds on SQLite, and that difference already has one owner.
 
-use std::ffi::OsString;
-
-use super::super::parser::{QueueAction, Subcommand, SubcommandError};
-
-impl QueueAction {
-    fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "work" => Some(Self::Work),
-            "drain" => Some(Self::Drain),
-            "stats" => Some(Self::Stats),
-            _ => None,
-        }
-    }
-}
-
-/// Parse `arc queue` arguments into a [`Subcommand::Queue`].
-pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
-    let mut action = None;
-    let mut dsn = None;
-    while let Some(arg) = iter.next() {
-        let arg_str = arg.to_string_lossy();
-        if arg_str == "--dsn" {
-            let value = iter.next().ok_or(SubcommandError::MissingFlagValue {
-                subcommand: "queue".into(),
-                flag: "--dsn".into(),
-            })?;
-            dsn = Some(value.to_string_lossy().into_owned());
-        } else if let Some(a) = QueueAction::from_str(&arg_str) {
-            action = Some(a);
-        } else {
-            return Err(SubcommandError::InvalidValue {
-                subcommand: "queue".into(),
-                value: arg_str.into_owned(),
-                reason: "expected work, drain, or stats".into(),
-            });
-        }
-    }
-    let action = action.ok_or(SubcommandError::MissingArg {
-        subcommand: "queue".into(),
-        arg: "<work|drain|stats>".into(),
-    })?;
-    Ok(Subcommand::Queue { action, dsn })
-}
+use crate::cli::parser::QueueAction;
 
 /// Execute the `queue` subcommand: connect, migrate the queue, run the action.
 pub async fn run(action: &QueueAction, dsn: Option<&str>) -> Result<(), QueueError> {

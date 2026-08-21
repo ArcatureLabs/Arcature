@@ -8,26 +8,7 @@
 //! An optional `--dsn <url>` is forwarded as `DATABASE_URL`, overriding the
 //! app's configured database for this run only.
 
-use std::ffi::OsString;
 use std::process::Command;
-
-use super::super::parser::{Subcommand, SubcommandError};
-
-/// Parse `arc migrate` arguments into a [`Subcommand::Migrate`].
-pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
-    let mut dsn = None;
-    while let Some(arg) = iter.next() {
-        let arg_str = arg.to_string_lossy();
-        if arg_str == "--dsn" {
-            let value = iter.next().ok_or(SubcommandError::MissingFlagValue {
-                subcommand: "migrate".into(),
-                flag: "--dsn".into(),
-            })?;
-            dsn = Some(value.to_string_lossy().into_owned());
-        }
-    }
-    Ok(Subcommand::Migrate { dsn })
-}
 
 /// Execute the `migrate` subcommand: run the app's migrations via its binary.
 pub fn run(dsn: Option<&str>) -> Result<(), MigrateError> {

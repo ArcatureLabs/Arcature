@@ -7,43 +7,7 @@
 //! already; `--bind` sets the address). This command shells out to `cargo`
 //! and is intentionally thin: the app owns its own server.
 
-use std::ffi::OsString;
 use std::process::Command;
-
-use super::super::parser::{Subcommand, SubcommandError};
-
-/// Parse `arc serve` arguments into a [`Subcommand::Serve`].
-pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
-    let mut bind = None;
-    let mut port = None;
-    while let Some(arg) = iter.next() {
-        let arg_str = arg.to_string_lossy();
-        match arg_str.as_ref() {
-            "--bind" => {
-                let value = iter.next().ok_or(SubcommandError::MissingFlagValue {
-                    subcommand: "serve".into(),
-                    flag: "--bind".into(),
-                })?;
-                bind = Some(value.to_string_lossy().into_owned());
-            }
-            "--port" => {
-                let value = iter.next().ok_or(SubcommandError::MissingFlagValue {
-                    subcommand: "serve".into(),
-                    flag: "--port".into(),
-                })?;
-                let s = value.to_string_lossy().into_owned();
-                let p: u16 = s.parse().map_err(|_| SubcommandError::InvalidValue {
-                    subcommand: "serve".into(),
-                    value: s,
-                    reason: "expected a port number 0-65535".into(),
-                })?;
-                port = Some(p);
-            }
-            _ => {}
-        }
-    }
-    Ok(Subcommand::Serve { bind, port })
-}
 
 /// Execute the `serve` subcommand: forward the bind/port to the app via env
 /// and run `cargo run`.
