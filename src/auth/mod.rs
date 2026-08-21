@@ -47,6 +47,7 @@ pub mod extract;
 pub mod flash;
 pub mod password;
 pub mod password_config;
+pub mod policy;
 pub mod session;
 pub mod session_api;
 
@@ -59,7 +60,6 @@ pub use tower_sessions;
 pub use argon2;
 
 pub use csrf::{CsrfConfig, CsrfLayer, CsrfMiddleware, CsrfToken};
-pub use dx::{AuthzError, Policy};
 pub use error::{
     CsrfConfigError, CsrfError, PasswordHashError, PasswordVerifyError, SessionBuildError,
     SessionConfigError, SigningKeyReason,
@@ -72,6 +72,7 @@ pub use password::{
     PasswordHashString, PasswordHasher, PasswordSecret, RehashOutcome, verify_password,
 };
 pub use password_config::PasswordConfig;
+pub use policy::{AuthzError, Policy};
 pub use session::{SameSite, SessionConfig, SessionKey, SessionLayer};
 pub use session_api::{Session, SessionError};
 

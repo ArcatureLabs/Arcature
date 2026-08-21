@@ -53,6 +53,13 @@ therefore its first.
   `arcature::auth::flash`, together with the two session keys the extractor
   and the redirect mapper have to agree on. The re-exports are unchanged and
   `arcature::auth::dx::Flash` still resolves.
+- **Authorization has a module that names it.** The `Policy<M>` trait,
+  `AuthzError` and the `Auth::authorize` seam now live in
+  `arcature::auth::policy` -- the last of the four concerns to leave
+  `auth::dx`, which is now nothing but re-exports. Authentication ("who is
+  this?") and authorization ("may they do this?") are separate steps by
+  design, and they are now separate files. The re-exports are unchanged and
+  `arcature::auth::dx::Policy` still resolves.
 
 ### Fixed
 
