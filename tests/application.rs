@@ -226,6 +226,99 @@ async fn an_inertia_visit_gets_the_page_object_as_json() {
     assert_eq!(page["props"]["greeting"], "hello");
 }
 
+// --- the `Page<T>` golden path ----------------------------------------------
+//
+// A handler returning `Page<T>` never touches the `Inertia` extractor. It
+// cannot render on its own -- `IntoResponse` has no request -- so it records
+// the render and the Inertia layer performs it. These tests pin both halves:
+// the render really happens when the layer is there, and its absence is loud.
+
+#[derive(serde::Serialize)]
+struct HomePage {
+    greeting: String,
+}
+
+impl arcature::inertia::ClientData for HomePage {
+    fn exposure_schema() -> arcature::inertia::PropsSchema {
+        arcature::inertia::PropsSchema::new()
+            .required("greeting", arcature::inertia::ContractType::string())
+    }
+}
+
+impl arcature::inertia::PageType for HomePage {
+    const CONTRACT: arcature::inertia::PageContract<Self> =
+        arcature::inertia::PageContract::new("home");
+}
+
+async fn home_page() -> arcature::Page<HomePage> {
+    arcature::dx::page(HomePage {
+        greeting: "hello".to_string(),
+    })
+}
+
+#[tokio::test]
+async fn a_page_return_type_renders_through_the_inertia_layer() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", home_page)]))
+        .inertia(inertia_config())
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .expect("body");
+    let body = String::from_utf8(body.to_vec()).expect("utf-8");
+    assert!(body.contains("<!doctype html>"), "{body}");
+    // The component name came from `HomePage::CONTRACT`, not from anything
+    // the route or the handler repeated.
+    assert!(body.contains("home"), "component missing: {body}");
+    assert!(body.contains("hello"), "props missing: {body}");
+}
+
+#[tokio::test]
+async fn a_page_on_an_inertia_visit_is_the_page_object() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", home_page)]))
+        .inertia(inertia_config())
+        .build();
+
+    let request = Request::builder()
+        .uri("/")
+        .header("x-inertia", "true")
+        .header("x-inertia-version", "test-version")
+        .body(Body::empty())
+        .expect("request");
+
+    let response = send(app.into_router(), request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let page = json_body(response).await;
+    assert_eq!(page["component"], "home");
+    assert_eq!(page["props"]["greeting"], "hello");
+}
+
+#[tokio::test]
+async fn a_page_without_the_inertia_layer_says_so() {
+    // The placeholder must never look like a working route: no blank 200,
+    // and a detail that names the missing builder call.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", home_page)]))
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let body = json_body(response).await;
+    let detail = body["detail"].as_str().unwrap_or_default();
+    assert!(detail.contains("home"), "the page is not named: {detail}");
+    assert!(
+        detail.contains(".inertia("),
+        "the fix is not named: {detail}"
+    );
+}
+
 // --- the order is the documented order, not the call order -----------------
 //
 // An ordering test only means something if it fails under the other order.
@@ -290,7 +383,7 @@ where
 
 #[tokio::test]
 async fn a_user_layer_sees_the_inertia_context() {
-    // Inertia is stage 7, user layers stage 8: the context is already in the
+    // Inertia is stage 16, user layers stage 18: the context is already in the
     // extensions when a user layer runs. Flip the two and this reads
     // `no-inertia`.
     let app = Application::new()
@@ -318,7 +411,7 @@ async fn without_inertia_a_user_layer_sees_no_context() {
 
 #[tokio::test]
 async fn a_csrf_rejection_never_reaches_a_user_layer() {
-    // CSRF is stage 6, outside user layers, so a rejected request is refused
+    // CSRF is stage 15, outside user layers, so a rejected request is refused
     // before any application-level layer can act on it. If the two were
     // swapped the user layer would run and stamp itself.
     let app = Application::new()
@@ -343,7 +436,7 @@ async fn a_csrf_rejection_never_reaches_a_user_layer() {
 
 #[tokio::test]
 async fn a_timeout_never_reaches_a_user_layer() {
-    // Timeout is stage 4, outside everything it bounds. When it fires, the
+    // Timeout is stage 12, outside everything it bounds. When it fires, the
     // inner stack — user layers included — is dropped mid-flight.
     async fn slow() -> &'static str {
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -881,4 +974,411 @@ async fn compression_applies_when_the_client_asks_and_not_otherwise() {
     // to a client that never said it could decode one.
     let response = send(build(), get("/")).await;
     assert_eq!(header(&response, "content-encoding"), None);
+}
+
+// --- health endpoints ------------------------------------------------------
+//
+// The point of every test here is that the probes answer *despite* the rest
+// of the pipeline, not *through* it. An orchestrator that gets a maintenance
+// `503` on `/up/ready` replaces instances that are doing exactly what they
+// were told.
+
+async fn json_body(response: Response) -> serde_json::Value {
+    let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .expect("body");
+    serde_json::from_slice(&bytes).expect("json body")
+}
+
+#[tokio::test]
+async fn the_health_endpoints_are_registered_by_default() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .build();
+    let router = app.into_router();
+
+    for path in ["/up", "/up/live", "/up/ready"] {
+        let response = send(router.clone(), get(path)).await;
+        assert_ne!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "{path} should be registered"
+        );
+    }
+}
+
+#[tokio::test]
+async fn liveness_is_200_before_anything_has_started() {
+    // Liveness must never consult a dependency. If it did, a database blip
+    // would look like a dead process and the orchestrator would restart it --
+    // turning an outage into a restart loop.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .build();
+
+    let response = send(app.into_router(), get("/up/live")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["state"], "starting");
+}
+
+#[tokio::test]
+async fn readiness_is_503_until_the_application_is_ready() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .build();
+
+    let response = send(app.into_router(), get("/up/ready")).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = json_body(response).await;
+    assert_eq!(body["ready"], false);
+}
+
+#[tokio::test]
+async fn a_health_response_is_never_cached() {
+    // A cached readiness answer is worse than none: it reports the state the
+    // instance was in, not the one it is in.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .build();
+
+    let response = send(app.into_router(), get("/up")).await;
+    assert_eq!(
+        header(&response, "cache-control"),
+        Some("no-store, max-age=0")
+    );
+}
+
+#[tokio::test]
+async fn health_can_be_turned_off() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .health(false)
+        .build();
+
+    let response = send(app.into_router(), get("/up/live")).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn health_can_be_mounted_elsewhere() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .health_prefix("/_internal/health")
+        .build();
+    let router = app.into_router();
+
+    let response = send(router.clone(), get("/_internal/health/live")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = send(router, get("/up/live")).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_route_of_the_same_name_is_not_clobbered_by_health() {
+    // `/up` covers `/up` and what is under it, on a segment boundary. An
+    // application route named `/upload` is a different path and must survive.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/upload", ok)]))
+        .build();
+
+    let response = send(app.into_router(), get("/upload")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn the_probes_answer_while_a_user_layer_short_circuits_everything() {
+    // Health is merged beside the router, not layered over it. A user layer
+    // that refuses every request -- an authentication gate, say -- must not
+    // take the probes down with it.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .layer(Deny)
+        .build();
+    let router = app.into_router();
+
+    let response = send(router.clone(), get("/")).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let response = send(router, get("/up/live")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+/// Refuses every request with a `403`, without calling inner.
+#[derive(Clone)]
+struct Deny;
+
+impl<S> Layer<S> for Deny {
+    type Service = DenyService<S>;
+    fn layer(&self, inner: S) -> Self::Service {
+        DenyService { inner }
+    }
+}
+
+#[derive(Clone)]
+struct DenyService<S> {
+    #[expect(
+        dead_code,
+        reason = "the point of this layer is that it never calls inner"
+    )]
+    inner: S,
+}
+
+impl<S> Service<Request<Body>> for DenyService<S>
+where
+    S: Service<Request<Body>, Response = Response, Error = std::convert::Infallible>
+        + Clone
+        + Send
+        + 'static,
+    S::Future: Send + 'static,
+{
+    type Response = Response;
+    type Error = std::convert::Infallible;
+    type Future =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Result<Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, _request: Request<Body>) -> Self::Future {
+        Box::pin(async move {
+            let mut response = Response::new(Body::empty());
+            *response.status_mut() = StatusCode::FORBIDDEN;
+            Ok(response)
+        })
+    }
+}
+
+// --- maintenance -----------------------------------------------------------
+
+#[tokio::test]
+async fn maintenance_is_a_pass_through_until_it_is_engaged() {
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .maintenance(arcature::http::Maintenance::new())
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn an_engaged_switch_answers_503_with_retry_after() {
+    let maintenance = arcature::http::Maintenance::new();
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .maintenance(maintenance.clone())
+        .build();
+    let router = app.into_router();
+
+    maintenance.engage();
+    let response = send(router.clone(), get("/")).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(header(&response, "retry-after"), Some("60"));
+    assert_eq!(
+        header(&response, "content-type"),
+        Some(arcature::PROBLEM_JSON)
+    );
+
+    // And the handle turns it back off from anywhere.
+    maintenance.disengage();
+    let response = send(router, get("/")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn maintenance_never_reaches_the_probes() {
+    let maintenance = arcature::http::Maintenance::engaged();
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .maintenance(maintenance)
+        .build();
+    let router = app.into_router();
+
+    let response = send(router.clone(), get("/")).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    let response = send(router, get("/up/live")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_form_post_during_maintenance_gets_503_not_a_csrf_rejection() {
+    // Maintenance is stage 13, CSRF stage 15. Swap them and a browser that
+    // had the page open before the window opened gets a confusing `419`
+    // instead of the honest "come back later".
+    let maintenance = arcature::http::Maintenance::engaged();
+    let app = Application::new()
+        .routes(Routes::new([Route::post("/submit", ok)]))
+        .maintenance(maintenance)
+        .csrf(arcature::auth::CsrfConfig::default())
+        .build();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/submit")
+        .body(Body::empty())
+        .expect("request");
+    let response = send(app.into_router(), request).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+// --- error mapping ---------------------------------------------------------
+
+#[tokio::test]
+async fn a_bare_404_becomes_a_problem_document() {
+    // Nothing in the application produced this response: axum's own fallback
+    // did, with an empty body and no content type. Without the mapping stage
+    // a JSON client gets a blank 404 it cannot parse.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .error_mapping(arcature::http::ErrorMapping::new())
+        .build();
+
+    let response = send(app.into_router(), get("/nowhere")).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        header(&response, "content-type"),
+        Some(arcature::PROBLEM_JSON)
+    );
+    let body = json_body(response).await;
+    assert_eq!(body["status"], 404);
+}
+
+#[tokio::test]
+async fn a_method_not_allowed_keeps_its_allow_header() {
+    // The `Allow` header is the only part of a 405 a client can act on.
+    // Rewriting the body must not cost it.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .error_mapping(arcature::http::ErrorMapping::new())
+        .build();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/")
+        .body(Body::empty())
+        .expect("request");
+    let response = send(app.into_router(), request).await;
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert!(header(&response, "allow").is_some());
+    assert_eq!(
+        header(&response, "content-type"),
+        Some(arcature::PROBLEM_JSON)
+    );
+}
+
+#[tokio::test]
+async fn an_oversized_body_rejection_becomes_a_problem_too() {
+    // The handler has to read the body for the limit to fire: without a
+    // `Content-Length` the layer can only refuse once the bytes arrive.
+    async fn echo(body: String) -> String {
+        body
+    }
+
+    let app = Application::new()
+        .routes(Routes::new([Route::post("/upload", echo)]))
+        .body_limit(8)
+        .error_mapping(arcature::http::ErrorMapping::new())
+        .build();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/upload")
+        .body(Body::from(vec![b'x'; 64]))
+        .expect("request");
+    let response = send(app.into_router(), request).await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(
+        header(&response, "content-type"),
+        Some(arcature::PROBLEM_JSON)
+    );
+}
+
+#[tokio::test]
+async fn a_handler_authored_error_body_is_left_alone() {
+    // The stage fills in for responses nothing chose. A body the application
+    // deliberately wrote is a choice, and overwriting it would be a bug.
+    async fn refuse() -> Response {
+        let mut response = Response::new(Body::from(r#"{"error":"nope"}"#));
+        *response.status_mut() = StatusCode::BAD_REQUEST;
+        response.headers_mut().insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("application/json"),
+        );
+        response
+    }
+
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", refuse)]))
+        .error_mapping(arcature::http::ErrorMapping::new())
+        .build();
+
+    let response = send(app.into_router(), get("/")).await;
+    assert_eq!(header(&response, "content-type"), Some("application/json"));
+    let body = json_body(response).await;
+    assert_eq!(body["error"], "nope");
+}
+
+#[tokio::test]
+async fn error_mapping_does_not_touch_a_caught_panic() {
+    // The panic catcher already produces a problem document, and it sits
+    // outside this stage. Two rewrites of one response would be one too many.
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/boom", boom)]))
+        .catch_panic()
+        .error_mapping(arcature::http::ErrorMapping::new())
+        .build();
+
+    let response = send(app.into_router(), get("/boom")).await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], 500);
+}
+
+#[tokio::test]
+async fn a_custom_mapper_can_return_an_html_error_page() {
+    // The common case: a browser gets a rendered 404 page, an API client gets
+    // the problem document.
+    let mapping = arcature::http::ErrorMapping::new().with(|status, headers| {
+        let wants_html = headers
+            .get(axum::http::header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|accept| accept.contains("text/html"));
+        if !wants_html {
+            return None;
+        }
+        let mut response = Response::new(Body::from(format!("<h1>{}</h1>", status.as_u16())));
+        *response.status_mut() = status;
+        response.headers_mut().insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
+        );
+        Some(response)
+    });
+
+    let app = Application::new()
+        .routes(Routes::new([Route::get("/", ok)]))
+        .error_mapping(mapping)
+        .build();
+    let router = app.into_router();
+
+    let request = Request::builder()
+        .uri("/nowhere")
+        .header("accept", "text/html")
+        .body(Body::empty())
+        .expect("request");
+    let response = send(router.clone(), request).await;
+    assert_eq!(
+        header(&response, "content-type"),
+        Some("text/html; charset=utf-8")
+    );
+
+    // The mapper declined for a non-HTML client, so the default applies.
+    let response = send(router, get("/nowhere")).await;
+    assert_eq!(
+        header(&response, "content-type"),
+        Some(arcature::PROBLEM_JSON)
+    );
 }
