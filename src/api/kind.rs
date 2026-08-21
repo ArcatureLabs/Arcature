@@ -39,6 +39,13 @@ pub enum ProblemKind {
     PayloadTooLarge,
     /// A generic client error (400).
     BadRequest,
+    /// The request took longer than the server was willing to wait (408).
+    Timeout,
+    /// The path exists but not for this method (405).
+    MethodNotAllowed,
+    /// The server cannot handle the request right now -- maintenance,
+    /// shedding load, or a dependency that is down (503).
+    Unavailable,
 }
 
 impl ProblemKind {
@@ -57,6 +64,9 @@ impl ProblemKind {
             Self::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::BadRequest => StatusCode::BAD_REQUEST,
+            Self::Timeout => StatusCode::REQUEST_TIMEOUT,
+            Self::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
+            Self::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 
@@ -75,6 +85,9 @@ impl ProblemKind {
             Self::UnsupportedMediaType => "Unsupported media type",
             Self::PayloadTooLarge => "Request body too large",
             Self::BadRequest => "Bad request",
+            Self::Timeout => "Request timed out",
+            Self::MethodNotAllowed => "Method not allowed",
+            Self::Unavailable => "Service unavailable",
         }
     }
 
@@ -100,6 +113,62 @@ impl ProblemKind {
             Self::UnsupportedMediaType => "urn:arcature:problem:unsupported-media-type",
             Self::PayloadTooLarge => "urn:arcature:problem:payload-too-large",
             Self::BadRequest => "urn:arcature:problem:bad-request",
+            Self::Timeout => "urn:arcature:problem:timeout",
+            Self::MethodNotAllowed => "urn:arcature:problem:method-not-allowed",
+            Self::Unavailable => "urn:arcature:problem:unavailable",
+        }
+    }
+
+    /// Every variant, for exhaustive iteration.
+    ///
+    /// A `const` slice rather than a derive: it is what the tests below walk
+    /// to prove the three tables stay in step, and adding a variant without
+    /// adding it here makes that test fail rather than silently under-check.
+    pub const ALL: &'static [ProblemKind] = &[
+        Self::Validation,
+        Self::Authentication,
+        Self::Authorization,
+        Self::NotFound,
+        Self::Conflict,
+        Self::RateLimit,
+        Self::Internal,
+        Self::MalformedJson,
+        Self::UnsupportedMediaType,
+        Self::PayloadTooLarge,
+        Self::BadRequest,
+        Self::Timeout,
+        Self::MethodNotAllowed,
+        Self::Unavailable,
+    ];
+
+    /// The kind a bare `status` corresponds to, if any.
+    ///
+    /// Used by [`ErrorMapping`](crate::http::ErrorMapping) to give a status a
+    /// body when whatever produced it did not. The mapping is deliberately
+    /// partial: a status with no distinguished kind falls back to a generic
+    /// client or server problem rather than being forced into a category it
+    /// does not belong to.
+    ///
+    /// Ambiguous statuses resolve to the kind a *layer* would have produced:
+    /// `400` is [`BadRequest`](Self::BadRequest), not `MalformedJson`, because
+    /// a bare `400` from the pipeline is not evidence about JSON.
+    #[must_use]
+    pub const fn for_status(status: StatusCode) -> Option<Self> {
+        match status {
+            StatusCode::BAD_REQUEST => Some(Self::BadRequest),
+            StatusCode::UNAUTHORIZED => Some(Self::Authentication),
+            StatusCode::FORBIDDEN => Some(Self::Authorization),
+            StatusCode::NOT_FOUND => Some(Self::NotFound),
+            StatusCode::METHOD_NOT_ALLOWED => Some(Self::MethodNotAllowed),
+            StatusCode::REQUEST_TIMEOUT => Some(Self::Timeout),
+            StatusCode::CONFLICT => Some(Self::Conflict),
+            StatusCode::PAYLOAD_TOO_LARGE => Some(Self::PayloadTooLarge),
+            StatusCode::UNSUPPORTED_MEDIA_TYPE => Some(Self::UnsupportedMediaType),
+            StatusCode::UNPROCESSABLE_ENTITY => Some(Self::Validation),
+            StatusCode::TOO_MANY_REQUESTS => Some(Self::RateLimit),
+            StatusCode::INTERNAL_SERVER_ERROR => Some(Self::Internal),
+            StatusCode::SERVICE_UNAVAILABLE => Some(Self::Unavailable),
+            _ => None,
         }
     }
 }
@@ -107,28 +176,39 @@ impl ProblemKind {
 #[cfg(test)]
 mod tests {
     use super::ProblemKind;
+    use axum::http::StatusCode;
 
     #[test]
     fn each_kind_has_distinct_type_uri() {
-        let kinds = [
-            ProblemKind::Validation,
-            ProblemKind::Authentication,
-            ProblemKind::Authorization,
-            ProblemKind::NotFound,
-            ProblemKind::Conflict,
-            ProblemKind::RateLimit,
-            ProblemKind::Internal,
-            ProblemKind::MalformedJson,
-            ProblemKind::UnsupportedMediaType,
-            ProblemKind::PayloadTooLarge,
-            ProblemKind::BadRequest,
-        ];
         let mut seen = std::collections::HashSet::new();
-        for kind in kinds {
+        for &kind in ProblemKind::ALL {
             assert!(seen.insert(kind.type_uri()), "duplicate type_uri");
             assert!(!kind.title().is_empty());
             assert!(kind.status().is_client_error() || kind.status().is_server_error());
         }
+    }
+
+    #[test]
+    fn for_status_round_trips_every_kind_that_owns_its_status() {
+        // `MalformedJson` and `BadRequest` share `400`; the shared status
+        // resolves to the generic kind, which is the only honest answer when
+        // all the mapper has is a status code.
+        for &kind in ProblemKind::ALL {
+            if kind == ProblemKind::MalformedJson {
+                continue;
+            }
+            assert_eq!(
+                ProblemKind::for_status(kind.status()),
+                Some(kind),
+                "{kind:?} does not round-trip through its own status"
+            );
+        }
+    }
+
+    #[test]
+    fn a_status_with_no_distinguished_kind_maps_to_nothing() {
+        assert_eq!(ProblemKind::for_status(StatusCode::IM_A_TEAPOT), None);
+        assert_eq!(ProblemKind::for_status(StatusCode::BAD_GATEWAY), None);
     }
 
     #[test]
