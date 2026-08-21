@@ -184,6 +184,23 @@ therefore its first.
   ordinary mistakes -- and the full `ARC-M001`..`ARC-M014` diagnostic
   table. A README is part of the published tarball, so this reaches
   crates.io with the next release rather than retroactively.
+- **`SECURITY.md` has an attack-surface inventory.** The policy said what
+  was in scope; it did not say where the scope is. A new section tables
+  every place a byte an attacker chose meets something that interprets it
+  -- the request line, the four validated extractors, the session and CSRF
+  cookies, the Inertia headers, WebSocket frames, storage paths, job
+  payloads read back out of the database -- with the parser, the guard, and
+  the guard's **default** named in each row. Defaults that are off or unset
+  say so: the framework sets no body limit and no request timeout (the
+  scaffold sets 2 MiB and 30 s), `SecurityHeaders` is absent until asked
+  for, HSTS and CSP are off inside it, and `OriginPolicy::DenyAll` is the
+  realtime default. It also records two properties nothing tests --- every
+  `std::process::Command::new` is under `src/cli/`, and no SQL in
+  `src/jobs/` is built by interpolation --- and two facts a reader should
+  not have to discover: the CSRF token is compared with `==` rather than in
+  constant time, and `Pages::serve` does not canonicalise, so a symlink out
+  of its root is followed. The point of the table is reviewability: a pull
+  request either adds a row, changes a guard, or does neither.
 - **The README no longer says three CLI commands are unwired.** It claimed
   `arc dev`, `arc typegen` and `arc build` "parse and report that they are
   not wired yet". All three have been implemented for some time --
