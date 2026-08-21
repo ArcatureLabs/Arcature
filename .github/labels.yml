@@ -1,0 +1,184 @@
+# The label set, as data.
+#
+# This file is the source of truth. Labels are applied to the repository by
+# crazy-max/ghaction-github-labeler, which reconciles GitHub to this list: a
+# label edited by hand in the web UI is reverted on the next run. Change the
+# taxonomy here, in a pull request, where the reasoning is reviewable.
+#
+# Four prefixes, each answering exactly one question, so a label can be read
+# without knowing the others. One hue family per prefix, so the answer is
+# legible before the text is:
+#
+#   kind/      blue     What sort of change is this? Exactly one per issue.
+#   area/      purple   Which part of the framework? One or more; these track
+#                       the real module layout under src/ and macros/.
+#   status/    amber    Where is it in the process? Exactly one, and it moves.
+#   priority/  red      How much does the delay cost? Set at triage, not by
+#                       the reporter.
+#
+# Anything without a prefix is repository-wide metadata rather than a
+# classification, and is coloured outside those four families on purpose:
+# green for "someone other than the maintainer should take this", near-black
+# for a compatibility break, grey for a resolution.
+#
+# Every label carries a description. An undescribed label gets used to mean
+# whatever the person applying it assumed, and the taxonomy stops being one.
+# GitHub caps descriptions at 100 characters.
+
+# --- kind/: what sort of change ------------------------------------------
+
+- name: kind/bug
+  color: "1d4ed8"
+  description: "Behaviour disagrees with the documentation, and the code is the side that is wrong."
+
+- name: kind/feature
+  color: "2563eb"
+  description: "Something Arcature does not do and should. Costs are argued before it is accepted."
+
+- name: kind/chore
+  color: "3b82f6"
+  description: "Maintenance with no user-visible behaviour change: tooling, pins, repository plumbing."
+
+- name: kind/docs
+  color: "60a5fa"
+  description: "The guide, a doc comment or a decision record is wrong, missing or misleading."
+
+- name: kind/refactor
+  color: "93c5fd"
+  description: "Internal restructuring that leaves observable behaviour and the public API alone."
+
+- name: kind/perf
+  color: "1e40af"
+  description: "Runtime cost, compile time or binary size, with a measurement rather than a hunch."
+
+- name: kind/security
+  color: "172554"
+  description: "Hardening, or a fix for an already-disclosed advisory. Never used to file one."
+
+- name: kind/test
+  color: "bfdbfe"
+  description: "Coverage for behaviour that can fail silently, or repairs to the existing suite."
+
+# --- area/: which part of the framework ----------------------------------
+
+- name: area/routing
+  color: "4c1d95"
+  description: "src/routing and the routes DSL: route trees, per-route middleware, name resolution."
+
+- name: area/inertia
+  color: "5b21b6"
+  description: "src/inertia: the protocol, page contracts, props, redirects and asset versioning."
+
+- name: area/database
+  color: "6d28d9"
+  description: "src/database: SeaORM and SQLx wiring, connections, transactions, migrations."
+
+- name: area/jobs
+  color: "7c3aed"
+  description: "src/jobs: the queue, claiming, completion, retries and the worker loop."
+
+- name: area/auth
+  color: "8b5cf6"
+  description: "src/auth and src/oauth: sessions, password hashing, guards, providers."
+
+- name: area/cli
+  color: "a78bfa"
+  description: "src/cli and the arc binary: subcommands, the scaffold, the dev supervisor."
+
+- name: area/macros
+  color: "c4b5fd"
+  description: "The arcature-macros crate: derives, attributes, the module DSL, ARC-M diagnostics."
+
+- name: area/dx
+  color: "ddd6fe"
+  description: "src/dx: the developer-facing graph, resolution, request cache and route metadata."
+
+- name: area/uag
+  color: "581c87"
+  description: "src/uag: the unified application graph and the endpoint that serves it."
+
+- name: area/templates
+  color: "6b21a8"
+  description: "src/templates and the generated scaffold: what a new application starts life as."
+
+- name: area/test-kit
+  color: "7e22ce"
+  description: "src/test_kit: the harness applications use to test handlers and pipelines."
+
+- name: area/observe
+  color: "9333ea"
+  description: "src/observe: tracing, the access log, metrics and health surfaces."
+
+- name: area/docs
+  color: "a855f7"
+  description: "docs/: the mdBook guide and the decision records, as artefacts rather than content."
+
+- name: area/ci
+  color: "c084fc"
+  description: "Workflows, the feature matrix, release plumbing and everything under .github."
+
+# --- status/: where it is in the process ---------------------------------
+
+- name: status/needs-triage
+  color: "fbbf24"
+  description: "Filed and not yet read by a maintainer. Applied automatically; removed by hand."
+
+- name: status/needs-repro
+  color: "f59e0b"
+  description: "Believable but not reproducible here yet. Waiting on a smaller or clearer case."
+
+- name: status/blocked
+  color: "b45309"
+  description: "Cannot proceed until something else lands. The blocker is named in the thread."
+
+- name: status/in-progress
+  color: "d97706"
+  description: "Someone is actively working on it. Check the thread before starting your own patch."
+
+- name: status/needs-review
+  color: "fcd34d"
+  description: "A pull request exists and is waiting on review rather than on more work."
+
+# --- priority/: what the delay costs -------------------------------------
+
+- name: priority/critical
+  color: "7f1d1d"
+  description: "Data loss, a security hole, or main does not build. Everything else waits."
+
+- name: priority/high
+  color: "b91c1c"
+  description: "Blocks a normal application with no reasonable workaround. Next in line."
+
+- name: priority/normal
+  color: "ef4444"
+  description: "Worth doing, has a workaround, and lands when the surrounding area is being touched."
+
+- name: priority/low
+  color: "fca5a5"
+  description: "Real but cheap to live with. Kept open so it is not rediscovered from scratch."
+
+# --- unprefixed: repository-wide metadata --------------------------------
+
+- name: good first issue
+  color: "0e8a16"
+  description: "Small, self-contained, and the thread already says where the change goes."
+
+- name: help wanted
+  color: "15803d"
+  description: "The maintainer wants this and is not getting to it. Outside patches welcome."
+
+- name: breaking-change
+  color: "111827"
+  description: "Existing applications need edits. Requires an upgrade note in CHANGELOG.md."
+
+- name: dependencies
+  color: "64748b"
+  description: "A dependency bump. Applied by Dependabot; a major on the certified stack is manual."
+
+- name: duplicate
+  color: "cfd3d7"
+  description: "Already tracked elsewhere. Closed with a link to the issue that stays open."
+
+- name: wontfix
+  color: "9ca3af"
+  description: "Understood and deliberately not being changed. The reason is stated in the thread."
