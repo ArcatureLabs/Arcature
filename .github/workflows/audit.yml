@@ -85,5 +85,20 @@ jobs:
       # gets muted within a week, taking the vulnerability signal with it.
       # If a specific unmaintained crate should block, that decision belongs
       # in deny.toml with a reason attached, not as a blanket flag here.
+      #
+      # RUSTSEC-2026-0235 (rkyv 0.7, out-of-bounds read on a malformed
+      # archive) is ignored here and nowhere else. `rust_decimal` declares
+      # `rkyv` as an optional dependency and nothing in this workspace turns
+      # that feature on, so the crate is never compiled: `cargo tree -i rkyv
+      # -e all --target all` finds no path to it, and ci.yml's cargo-deny job
+      # -- which resolves features and therefore never sees it -- passes.
+      # Cargo.lock records the maximal resolve rather than the built graph,
+      # which is why `cargo audit` reports it and cargo-deny does not.
+      #
+      # This is the one case the division of labour above does not cover: the
+      # ignore cannot live in deny.toml, because cargo-deny has nothing to
+      # ignore. Drop the flag when `rust_decimal` releases a version whose
+      # optional `rkyv` dependency is >=0.8.17, or when the workspace stops
+      # depending on `rust_decimal` at all.
       - name: cargo audit
-        run: cargo audit
+        run: cargo audit --ignore RUSTSEC-2026-0235
