@@ -1,0 +1,46 @@
+# Dependency updates.
+#
+# Two ecosystems and no more. There is no npm package in this repository and
+# there is not going to be one -- see docs/decisions/0001-no-npm-package.md --
+# so there is nothing for a `npm` entry to watch.
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      # One pull request for the patch-level noise. A patch bump that breaks
+      # the build is worth knowing about, but not worth five separate reviews.
+      patch-updates:
+        update-types: ["patch"]
+    ignore:
+      # The certified stack is re-exported through the crate root, so its
+      # major version is part of Arcature's own public API. Raising one breaks
+      # downstream code, which under 0.x is a minor bump, and belongs in a
+      # hand-written pull request that says what changed and how to adapt.
+      - dependency-name: "axum"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sea-orm"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sqlx"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tower"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "validator"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
