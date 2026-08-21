@@ -153,6 +153,18 @@ therefore its first.
   (`arcature_test_release` in the release workflow) and both variables are
   set.
 
+### Security
+
+- **`cargo-deny` bans `native-tls`.** The `[bans]` list already refused
+  `openssl` and `openssl-sys`, but `native-tls` is the facade that pulls
+  them in: it is Schannel on Windows, Secure Transport on macOS, and
+  OpenSSL on Linux -- which is every machine an Arcature application is
+  deployed on. A dependency offering a `native-tls`/`rustls` choice often
+  defaults to the former, so the OpenSSL entries alone would only fail
+  after the C library was already in the graph. `native-tls`,
+  `tokio-native-tls` and `hyper-tls` are now denied by name, so the check
+  points at the crate that made the choice.
+
 ### Documentation
 
 - **`arcature::dx` says what `dx` means, once.** The module now opens by

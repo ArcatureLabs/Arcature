@@ -116,6 +116,22 @@ deny = [
     { crate = "ctor", reason = "life-before-main. Startup order becomes link order, and nothing in the framework is allowed to depend on that." },
     { crate = "openssl-sys", reason = "the TLS story is rustls. A second TLS stack doubles the attack surface and the build requirements." },
     { crate = "openssl", reason = "the TLS story is rustls." },
+    # `native-tls` is the back door to the two entries above. It is a facade:
+    # Schannel on Windows, Secure Transport on macOS, and **OpenSSL on Linux**
+    # -- which is every machine Arcature is deployed on. A dependency that
+    # offers a `native-tls` and a `rustls` feature will often default to the
+    # former, so the OpenSSL ban alone catches the mistake one level too late,
+    # after the C library is already in the graph and the build needs
+    # `pkg-config` and system headers. Deny the facade and the failure names
+    # the crate that chose it.
+    { crate = "native-tls", reason = "the TLS story is rustls; `native-tls` is OpenSSL on Linux, so it re-introduces the stack the two entries above ban. Pick the dependency's `rustls` feature instead." },
+    # The same argument one layer down: these are the adapters that put
+    # `native-tls` on a connection pool or an HTTP client, and they are what a
+    # feature flag actually turns on. Naming them makes the denial point at
+    # the line somebody wrote rather than at a transitive crate they have
+    # never heard of.
+    { crate = "tokio-native-tls", reason = "adapter for `native-tls`; see above." },
+    { crate = "hyper-tls", reason = "adapter for `native-tls`; use `hyper-rustls`." },
 ]
 
 # Dependencies allowed to appear more than once, when the duplication is known
