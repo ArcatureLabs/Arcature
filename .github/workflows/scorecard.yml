@@ -1,0 +1,96 @@
+# OpenSSF Scorecard: the supply-chain posture of this repository itself.
+#
+# Not a code scanner and not a dependency scanner -- both of those already
+# exist here. Scorecard grades the repository: are actions pinned, is branch
+# protection on, are there binary artifacts checked in, is there a security
+# policy, does a dangerous workflow trigger exist, is signed release
+# provenance published. It is the only check in this repository whose subject
+# is the project's own practices rather than its code or its dependencies.
+#
+# Results land on the Security tab as code scanning alerts, so a regression --
+# somebody adding `pull_request_target`, or branch protection being loosened
+# -- shows up in the same place as everything else rather than on a dashboard
+# nobody opens.
+#
+# `publish_results: true` sends the score to the public OSSF API. That is a
+# deliberate choice for a public Apache-2.0 project: it is what backs the
+# Scorecard badge, and the OSSF's weekly crawl would score this repository
+# anyway. Set it false only if the repository ever goes private.
+
+name: Scorecard
+
+on:
+  push:
+    # Scorecard only supports the default branch. `pull_request` is marked
+    # experimental upstream and is left off on purpose.
+    branches: [main]
+  schedule:
+    # Weekly, Saturday. Most of what Scorecard grades changes through
+    # repository settings rather than commits -- branch protection, required
+    # reviews, security policy -- and none of those events fire a workflow, so
+    # the cron is the only thing that catches them. Minute is not :00, and the
+    # day is off Monday to stay clear of Dependabot's weekly batch.
+    - cron: "23 5 * * 6"
+
+# Must stay read-only at the top level. This is not just hygiene: Scorecard's
+# own Token-Permissions check reads this file, and a workflow-level write
+# would cost the repository points in the score this workflow exists to
+# produce. The one job below widens for exactly two reasons, stated there.
+permissions:
+  contents: read
+
+# No `concurrency` block, and that is the point. Every run of this workflow is
+# a dated record of the repository's posture, published to the OSSF API and to
+# code scanning. Cancelling a superseded run would drop a data point from that
+# history, which is the opposite of what a scheduled security job is for.
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Uploading the SARIF so the findings appear as code scanning alerts.
+      security-events: write
+      # The OIDC token `publish_results: true` exchanges with the OSSF API to
+      # prove the results came from this repository. Without it the publish
+      # step fails; with it and without `publish_results`, it is unused.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Scorecard reads the repository, it never pushes. Leaving the
+          # checkout credentials in `.git/config` for the rest of the job
+          # would hand a write-capable token to every step that follows, and
+          # Scorecard's own Dangerous-Workflow check looks for exactly this.
+          persist-credentials: false
+
+      # Upstream publishes no floating major tag for this action -- there is
+      # no `v2` ref, only point releases -- so the exact version is the only
+      # pinnable ref. Dependabot's github-actions entry will raise the bump.
+      - uses: ossf/scorecard-action@v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      # The SARIF as a downloadable artifact. Code scanning keeps the alerts
+      # but collapses them into its own model; the raw file is what you want
+      # when a score drops and the question is which individual check moved.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          # Short. This is a debugging aid for a run that just happened, and
+          # the durable copy is the code scanning history below.
+          retention-days: 7
+
+      # `upload-sarif` and not `analyze`: the SARIF was produced by Scorecard,
+      # not by a CodeQL database, so there is nothing for CodeQL to analyse.
+      # The `v4` here is the same major tag codeql.yml uses -- keep them
+      # together when either moves.
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
