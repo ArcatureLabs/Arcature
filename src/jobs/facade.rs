@@ -1,29 +1,27 @@
-//! The `Jobs` facade: enqueue over the application's existing `PgPool`.
+//! The `Jobs` facade: enqueue over the application's existing pool.
 //!
 //! One pool, no second connection. `enqueue_tx` / `enqueue_with` take a caller
 //! transaction/executor so `create order + enqueue job` share one transaction.
 
-use sqlx::PgPool;
-use sqlx::postgres::PgExecutor;
-
+use super::dialect::{JobDb, JobPool};
 use super::enqueue::{EnqueuedJob, JobRequest, insert_job};
 use super::error::{EnqueueError, MigrateError};
 use super::migrate;
 
-/// The job queue facade over the application's existing `PgPool`.
+/// The job queue facade over the application's existing pool.
 #[derive(Clone)]
 pub struct Jobs {
-    pool: PgPool,
+    pool: JobPool,
 }
 
 impl Jobs {
-    /// Create a `Jobs` facade from an existing `PgPool`. No second pool.
-    pub fn new(pool: PgPool) -> Self {
+    /// Create a `Jobs` facade from an existing pool. No second pool.
+    pub fn new(pool: JobPool) -> Self {
         Self { pool }
     }
 
     /// The underlying pool (the escape hatch).
-    pub fn pool(&self) -> &PgPool {
+    pub fn pool(&self) -> &JobPool {
         &self.pool
     }
 
@@ -35,7 +33,7 @@ impl Jobs {
     /// Apply migrations within a caller's transaction.
     pub async fn migrate_tx(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tx: &mut sqlx::Transaction<'_, JobDb>,
     ) -> Result<(), MigrateError> {
         migrate::apply_tx(tx).await
     }
@@ -55,7 +53,7 @@ impl Jobs {
         request: &JobRequest<J>,
     ) -> Result<EnqueuedJob, EnqueueError>
     where
-        E: PgExecutor<'c>,
+        E: sqlx::Executor<'c, Database = JobDb>,
         J: serde::Serialize + serde::de::DeserializeOwned,
     {
         insert_job(executor, request).await
@@ -64,7 +62,7 @@ impl Jobs {
     /// Enqueue a job within a caller's transaction.
     pub async fn enqueue_tx<J>(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tx: &mut sqlx::Transaction<'_, JobDb>,
         request: &JobRequest<J>,
     ) -> Result<EnqueuedJob, EnqueueError>
     where

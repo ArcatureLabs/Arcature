@@ -5,11 +5,10 @@ use std::marker::PhantomData;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use sqlx::Row;
-use sqlx::postgres::PgExecutor;
 use uuid::Uuid;
 
 use super::config::JobModel;
+use super::dialect::{JobDb, sql, stored_time};
 use super::error::EnqueueError;
 use super::validate::validate_kind;
 
@@ -172,51 +171,43 @@ impl<J> JobRequest<J> {
 // insert_job
 // ---------------------------------------------------------------------------
 
-/// The row returned by the INSERT.
-struct EnqueueRow {
-    id: Uuid,
-    status: String,
-}
-
-impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for EnqueueRow {
-    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
-        Ok(Self {
-            id: row.try_get("id")?,
-            status: row.try_get("status")?,
-        })
-    }
-}
-
 /// Insert a job row into `arcature_jobs`.
 ///
-/// `run_at` and `available_at` both take `COALESCE($5, now())` so a delayed
-/// job is not claimable until `run_at`. `max_attempts` is clamped to
-/// `i32::MAX`.
+/// The id is generated here rather than by the database. Only PostgreSQL and
+/// SQLite could return a server-generated id from an `INSERT`; MySQL has no
+/// `RETURNING`, and a second `SELECT` to recover the id would be a round trip
+/// bought for nothing. Generating it client-side also drops the PostgreSQL
+/// `gen_random_uuid()` default, and with it the pgcrypto dependency.
+///
+/// A job with no `run_at` is available immediately, and `run_at` and
+/// `available_at` start equal; the worker only ever reads `available_at`,
+/// and a retry moves that one alone so `run_at` keeps recording what was
+/// originally asked for.
 pub(crate) async fn insert_job<'c, E>(
     executor: E,
     request: &JobRequest<impl Serialize + serde::de::DeserializeOwned>,
 ) -> Result<EnqueuedJob, EnqueueError>
 where
-    E: PgExecutor<'c>,
+    E: sqlx::Executor<'c, Database = JobDb>,
 {
+    let id = Uuid::new_v4();
     let max_attempts: i32 = request.effective_max_attempts().min(i32::MAX as u32) as i32;
-    let row = sqlx::query_as::<_, EnqueueRow>(
-        r#"INSERT INTO arcature_jobs
-               (kind, version, payload, max_attempts, run_at, available_at)
-           VALUES ($1, $2, $3, $4, COALESCE($5, now()), COALESCE($5, now()))
-           RETURNING id, status"#,
-    )
-    .bind(request.kind())
-    .bind(request.version())
-    .bind(request.payload())
-    .bind(max_attempts)
-    .bind(request.run_at_ts())
-    .fetch_one(executor)
-    .await
-    .map_err(EnqueueError::database)?;
+    let run_at = stored_time(request.run_at_ts().unwrap_or_else(Utc::now));
+
+    sqlx::query(sql::INSERT)
+        .bind(id)
+        .bind(request.kind())
+        .bind(request.version())
+        .bind(sqlx::types::Json(request.payload()))
+        .bind(max_attempts)
+        .bind(run_at)
+        .bind(run_at)
+        .execute(executor)
+        .await
+        .map_err(EnqueueError::database)?;
 
     Ok(EnqueuedJob {
-        id: row.id,
-        status: JobStatus::from_db(&row.status).unwrap_or(JobStatus::Pending),
+        id,
+        status: JobStatus::Pending,
     })
 }

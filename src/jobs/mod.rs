@@ -1,9 +1,30 @@
-//! Durable PostgreSQL background jobs.
+//! Durable background jobs on PostgreSQL, SQLite, or MySQL.
 //!
-//! A `FOR UPDATE SKIP LOCKED` queue over the application's existing `PgPool`.
-//! The queue is at-least-once; claims are fenced by a per-claim UUID token so
-//! a stale worker (lease expired, sweep requeued) cannot commit its result
-//! over another worker's claim.
+//! One queue over the application's existing pool -- no second pool, no
+//! separate broker. The queue is at-least-once; claims are fenced by a
+//! per-claim UUID token so a stale worker (lease expired, sweep requeued)
+//! cannot commit its result over another worker's claim.
+//!
+//! # Which dialect
+//!
+//! The build speaks exactly one dialect, chosen by the `db-postgres`,
+//! `db-sqlite`, and `db-mysql` features. Everything dialect-specific -- the
+//! statement text, the placeholder style, how a timestamp is stored, and the
+//! shape of the claim -- is confined to the private `dialect` module. The
+//! claim comes in two shapes because the databases genuinely differ:
+//!
+//! - **PostgreSQL** claims in one statement: `UPDATE ... RETURNING` over a
+//!   `FOR UPDATE SKIP LOCKED` subquery.
+//! - **MySQL 8** has `SKIP LOCKED` but no `RETURNING`, so it picks with a
+//!   locking `SELECT` and marks each picked row inside one transaction.
+//! - **SQLite** has neither, and needs neither: `BEGIN IMMEDIATE` takes the
+//!   database write lock, so a claim is exclusive by construction and
+//!   competing claimers wait (bounded by `busy_timeout`) rather than skip.
+//!   The cost is that SQLite claimers serialise, which is the right trade for
+//!   the single-node use SQLite is chosen for.
+//!
+//! Lease arithmetic is done by the database in every dialect, so recovering a
+//! crashed worker's jobs does not depend on worker clocks agreeing.
 //!
 //! # Architecture
 //!
@@ -36,6 +57,7 @@
 mod claim;
 mod complete;
 mod config;
+mod dialect;
 mod enqueue;
 mod error;
 mod facade;
@@ -56,6 +78,7 @@ pub mod retry {
 
 pub use claim::ClaimedJob;
 pub use config::{DEFAULT_MAX_PAYLOAD_BYTES, JobModel, RetryPolicy, WorkerConfig};
+pub use dialect::JobPool;
 pub use enqueue::{EnqueuedJob, JobRequest, JobStatus};
 pub use error::{
     EnqueueError, JobError, MigrateError, RegisterError, RetryPolicyError, SchedulerError,

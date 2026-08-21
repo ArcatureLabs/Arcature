@@ -18,6 +18,7 @@ use uuid::Uuid;
 use super::claim::{self, ClaimedJob};
 use super::complete::{self, ClaimTransition, DispatchOutcome, ErrorKind, JobState, Outcome};
 use super::config::{RetryPolicy, WorkerConfig};
+use super::dialect::{JobPool, sql};
 use super::error::WorkerError;
 use super::observe::{Event, FailReason, Observer};
 use super::registry::{self, Registry};
@@ -29,7 +30,7 @@ const PANIC_MESSAGE: &str = "handler panicked";
 /// A worker that claims and runs jobs from the shared pool.
 #[derive(Clone)]
 pub struct Worker {
-    pool: sqlx::PgPool,
+    pool: JobPool,
     registry: Registry,
     config: WorkerConfig,
     retry: RetryPolicy,
@@ -39,12 +40,12 @@ pub struct Worker {
 
 impl Worker {
     /// Create a worker with default config and retry policy.
-    pub fn new(pool: sqlx::PgPool, registry: Registry) -> Self {
+    pub fn new(pool: JobPool, registry: Registry) -> Self {
         Self::builder(pool, registry).build()
     }
 
     /// Create a worker builder.
-    pub fn builder(pool: sqlx::PgPool, registry: Registry) -> WorkerBuilder {
+    pub fn builder(pool: JobPool, registry: Registry) -> WorkerBuilder {
         WorkerBuilder {
             inner: Worker {
                 pool,
@@ -118,7 +119,7 @@ impl WorkerBuilder {
 
 #[allow(clippy::too_many_arguments)]
 async fn run_loop(
-    pool: sqlx::PgPool,
+    pool: JobPool,
     registry: Registry,
     config: WorkerConfig,
     retry: RetryPolicy,
@@ -231,24 +232,12 @@ async fn run_loop(
 }
 
 /// Release a claim back to pending (fenced on the claim token).
-async fn release_claim(
-    pool: &sqlx::PgPool,
-    job_id: Uuid,
-    claim_token: Uuid,
-) -> Result<(), WorkerError> {
-    let _ = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'pending',
-               available_at = now(),
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL
-           WHERE id = $1 AND status = 'running' AND claim_token = $2"#,
-    )
-    .bind(job_id)
-    .bind(claim_token)
-    .execute(pool)
-    .await?;
+async fn release_claim(pool: &JobPool, job_id: Uuid, claim_token: Uuid) -> Result<(), WorkerError> {
+    let _ = sqlx::query(sql::RELEASE_CLAIM)
+        .bind(job_id)
+        .bind(claim_token)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -264,7 +253,7 @@ fn emit(observer: Option<&dyn Observer>, event: Event) {
 
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_one(
-    pool: &sqlx::PgPool,
+    pool: &JobPool,
     registry: &Registry,
     retry: RetryPolicy,
     config: WorkerConfig,
