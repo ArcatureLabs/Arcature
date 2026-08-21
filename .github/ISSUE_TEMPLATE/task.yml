@@ -1,0 +1,76 @@
+name: Task
+description: Maintainer-facing chore. Work that has to happen and has no user-visible behaviour.
+labels: ["kind/chore", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For maintenance the project owes itself: tooling, pins, plumbing, a
+        migration, a cleanup that unblocks something else. Not a bug and not a
+        feature -- those have their own templates and their own questions.
+
+        This template exists so that a chore carries the same information a
+        change carries: why now rather than later, and what "done" means. A
+        task without a definition of done reopens forever.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: >
+        The work, concretely, in the imperative. Name the files or the surfaces
+        if you already know them.
+      placeholder: "Split src/dev_proxy/service.rs; the upgrade path and the plain proxy path no longer share enough to justify one file."
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-now
+    attributes:
+      label: Why now
+      description: >
+        What makes this worth doing before the next feature. A chore competes
+        with everything else for one person's attention, and "it would be
+        tidier" loses that competition -- correctly. What gets worse if it
+        waits, or what is blocked until it lands?
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+      description: >
+        The checkable conditions. A command that passes, a file that no longer
+        exists, a warning that no longer appears. Write it so that someone else
+        can close the issue without asking you.
+      value: |
+        - [ ] 
+        - [ ] 
+    validations:
+      required: true
+
+  - type: input
+    id: blocked-by
+    attributes:
+      label: Blocked by
+      description: >
+        Issues, pull requests or external releases this waits on. Leave empty if
+        nothing. If something is named here, the issue also gets
+        `status/blocked`.
+      placeholder: "#42, or: sea-orm 2.1 release"
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Does this change observable behaviour
+      description: >
+        A chore that changes behaviour is a refactor at best and a feature in
+        disguise at worst. If the answer is yes, say what changes -- and expect
+        the change to need a test and a changelog line like any other.
+      options:
+        - "No -- internal only"
+        - "Yes -- and it is intended"
+        - "Not sure"
+    validations:
+      required: true

@@ -1,0 +1,76 @@
+name: Feature request
+description: Propose something Arcature should do and does not.
+labels: ["kind/feature", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Arcature is opinionated, which means most proposals are declined -- not
+        because they are bad, but because a framework that accepts every good
+        idea stops having a shape. The questions below are the ones a proposal
+        has to answer to be weighed at all.
+
+        Some things are settled and will not be reopened without new evidence.
+        They are written down in `docs/decisions/`: no npm package, one TCP
+        port in development, a fixed layer order, no hidden registry.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What you were trying to build, and where the framework got in the way.
+        Describe the situation, not the API you already have in mind -- the
+        best solution is frequently not the one the reporter arrived with.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today
+      description: >
+        The workaround, including the escape hatches. Arcature exposes raw
+        axum, tower and SeaORM on purpose; if the workaround is "use axum
+        directly and it is fine", that is a real answer and may be the right
+        one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: >
+        What you want to exist, concretely. A sketch of the call site is worth
+        more than a description of the machinery behind it.
+      render: rust
+    validations:
+      required: true
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: The cost
+      description: >
+        What this would cost the people who never use it: compile time, a new
+        dependency, a new feature flag, another concept in the vocabulary, an
+        extra thing to explain in the guide. Every feature here is paid for by
+        someone who did not ask for it. Naming the price is not an argument
+        against your proposal; refusing to name it is.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Does this break existing code?
+      description: >
+        While the crate is pre-1.0 the breaking bump is the minor one, so
+        a breaking change is 0.x+1.0 and needs an upgrade note.
+      options:
+        - "No -- purely additive"
+        - "Yes -- existing applications would need changes"
+        - "Not sure"
+    validations:
+      required: true

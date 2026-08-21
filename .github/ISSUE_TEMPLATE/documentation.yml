@@ -1,0 +1,101 @@
+name: Documentation defect
+description: The documentation and the code disagree, or the documentation is missing.
+labels: ["kind/docs", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Arcature treats a disagreement between code and its own documentation as
+        a defect in whichever of the two is wrong. You do not have to decide
+        which before filing -- that is often the outcome of the issue rather
+        than its premise. You do have to say what you read and what it said,
+        because that is what makes the mismatch checkable.
+
+        If the documentation is right and the code is wrong in a way that has a
+        security consequence, do not file here. Follow `SECURITY.md`.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which documentation
+      description: >
+        Where you read it. The fix lands in a different place for each, and the
+        guide and the doc comments drift apart in different ways.
+      options:
+        - "The guide (docs/src/**, or the rendered mdBook)"
+        - "A doc comment or rustdoc page"
+        - "A decision record (docs/decisions/**)"
+        - "README.md"
+        - "A module header comment"
+        - "An error message or a macro diagnostic (ARC-M<NNN>)"
+        - "The generated scaffold (arc new) or its comments"
+        - "Somewhere else (say where below)"
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Exactly where
+      description: >
+        A path, a heading, an item path, or a URL. "Somewhere in the routing
+        chapter" costs someone a search that you have already done.
+      placeholder: "docs/src/routing/middleware.md, section \"Per-route layers\""
+    validations:
+      required: true
+
+  - type: textarea
+    id: said
+    attributes:
+      label: What it said
+      description: >
+        Quote it. A paraphrase loses the exact promise, and the exact promise is
+        usually the thing that turned out to be false.
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What the code actually does
+      description: >
+        The observed behaviour, and how you established it -- a snippet you ran,
+        a compiler error, a response body, or a read of the source with the file
+        and function named.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: which-is-wrong
+    attributes:
+      label: Which side do you think is wrong
+      description: >
+        Your reading, not a verdict. If the documented behaviour is the better
+        one, this is a bug with a doc-shaped symptom, and it is worth saying so.
+      options:
+        - "The documentation -- the code's behaviour is the one I want"
+        - "The code -- the documented behaviour is the one I want"
+        - "Neither is wrong, the documentation is just missing or unclear"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Arcature version or commit
+      description: >
+        The crate is not published yet, so this is a commit SHA from `main`
+        unless you are on a fork. Documentation drifts, and knowing when you
+        read it separates a stale page from a wrong one.
+      placeholder: "f5826bd"
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: What it should say
+      description: >
+        Optional. A sentence that would have saved you is worth more than a
+        report that something was confusing, and it is frequently the whole fix.

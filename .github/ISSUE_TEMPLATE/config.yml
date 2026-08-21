@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ArcatureLabs/Arcature/security/advisories/new
+    about: >-
+      Report privately. Do not open a public issue for anything that lets
+      someone reach data or an action they should not. See SECURITY.md.
+  - name: Questions and design discussion
+    url: https://github.com/ArcatureLabs/Arcature/discussions
+    about: >-
+      "How do I ..." and "why is it like this" belong here rather than in the
+      issue tracker.

@@ -1,0 +1,90 @@
+name: Bug report
+description: Something in Arcature does not do what its documentation says.
+labels: ["kind/bug", "status/needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: check the "Not yet implemented" section of `CHANGELOG.md`.
+        A few surfaces are documented stubs on purpose, and a report against one
+        of those is already known.
+
+        If the bug has a security consequence -- anyone reaching data or an
+        action they should not -- do not open an issue. Follow `SECURITY.md`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >
+        The observed behaviour, and the behaviour the documentation led you to
+        expect. Quote the doc comment or the guide passage if there is one:
+        a mismatch between code and its own documentation is a defect in
+        whichever of the two is wrong, and knowing which you read helps.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >
+        The smallest application that shows it. A handler and the builder calls
+        around it is usually enough; a whole project rarely is. If it needs a
+        database, say which migration state.
+      render: rust
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Arcature version or commit
+      description: >
+        The crate is not published yet, so this is a commit SHA from `main`
+        unless you are on a fork.
+      placeholder: "f5826bd"
+    validations:
+      required: true
+
+  - type: input
+    id: features
+    attributes:
+      label: Feature flags
+      description: >
+        The `features = [...]` you build with, or `default`. Arcature's feature
+        set changes which code exists at all, so a report without this is often
+        unreproducible.
+      placeholder: "default, or: fullstack, or: no-default-features + inertia,auth"
+    validations:
+      required: true
+
+  - type: input
+    id: toolchain
+    attributes:
+      label: Rust version
+      description: "`rustc --version`. The MSRV is 1.97.1."
+      placeholder: "rustc 1.97.1 (2026-01-15)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: >
+        The compiler error, the panic, or the response body -- whichever it
+        was. For a macro error, include the `ARC-M<NNN>` code.
+      render: text
