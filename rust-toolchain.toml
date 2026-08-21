@@ -1,3 +1,13 @@
+# The toolchain contributors and CI build with.
+#
+# `stable`, not the MSRV. CI runs a matrix of both: `1.97.1` (the
+# `rust-version` in Cargo.toml) proves the floor still holds, and `stable`
+# proves nothing has rotted at the top. Pinning the floor here instead would
+# hide every warning stable has learned to emit since, and clippy on the MSRV
+# is a weaker gate than clippy on stable.
+#
+# Raising `rust-version` in Cargo.toml is a breaking change -- a minor bump
+# while the crate is in 0.x -- and belongs in its own commit.
 [toolchain]
-channel = "1.97.1"
+channel = "stable"
 components = ["rustfmt", "clippy"]
