@@ -37,7 +37,7 @@
 // through Arcature (e.g. `arcature::axum::routing`).
 pub use axum;
 
-/// The Arcature framework version (YBF: `YEAR.BREAK.FIX`).
+/// The Arcature framework version, as `MAJOR.MINOR.PATCH`.
 pub const FRAMEWORK_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // --- Always-on kernel -------------------------------------------------------
