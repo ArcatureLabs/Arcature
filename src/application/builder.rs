@@ -39,6 +39,25 @@ pub struct Application<S: RouterState = ()> {
     router: Router<S>,
     bind_addr: String,
     port: u16,
+    // Carried so `config()` can hand it back. `port` here is the *configured*
+    // port; the one actually bound is `resolve_port(port)`, which may differ.
+    app_config: crate::config::AppConfig,
+    // The lifecycle handle. Created by the builder rather than at serve time
+    // because the health endpoints -- composed into the router by `build()` --
+    // have to share the same one. Two `Lifecycle`s would mean `/up/ready`
+    // reporting on a state machine nothing ever advances.
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
+    lifecycle: Lifecycle,
+    // The health handle, kept so the serve path can publish the started
+    // subsystems into it. `None` when the app called `.health(false)`.
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
+    health: Option<crate::application::health::Health>,
     // Subsystem configs (feature-gated). Each is `Some` when the app opts in.
     //
     // Every field below -- and `proxy` after them -- is consumed only by the
@@ -126,6 +145,17 @@ impl<S: RouterState> Application<S> {
             router: Router::new(),
             bind_addr: DEFAULT_BIND_ADDR.to_string(),
             port: DEFAULT_PORT,
+            app_config: crate::config::AppConfig::new(),
+            lifecycle: Lifecycle::new(),
+            // On by default. An orchestrator that cannot probe an instance
+            // has to guess, and it guesses by killing things.
+            health: true,
+            health_prefix: crate::application::health::DEFAULT_PREFIX.to_string(),
+            route_table: RouteTable::empty(),
+            // On by default. There is nothing to configure and no cost worth
+            // naming, and a `redirect().route(..)` that answers `400` in a
+            // default build would read as a broken framework.
+            redirect_mapper: true,
             #[cfg(feature = "database")]
             database_config: None,
             #[cfg(feature = "jobs")]
@@ -195,6 +225,24 @@ pub struct ApplicationBuilder<S: RouterState = ()> {
     router: Router<S>,
     bind_addr: String,
     port: u16,
+    // The top-level config. Defaulted rather than optional: every field has
+    // a meaningful default, so `None` and `Some(AppConfig::new())` would mean
+    // the same thing and only one of them would need handling at each use.
+    app_config: crate::config::AppConfig,
+    // Created here, not at serve time: `build()` composes the health
+    // endpoints into the router and they need this exact handle.
+    lifecycle: Lifecycle,
+    // Whether to register the health endpoints at all, and where.
+    health: bool,
+    health_prefix: String,
+    // The name -> path-template snapshot taken as routes come in. `Routes<S>`
+    // is turned into a `Router<S>` immediately, which drops the names, so the
+    // table has to be kept here or `redirect().route(..)` has nothing to
+    // resolve against.
+    route_table: RouteTable,
+    // Whether to install the redirect mapper. On by default; see
+    // `redirect_mapper`.
+    redirect_mapper: bool,
     #[cfg(feature = "database")]
     database_config: Option<crate::database::DatabaseConfig>,
     #[cfg(feature = "jobs")]
@@ -249,11 +297,47 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
-    /// Set the port (default `3000`). Also honored via `APP_PORT`/`PORT` env
-    /// at run time.
+    /// Set the port (default `3000`). See [`config`](Self::config) for how a
+    /// port set here interacts with the environment at run time.
     #[must_use]
     pub fn port(mut self, port: u16) -> Self {
         self.port = port;
+        self
+    }
+
+    /// Supply the top-level [`AppConfig`].
+    ///
+    /// Today the framework consumes exactly one field of it: `port` becomes
+    /// the port this process listens on, as though [`port`](Self::port) had
+    /// been called. `name`, `url` and `env` are carried so that
+    /// [`Application::config`] can hand them back, and are read by nothing in
+    /// the framework -- no framework surface builds an absolute URL yet, and
+    /// `env` is forbidden from gating behaviour (see [`AppConfig`]). They are
+    /// stored rather than dropped because an application that has already
+    /// parsed `APP_URL` should not have to parse it twice.
+    ///
+    /// # Port precedence
+    ///
+    /// Highest wins:
+    ///
+    /// 1. `ARCATURE_BACKEND_PORT` -- set by `arc dev`, whose supervisor owns
+    ///    the only TCP listener. It outranks everything, including `PORT`,
+    ///    because a `PORT` left in a developer's `.env` would otherwise send
+    ///    the child to the address the supervisor is already bound to and
+    ///    break the one-port guarantee with a message about the port being
+    ///    in use.
+    /// 2. `PORT` -- the platform convention. A host that assigns a port has
+    ///    to be able to override the source.
+    /// 3. `APP_PORT` -- the application's own `.env`.
+    /// 4. Whatever `.config(..)` or `.port(..)` last set, or [`DEFAULT_PORT`].
+    ///
+    /// The first three are read once, at serve time, in
+    /// [`resolve_port`]. Because `.config(..)` writes the same field
+    /// `.port(..)` does, the two compose by call order: the later call wins.
+    #[must_use]
+    pub fn config(mut self, config: crate::config::AppConfig) -> Self {
+        self.port = config.port;
+        self.app_config = config;
         self
     }
 
@@ -849,16 +933,143 @@ async fn shutdown_signal() {
     }
 }
 
+/// Resolve the port to listen on, consulting the environment.
+///
+/// The order of the array is the precedence, highest first, and it is the
+/// only place the three names are read. See
+/// [`ApplicationBuilder::config`] for the reasoning behind each position; the
+/// one that is not obvious is that `ARCATURE_BACKEND_PORT` outranks `PORT`.
+/// Under `arc dev` the supervisor owns the process's only TCP listener and
+/// puts the application on a private endpoint; a stale `PORT` in a
+/// developer's `.env` winning that contest would aim the child at the
+/// address the supervisor already holds.
+///
+/// A value that is present but not a `u16` is skipped rather than fatal: the
+/// next source down is a better answer than refusing to boot, and the
+/// alternative -- treating `PORT=""` as an error -- makes an empty variable
+/// in a compose file a crash.
 #[cfg(feature = "macros")]
 fn resolve_port(configured: u16) -> u16 {
-    // Allow `PORT` and `ARCATURE_BACKEND_PORT` to override the configured port.
-    use std::env;
-    for key in ["PORT", "ARCATURE_BACKEND_PORT"] {
-        if let Ok(v) = env::var(key)
-            && let Ok(p) = v.parse::<u16>()
+    port_from(configured, |key| std::env::var(key).ok())
+}
+
+/// The port sources, highest precedence first.
+#[cfg(feature = "macros")]
+const PORT_ENV_KEYS: [&str; 3] = ["ARCATURE_BACKEND_PORT", "PORT", "APP_PORT"];
+
+/// [`resolve_port`] with the environment passed in.
+///
+/// Split out purely so the precedence can be tested. `std::env::set_var` is
+/// `unsafe` in edition 2024 and this crate is `#![forbid(unsafe_code)]`, so a
+/// test that sets `PORT` cannot be written at all -- and even if it could,
+/// the process environment is global and Rust runs tests in threads, so two
+/// such tests would race. A closure makes the ordering a pure function.
+#[cfg(feature = "macros")]
+fn port_from(configured: u16, lookup: impl Fn(&str) -> Option<String>) -> u16 {
+    for key in PORT_ENV_KEYS {
+        if let Some(value) = lookup(key)
+            && let Ok(port) = value.parse::<u16>()
         {
-            return p;
+            return port;
         }
     }
     configured
+}
+
+#[cfg(all(test, feature = "macros"))]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, AppEnvironment};
+
+    /// A lookup over a fixed table, standing in for the process environment.
+    fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
+        let owned: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        move |key| owned.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    }
+
+    #[test]
+    fn nothing_in_the_environment_leaves_the_configured_port_alone() {
+        assert_eq!(port_from(8080, env_of(&[])), 8080);
+    }
+
+    #[test]
+    fn the_supervisor_outranks_the_platform_and_the_dotenv() {
+        // The one that matters: `arc dev` owns the only TCP listener, so a
+        // `PORT` left in a developer's `.env` must not aim the child at it.
+        let port = port_from(
+            3000,
+            env_of(&[
+                ("APP_PORT", "3000"),
+                ("PORT", "3000"),
+                ("ARCATURE_BACKEND_PORT", "41234"),
+            ]),
+        );
+        assert_eq!(port, 41234);
+    }
+
+    #[test]
+    fn the_platform_outranks_the_dotenv() {
+        let port = port_from(3000, env_of(&[("APP_PORT", "3000"), ("PORT", "8080")]));
+        assert_eq!(port, 8080);
+    }
+
+    #[test]
+    fn app_port_is_read_when_it_is_the_only_source() {
+        assert_eq!(port_from(3000, env_of(&[("APP_PORT", "9001")])), 9001);
+    }
+
+    #[test]
+    fn an_unparseable_value_falls_through_instead_of_refusing_to_boot() {
+        // `PORT=""` in a compose file should not be a crash, and it should
+        // not shadow a source further down either.
+        let port = port_from(3000, env_of(&[("PORT", ""), ("APP_PORT", "9001")]));
+        assert_eq!(port, 9001);
+        assert_eq!(port_from(3000, env_of(&[("PORT", "not-a-port")])), 3000);
+        // 65536 does not fit a `u16`.
+        assert_eq!(port_from(3000, env_of(&[("PORT", "65536")])), 3000);
+    }
+
+    #[test]
+    fn config_sets_the_port_and_is_readable_back() {
+        let app = Application::<()>::new()
+            .config(
+                AppConfig::new()
+                    .name("Demo")
+                    .url("https://demo.example")
+                    .environment(AppEnvironment::Production)
+                    .port(4321),
+            )
+            .build();
+
+        assert_eq!(app.port(), 4321, "`config(..)` should set the bind port");
+        assert_eq!(app.config().name, "Demo");
+        assert_eq!(app.config().url, "https://demo.example");
+        assert_eq!(app.config().env, AppEnvironment::Production);
+    }
+
+    #[test]
+    fn config_and_port_compose_by_call_order() {
+        let later_port = Application::<()>::new()
+            .config(AppConfig::new().port(4321))
+            .port(5555)
+            .build();
+        assert_eq!(later_port.port(), 5555);
+
+        let later_config = Application::<()>::new()
+            .port(5555)
+            .config(AppConfig::new().port(4321))
+            .build();
+        assert_eq!(later_config.port(), 4321);
+    }
+
+    #[test]
+    fn an_application_that_never_calls_config_still_has_one() {
+        let app = Application::<()>::new().build();
+        assert_eq!(app.port(), DEFAULT_PORT);
+        assert_eq!(app.config().port, DEFAULT_PORT);
+        assert!(app.config().env.is_development());
+    }
 }
