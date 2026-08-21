@@ -57,6 +57,14 @@ therefore its first.
   `src/jobs/test_support.rs`, migrates and empties the table and hands out
   an exclusive lock, since the claim is blind to `kind` and two tests
   running at once would take each other's jobs.
+- **The MySQL pick-then-mark claim is proven exclusive.** MySQL 8 has no
+  `RETURNING`, so its claim reads a set of rows and then marks them one at
+  a time -- a window the other two dialects do not have, and one that only
+  opens under contention. `src/jobs/dialect/mysql.rs` now runs the same
+  eight-claimer race as PostgreSQL against a live server, plus a direct
+  test that `CLAIM_MARK`'s `AND status = 'pending'` refuses a row another
+  claimer already took. Drop `FOR UPDATE SKIP LOCKED` from the pick and
+  these fail with two workers holding one job.
 
 ### Deprecated
 

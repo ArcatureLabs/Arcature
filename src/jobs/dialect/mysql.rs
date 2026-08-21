@@ -146,3 +146,99 @@ VALUES (?, ?, ?, ?, ?, ?, ?)"#;
     /// The schema, one statement per `--;;` separated chunk.
     pub(crate) const SCHEMA: &str = include_str!("../migrations/mysql/0001_jobs.sql");
 }
+
+// MySQL is the dialect with the most to get wrong. PostgreSQL claims in one
+// statement and SQLite holds the write lock for the whole claim; MySQL alone
+// reads a set of rows and then writes them one at a time, which is a window
+// that only exists here and only opens under contention. These tests need a
+// MySQL 8 server; see `crate::jobs::test_support` for how they skip without
+// one.
+#[cfg(all(test, feature = "test-kit"))]
+mod tests {
+    use std::time::Duration;
+
+    use crate::jobs::test_support::{
+        JOBS, WORKERS, assert_claimed_exactly_once, drain_concurrently, enqueue, queue, rows,
+    };
+
+    /// The property, under the strategy least able to guarantee it.
+    ///
+    /// `FOR UPDATE SKIP LOCKED` on the pick is what closes the gap: the rows
+    /// come back already locked by this transaction, so the marks that follow
+    /// cannot lose a race to another claimer that picked the same rows --
+    /// there cannot be another claimer that picked them. Drop `FOR UPDATE` and
+    /// this test is what fails: two workers pick the same head of the queue,
+    /// both mark it, and `attempts` reaches 2 on a row two workers believe
+    /// they own.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn every_job_goes_to_exactly_one_worker() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let enqueued = enqueue(pool, JOBS).await;
+        let claimed = drain_concurrently(pool, (JOBS / WORKERS) as i64).await;
+
+        assert_claimed_exactly_once(pool, &enqueued, &claimed).await;
+    }
+
+    /// The same race with every worker fighting over one row at a time.
+    ///
+    /// With a batch of one, all eight claimers pick the same row -- the head
+    /// of `ORDER BY available_at, id` -- on every iteration. `SKIP LOCKED`
+    /// gives seven of them the *next* row instead, which is the behaviour a
+    /// batch of five is too coarse to distinguish from luck.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_single_row_batch_is_still_exclusive() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let enqueued = enqueue(pool, JOBS).await;
+        let claimed = drain_concurrently(pool, 1).await;
+
+        assert_claimed_exactly_once(pool, &enqueued, &claimed).await;
+    }
+
+    /// `CLAIM_MARK` refuses a row that is no longer pending.
+    ///
+    /// The pick and the mark are separate statements, so the mark carries
+    /// `AND status = 'pending'` as its second line of defence, and
+    /// `claim_jobs` drops any row whose mark affected nothing. That guard is
+    /// unreachable through the public path while the pick locks -- which is
+    /// the point -- so it is tested directly: mark a row that a claimer
+    /// already took, and nothing may change.
+    #[tokio::test]
+    async fn marking_a_row_that_is_no_longer_pending_changes_nothing() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let enqueued = enqueue(pool, 1).await;
+        let claimed = crate::jobs::admin::claim_jobs(pool, "first", Duration::from_secs(60), 1)
+            .await
+            .expect("claim");
+        assert_eq!(claimed.len(), 1, "the only pending job was not claimed");
+
+        let marked = sqlx::query(super::sql::CLAIM_MARK)
+            .bind("second")
+            .bind(uuid::Uuid::new_v4())
+            .bind(60_i32)
+            .bind(enqueued[0])
+            .execute(pool)
+            .await
+            .expect("run the mark")
+            .rows_affected();
+
+        assert_eq!(marked, 0, "a claimed row was marked a second time");
+        let observed = rows(pool).await;
+        assert_eq!(
+            observed,
+            vec![(enqueued[0], "running".to_owned(), 1)],
+            "the row moved when the mark should have been refused"
+        );
+    }
+}
