@@ -61,6 +61,14 @@ therefore its first.
   with the question each answers, and the guide has a `The project` page
   in its back matter. Before this, nothing anywhere linked to
   `GOVERNANCE.md` or `SUPPORT.md`.
+- **The guide is published.** It is at
+  <https://arcaturelabs.github.io/Arcature/>, rebuilt from `main` whenever
+  `docs/` changes. CI had been building the book on every pull request and
+  discarding it, so reading the guide meant cloning the repository and
+  installing mdBook. `homepage` in both manifests moves from the
+  repository URL -- where `repository` already pointed -- to the guide, so
+  the crates.io sidebar links two different things instead of the same
+  thing twice.
 
 ## [0.1.0]
 
