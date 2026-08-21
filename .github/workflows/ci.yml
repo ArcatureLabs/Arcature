@@ -102,6 +102,78 @@ jobs:
       - name: Build (no database)
         run: cargo build --no-default-features --features "macros,inertia,auth,validation,cache,storage-fs,mail,events,api,observe,pages,realtime,templates"
 
+  database:
+    name: Database (${{ matrix.driver }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - driver: postgres
+            feature: db-postgres
+            url: postgres://postgres:postgres@localhost:5432/arcature_test_ci
+          - driver: mysql
+            feature: db-mysql
+            url: mysql://root:mysql@127.0.0.1:3306/arcature_test_ci
+          - driver: sqlite
+            feature: db-sqlite
+            url: sqlite://arcature_test_ci.db?mode=rwc
+
+    # Both servers start on all three legs, including the SQLite one where
+    # neither is used. That is not an oversight: `services` is evaluated
+    # before the job begins and has no `if:`, so the alternatives are three
+    # near-identical jobs or one matrix that pays about thirty seconds of
+    # container start on one leg. The matrix wins -- a copied job is a job
+    # that drifts, and this one exists precisely to stop the three dialects
+    # from drifting apart.
+    #
+    # The database name is `arcature_test_ci` in every dialect because the
+    # harness refuses anything not prefixed `arcature_test_`; see the `test`
+    # job above.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: arcature_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: arcature_test_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pmysql"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ARCATURE_TEST_DB_URL: ${{ matrix.url }}
+
+    # A lean feature set on purpose. The `drivers` job already proves the
+    # full breadth *compiles* against each driver; what is missing, and what
+    # this job supplies, is proof that the SQL *runs*. Three dialects times
+    # the whole feature list would be three of the slowest builds in the file
+    # to re-prove something already proven.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      - name: Test against ${{ matrix.driver }}
+        run: cargo test --no-default-features --features "jobs,test-kit,${{ matrix.feature }}"
+
   drivers:
     name: Full features, per driver
     runs-on: ubuntu-latest
@@ -358,6 +430,7 @@ jobs:
     if: always()
     needs:
       - test
+      - database
       - drivers
       - features
       - scaffold

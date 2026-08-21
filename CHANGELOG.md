@@ -31,6 +31,15 @@ therefore its first.
 
 ## [Unreleased]
 
+### Added
+
+- **CI runs the suite against all three SQL dialects.** A new `Database`
+  matrix job builds `jobs,test-kit` once per driver and points
+  `ARCATURE_TEST_DB_URL` at a live PostgreSQL 17, MySQL 8, or SQLite file.
+  Until now the only database CI ever started was PostgreSQL, so the
+  MySQL and SQLite statement text was proven to compile and never proven
+  to parse. The job is required by the `CI success` gate.
+
 ### Deprecated
 
 - **The auth extractors have a module that names them.** `Auth<U>`,
