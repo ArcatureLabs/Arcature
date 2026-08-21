@@ -5,6 +5,7 @@
 # Getting started
 
 - [Getting started](getting-started.md)
+- [The dev loop](dev-loop.md)
 
 # The request
 

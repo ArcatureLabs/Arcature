@@ -401,6 +401,15 @@ therefore its first.
   repository URL -- where `repository` already pointed -- to the guide, so
   the crates.io sidebar links two different things instead of the same
   thing twice.
+- **The dev loop has a measured baseline.** `The dev loop` in the guide
+  records what one save costs in a generated application, how it was
+  measured, and on what machine. The finding the numbers settle is that a
+  Rust-only change rebuilds exactly two units out of 489 -- nothing
+  spurious, not `arcature`, not `arcature-macros`, not the embedded
+  scaffold templates -- and that 95% of the trip is code generation and
+  linking rather than type-checking. Issue #8 quoted a figure with no
+  method behind it; this is the method, so the next change to the loop can
+  be shown to have worked rather than asserted to have.
 
 ## [0.1.0]
 
