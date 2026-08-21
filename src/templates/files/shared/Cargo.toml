@@ -1,0 +1,106 @@
+[package]
+name = "__RUST_NAME__"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+publish = false
+# With a second `[[bin]]` target in the file, `cargo run` would be ambiguous
+# in any build that enables `uag`. Naming the default keeps `cargo run`
+# meaning what it meant before.
+default-run = "__RUST_NAME__"
+
+[features]
+default = []
+# What `arc dev` builds with. Turns on the framework's one-port dev proxy so
+# this process forwards Vite requests over IPC and keeps the only TCP port.
+# Off by default: a release build must carry none of it.
+dev = ["arcature/dev-proxy", "arcature/uag"]
+
+# What `arc typegen` builds with when no dev server is running. Turns on the
+# framework's graph module *and* adds the `uag` binary below, which prints the
+# graph as JSON for the tool to read.
+#
+# Separate from `dev` on purpose. `dev` needs the framework's `uag` feature so
+# the app can serve `/_arcature/uag.json`, but it must not add a second binary
+# target: that is an extra link on every dev-loop iteration, which is the one
+# cost the whole one-port design exists to avoid.
+uag = ["arcature/uag"]
+
+[dependencies]
+# `default-features = false` is deliberate. The default set includes `cli` and
+# `templates`, which drag `clap` and the embedded scaffold catalog into every
+# build of this app -- and this app never invokes `arc` from inside its own
+# process. The list below is what the app actually uses.
+arcature = { version = "__ARCATURE_VERSION__", default-features = false, features = [
+    "macros",
+    "dx",
+    "inertia",
+    "database",
+    "__DB_DRIVER__",
+    "auth",
+    "validation",
+    "cache",
+    "storage-fs",
+    "mail",
+    "jobs",
+    "events",
+    "api",
+    "observe",
+    "pages",
+    "realtime",
+] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.53", features = ["macros", "rt-multi-thread"] }
+dotenvy = "0.15"
+async-trait = "0.1"
+# The session store. In-memory is correct for development and for a
+# single-process deployment that may lose sessions on restart; swap it for a
+# database- or Redis-backed `SessionStore` before running more than one
+# instance. See `bootstrap/app.rs`.
+tower-sessions-memory-store = { version = "0.15", default-features = false }
+
+[dev-dependencies]
+arcature = { version = "__ARCATURE_VERSION__", default-features = false, features = ["test-kit"] }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "__RUST_NAME__"
+path = "src/main.rs"
+
+# The graph dumper `arc typegen` falls back to in CI. `required-features` is
+# what keeps it out of the dev loop: without `--features uag` Cargo does not
+# consider the target at all, so `cargo run` and `cargo build --features dev`
+# link one binary, not two.
+[[bin]]
+name = "uag"
+path = "src/bin/uag.rs"
+required-features = ["uag"]
+
+# --- The dev loop ----------------------------------------------------------
+#
+# Time from Ctrl+S to a result in the browser is what these settings buy. Full
+# debuginfo and 16 codegen units are the two largest costs in a default debug
+# build, and neither pays for itself while iterating.
+
+[profile.dev]
+# Enough for a backtrace with file and line; drops the expensive half of
+# debuginfo (variable locations, types) that a step debugger wants and a
+# stack trace does not.
+debug = "line-tables-only"
+incremental = true
+# More units means more parallelism and smaller recompiles. It costs runtime
+# speed in this crate, which is irrelevant while developing.
+codegen-units = 256
+
+[profile.dev.package."*"]
+# Dependencies compile once and then sit in `target/`, so optimising them is
+# a one-time cost that makes the dev server itself usable.
+opt-level = 2
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = "symbols"

@@ -1,0 +1,36 @@
+# Linking is the largest single step left in an incremental rebuild, so it is
+# the one worth configuring.
+#
+# Nothing here may hard-fail on a machine that lacks the fast linker: a config
+# that refuses to build is worse than a slow link. Only linkers that ship with
+# the Rust toolchain itself are enabled by default; everything that needs a
+# separate install is a commented opt-in.
+
+[target.x86_64-pc-windows-msvc]
+# `rust-lld.exe` lives in the toolchain's own sysroot, so this needs nothing
+# installed and works on stable. It replaces MSVC `link.exe`, which is the
+# slowest part of a Windows rebuild by a wide margin.
+linker = "rust-lld.exe"
+
+[target.aarch64-pc-windows-msvc]
+linker = "rust-lld.exe"
+
+# Linux is left on the system linker on purpose.
+#
+# The bundled `rust-lld` is reachable for `*-linux-gnu` only through
+# `-Zunstable-options`, and `-fuse-ld=lld` needs a system `lld` that may not be
+# there -- either would turn a missing tool into a failed build. `mold` and
+# `wild` are both faster than anything bundled; if you have one installed,
+# uncomment the matching block. Check with `mold --version` first.
+#
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+#
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=wild"]
+
+# macOS is left on the system linker too. Apple's `ld-prime` (Xcode 15 and
+# later) is already fast, and the bundled `rust-lld` does not produce Mach-O
+# from a stable toolchain.
