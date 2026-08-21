@@ -1,0 +1,89 @@
+# cargo audit: the RustSec advisory database against the checked-in lockfile,
+# on a clock.
+#
+# ci.yml already runs cargo-deny, which checks the same advisory database over
+# the same graph. This is not that check run twice; it is the same check run
+# at the time the other one cannot run.
+#
+# An advisory is published against a crate that has been in Cargo.lock for
+# eight months. No commit is coming -- the dependency did not change, the code
+# did not change, nothing triggers a pull request. ci.yml's `deny` job only
+# fires on push and pull_request, so it will next look at that lockfile
+# whenever somebody happens to open a pull request, which could be tomorrow or
+# could be in three weeks. The advisory sits undetected for the gap.
+#
+# That gap is the entire reason this file exists. The daily cron closes it to
+# at most 24 hours. The `Cargo.lock` path trigger is the cheap half: a
+# dependency bump gets an advisory answer in seconds rather than waiting for
+# the full cargo-deny graph resolve in ci.yml.
+#
+# Division of labour, so neither grows into the other:
+#
+#   deny.toml / ci.yml   licences, banned crates, registries, yanked crates,
+#                        duplicate versions. The policy lives there. Advisory
+#                        ignores go in deny.toml's `[advisories] ignore`.
+#   this file            advisories, on a schedule, and nothing else.
+
+name: Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "macros/Cargo.toml"
+      - ".github/workflows/audit.yml"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "macros/Cargo.toml"
+      - ".github/workflows/audit.yml"
+  schedule:
+    # Daily. Minute is not :00, and 03:38 sits clear of ci.yml's 04:17
+    # powerset so the two are not competing for runners.
+    - cron: "38 3 * * *"
+  workflow_dispatch:
+
+# Reading the lockfile is the whole job. A finding surfaces as a failed run,
+# which GitHub already mails to watchers -- `rustsec/audit-check` would open
+# an issue instead and wants `issues: write` for it, which is a repository
+# write granted to a scheduled job for a notification the platform sends for
+# free.
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  # Never on the scheduled run. A cancelled nightly is a day with no advisory
+  # answer, and this workflow exists precisely to guarantee there is one every
+  # day. On a branch under review a new push supersedes the old lockfile, so
+  # cancelling there is free.
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  audit:
+    name: RustSec advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `cargo audit` is a cargo subcommand, so it needs a toolchain on PATH
+      # even though it compiles nothing -- it parses Cargo.lock.
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Same installer ci.yml uses for cargo-hack and mdbook. A prebuilt
+      # binary, not `cargo install`, which would be a two-minute compile on
+      # every one of these runs.
+      - uses: taiki-e/install-action@cargo-audit
+
+      # Plain `cargo audit`: fails on vulnerabilities, warns on unmaintained
+      # and unsound. Not `--deny warnings`. An `unmaintained` advisory often
+      # has no fixed version to move to -- the crate is unmaintained, that is
+      # the finding -- and a daily job that fails red with no available action
+      # gets muted within a week, taking the vulnerability signal with it.
+      # If a specific unmaintained crate should block, that decision belongs
+      # in deny.toml with a reason attached, not as a blanket flag here.
+      - name: cargo audit
+        run: cargo audit
