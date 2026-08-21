@@ -5,6 +5,13 @@ Cargo.lock.bak
 # local environment
 .env
 
+# ...but the scaffold ships a .env for the project `arc new` generates,
+# and the catalog reads it with include_str!. Ignored, it is absent from a
+# fresh clone and the crate does not compile -- which is exactly how CI
+# broke. These two are template payload, not anyone's local secrets.
+!src/templates/files/**/.env
+!src/templates/files/**/.env.example
+
 # editor
 .vscode/
 .idea/
