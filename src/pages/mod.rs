@@ -120,35 +120,15 @@ fn mime_for(path: &std::path::Path) -> &'static str {
     }
 }
 
-/// A maintenance guard. When engaged, the request pipeline returns `503
-/// Service Unavailable` for all requests except a health check.
-#[derive(Clone, Debug, Default)]
-pub struct MaintenanceGuard {
-    engaged: Arc<std::sync::atomic::AtomicBool>,
-}
-
-impl MaintenanceGuard {
-    /// Create a disengaged guard.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Engage the guard (returns `503`).
-    pub fn engage(&self) {
-        self.engaged
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Disengage the guard.
-    pub fn disengage(&self) {
-        self.engaged
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Whether the guard is engaged.
-    #[must_use]
-    pub fn is_engaged(&self) -> bool {
-        self.engaged.load(std::sync::atomic::Ordering::Relaxed)
-    }
-}
+/// The maintenance switch.
+///
+/// This is [`crate::http::Maintenance`] under its historical name. There is
+/// exactly one maintenance type in the framework: a second one that only
+/// looked the same would give an application two switches and one of them
+/// would be the wrong one.
+///
+/// Unlike the original guard, this one is a real [`tower::Layer`] -- install
+/// it with
+/// [`ApplicationBuilder::maintenance`](crate::application::ApplicationBuilder::maintenance)
+/// and keep the handle to flip it.
+pub use crate::http::Maintenance as MaintenanceGuard;
