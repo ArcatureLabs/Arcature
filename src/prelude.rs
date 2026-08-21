@@ -14,7 +14,9 @@ pub use crate::application::{Application, ApplicationBuilder, Lifecycle, Resourc
 pub use crate::config::{AppConfig, AppEnvironment, env_or, env_required};
 pub use crate::error::{Error, Result, ValidationError, bad_request, forbidden, not_found};
 pub use crate::http::{RedirectResponse, no_content, redirect, text};
-pub use crate::routing::{Middleware, Next, Route, RouteGroup, RouterState, Routes};
+pub use crate::routing::{
+    KeySource, Middleware, Next, RateLimit, Route, RouteGroup, RouterState, Routes,
+};
 
 // The pre-routing proxy contract (engine spec §4/§5). The application's
 // proxy function maps a `ProxyRequest` borrow to a `ProxyAction`; the engine
@@ -55,8 +57,11 @@ pub use crate::inertia::{Inertia, InertiaConfig, RootDocument};
 #[cfg(feature = "inertia")]
 pub use crate::inertia;
 
+// `Model` is in the glob because it is what makes `User::query(&db)`
+// resolve -- the trait carries the method, so a model type is inert without
+// it in scope.
 #[cfg(feature = "database")]
-pub use crate::database::{DatabaseConfig, Db};
+pub use crate::database::{DatabaseConfig, Db, Model};
 
 #[cfg(feature = "auth")]
 pub use crate::auth::{
@@ -110,7 +115,7 @@ pub use crate::realtime::{Broadcast, SseEndpoint, WebSocketEndpoint};
 pub use crate::api::{Problem, ProblemKind};
 
 #[cfg(feature = "observe")]
-pub use crate::observe::RequestId;
+pub use crate::observe::{Metrics, RequestId};
 
 // The `#[arcature::main]` runtime entry point (requires the `macros` feature).
 #[cfg(feature = "macros")]
