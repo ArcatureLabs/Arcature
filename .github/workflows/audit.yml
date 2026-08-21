@@ -67,16 +67,20 @@ jobs:
     name: RustSec advisories
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # `cargo audit` is a cargo subcommand, so it needs a toolchain on PATH
       # even though it compiles nothing -- it parses Cargo.lock.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
 
       # Same installer ci.yml uses for cargo-hack and mdbook. A prebuilt
       # binary, not `cargo install`, which would be a two-minute compile on
       # every one of these runs.
-      - uses: taiki-e/install-action@cargo-audit
+      - uses: taiki-e/install-action@a2a5f6e99e1a31540baa0468acfa302cff0f359f # v2.86.4
+        with:
+          tool: cargo-audit
 
       # Plain `cargo audit`: fails on vulnerabilities, warns on unmaintained
       # and unsound. Not `--deny warnings`. An `unmaintained` advisory often
