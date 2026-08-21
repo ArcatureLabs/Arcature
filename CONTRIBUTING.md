@@ -99,6 +99,28 @@ fixes something that failed quietly, the test is the point of the change.
 **`unsafe` is forbidden.** `#![forbid(unsafe_code)]` is set at the crate root
 and in `Cargo.toml`. There is no exception process.
 
+## The roadmap board
+
+Every issue opened here lands on the
+[roadmap board](https://github.com/orgs/ArcatureLabs/projects/2) by itself.
+You do not have to add it, and you should not have to remember to: a board
+that is only as current as the last time someone dragged something onto it
+is a tracker that quietly lies about what is outstanding.
+
+Two things it deliberately does not do. It does not set Status, Priority,
+Area or Proof -- those are triage judgements, and a default nobody chose
+reads exactly like a decision somebody made. And it does not add pull
+requests, which live and die inside a week and would bury the work items
+the board exists to show.
+
+The automation is the project's own built-in *Auto-add to project*
+workflow, filtered to `is:issue`. It runs inside GitHub with no credential
+of any kind. An earlier version of this was a repository workflow calling
+`actions/add-to-project`, which needs a personal access token with
+`project` scope, because the default `GITHUB_TOKEN` cannot write to a
+Projects v2 board at all -- `project` is not among the permissions it can
+be granted. Trading a long-lived token for a setting was the better deal.
+
 ## Branches and pull requests
 
 - Branch from `main`. Name the branch after the work: `feat/inertia-deferred-props`,
