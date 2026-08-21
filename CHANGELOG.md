@@ -31,7 +31,26 @@ therefore its first.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`arcature-macros` ships its licence text.** The crate declares
+  `license = "Apache-2.0"` but the published `0.1.0` tarball contained no
+  `LICENSE` file, because Cargo only picks one up from the package
+  directory and the licence lived at the workspace root. Apache-2.0 4(a)
+  requires the text to travel with the distributed work, so the omission
+  was a licensing defect rather than an inconvenience. `macros/LICENSE` is
+  now a copy of the root file and appears in `cargo package --list`.
+
+### Documentation
+
+- **`arcature-macros` has a README.** The crates.io page for `0.1.0` is
+  blank, which for a proc-macro crate that nobody should depend on
+  directly is the wrong first impression: the page now opens by saying so
+  and pointing at `arcature`. It also lists all 23 entry points, the two
+  properties the expansions guarantee -- no hidden registry, no panics on
+  ordinary mistakes -- and the full `ARC-M001`..`ARC-M014` diagnostic
+  table. A README is part of the published tarball, so this reaches
+  crates.io with the next release rather than retroactively.
 
 ## [0.1.0]
 
