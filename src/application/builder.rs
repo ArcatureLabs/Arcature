@@ -223,6 +223,7 @@ impl<S: RouterState> ApplicationBuilder<S> {
     /// Set the routes. Replaces any prior routes.
     #[must_use]
     pub fn routes(mut self, routes: Routes<S>) -> Self {
+        self.route_table = routes.table();
         self.router = routes.into_router();
         self
     }
@@ -230,6 +231,13 @@ impl<S: RouterState> ApplicationBuilder<S> {
     /// Merge additional routes into the existing router.
     #[must_use]
     pub fn merge_routes(mut self, routes: Routes<S>) -> Self {
+        // Later names win, matching `Router::merge` and `Routes::merge`.
+        self.route_table = self
+            .route_table
+            .iter()
+            .map(|(name, path)| (name.clone(), path.clone()))
+            .chain(routes.table().iter().map(|(n, p)| (n.clone(), p.clone())))
+            .collect();
         self.router = self.router.merge(routes.into_router());
         self
     }
