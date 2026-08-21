@@ -8,9 +8,10 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use arcature::events::{Event, Dispatcher, DispatchError};
-//! use serde::{Serialize, Deserialize};
+//! ```
+//! use arcature::Event; // the derive; the trait of the same name is in `events`
+//! use arcature::events::Dispatcher;
+//! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize, Event)]
 //! pub struct UserRegistered {
@@ -18,13 +19,19 @@
 //!     pub email: String,
 //! }
 //!
-//! let dispatcher = Dispatcher::new()
-//!     .register(|event: UserRegistered| async move {
-//!         println!("welcome {}", event.email);
-//!         Ok(())
-//!     });
+//! # #[tokio::main]
+//! # async fn main() {
+//! let dispatcher = Dispatcher::new().register(|event: UserRegistered| async move {
+//!     println!("welcome {}", event.email);
+//!     Ok(())
+//! });
 //!
-//! dispatcher.dispatch(&UserRegistered { user_id: 1, email: "a@b.com".into() }).await.ok();
+//! let event = UserRegistered {
+//!     user_id: 1,
+//!     email: "a@b.com".into(),
+//! };
+//! dispatcher.dispatch(&event).await.ok();
+//! # }
 //! ```
 
 use std::collections::HashMap;

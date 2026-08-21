@@ -225,6 +225,17 @@ therefore its first.
     against the real signatures, not executed. The storage example also
     dropped its second disk, which called `StorageConfig::s3` -- a method
     that does not exist unless the non-default `storage-s3` feature is on.
+  - **`jobs` and `events`.** The `jobs` module example used a `pool` that
+    appeared from nowhere and left the one interesting line -- the handler
+    registration -- commented out; it is a `no_run` function over a
+    `JobPool` parameter now, with the handler registered and the closure's
+    `Result<(), JobError>` spelled out, because that bound is the one a
+    reader gets wrong. `JobModel`'s example is a runnable `const` with its
+    accessors asserted. The `events` example ran `.await` at the top level
+    of a block that had no runtime, and imported `Event` from
+    `arcature::events`, which is the *trait*: `#[derive(Event)]` needs the
+    derive macro of the same name from the crate root. Both are fixed and
+    the dispatch now runs.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

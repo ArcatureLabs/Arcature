@@ -37,19 +37,37 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use arcature::jobs::{JobModel, JobRequest, Jobs, Registry, Worker, JobError};
+//! ```no_run
+//! use arcature::jobs::{JobError, JobModel, JobPool, JobRequest, Jobs, Registry, Worker};
 //!
 //! #[derive(serde::Serialize, serde::Deserialize)]
-//! struct SendWelcome { email: String }
+//! struct SendWelcome {
+//!     email: String,
+//! }
 //!
+//! // What `#[job]` generates: one const descriptor, kind and version pinned
+//! // at compile time rather than looked up in a registry at run time.
 //! const SEND_WELCOME: JobModel<SendWelcome> = JobModel::new("send_welcome", 1, 3);
 //!
-//! let registry = Registry::new();
-//! // registry.add(&SEND_WELCOME, |job| async { ... })?;
-//! let worker = Worker::new(pool.clone(), registry);
-//! let jobs = Jobs::new(pool.clone());
-//! jobs.enqueue(&JobRequest::new(&SEND_WELCOME, &SendWelcome { email: "a@b.com".into() })?).await?;
+//! async fn boot(pool: JobPool) -> Result<(), Box<dyn std::error::Error>> {
+//!     let mut registry = Registry::new();
+//!     registry.add(&SEND_WELCOME, |job: SendWelcome| async move {
+//!         println!("welcome {}", job.email);
+//!         Ok::<(), JobError>(())
+//!     })?;
+//!
+//!     // One pool for both sides: enqueueing opens no second connection.
+//!     let worker = Worker::new(pool.clone(), registry);
+//!     let jobs = Jobs::new(pool);
+//!
+//!     let payload = SendWelcome {
+//!         email: "a@b.com".into(),
+//!     };
+//!     jobs.enqueue(&JobRequest::new(&SEND_WELCOME, &payload)?).await?;
+//!
+//!     let _ = worker;
+//!     Ok(())
+//! }
 //! ```
 
 #![forbid(unsafe_code)]

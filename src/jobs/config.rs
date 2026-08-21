@@ -21,9 +21,19 @@ pub const DEFAULT_MAX_PAYLOAD_BYTES: usize = 65_536;
 /// size limit. The `#[job]` macro generates a `JobModel<J>` const from an
 /// annotated struct; you can also construct one by hand:
 ///
-/// ```ignore
-/// const SEND_WELCOME: JobModel<SendWelcome> =
-///     JobModel::new("send_welcome", 1, 3);
+/// ```
+/// use arcature::jobs::JobModel;
+///
+/// #[derive(serde::Serialize, serde::Deserialize)]
+/// struct SendWelcome {
+///     email: String,
+/// }
+///
+/// const SEND_WELCOME: JobModel<SendWelcome> = JobModel::new("send_welcome", 1, 3);
+///
+/// assert_eq!(SEND_WELCOME.kind(), "send_welcome");
+/// assert_eq!(SEND_WELCOME.version(), 1);
+/// assert_eq!(SEND_WELCOME.max_attempts(), 3);
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct JobModel<J> {
