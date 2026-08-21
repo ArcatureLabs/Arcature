@@ -12,6 +12,7 @@ mod render;
 
 use std::path::Path;
 
+pub use catalog::{Database, Stack, TemplateFile};
 pub use error::TemplateError;
 pub use name::ProjectName;
 
@@ -21,11 +22,16 @@ use render::render;
 /// The certified Arcature version embedded in generated apps.
 const ARCATURE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Generate a new application at `target`.
+/// Generate a new application at `target`, scaffolded for `stack` and
+/// `database`.
 ///
 /// Atomic: stages in a hidden directory, then renames into place. The
 /// destination must not already exist.
-pub fn generate(target: &Path) -> Result<(), TemplateError> {
+///
+/// # Errors
+///
+/// See [`TemplateError`].
+pub fn generate(target: &Path, stack: Stack, database: Database) -> Result<(), TemplateError> {
     if target.exists() {
         return Err(TemplateError::ExistingTarget {
             path: target.to_path_buf(),
@@ -58,8 +64,8 @@ pub fn generate(target: &Path) -> Result<(), TemplateError> {
     }
 
     // Write all files to the staging directory.
-    for file in files() {
-        let rendered = render(file.content, &name, ARCATURE_VERSION);
+    for file in files(stack, database) {
+        let rendered = render(file.content, &name, ARCATURE_VERSION, stack, database);
         let dest = staging.join(file.path);
         let dir = dest.parent().ok_or(TemplateError::InvalidDestination {
             reason: "file has no parent directory".into(),

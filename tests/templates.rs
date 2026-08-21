@@ -1,57 +1,93 @@
-//! Tests for the template generator.
+//! What `arc new` writes to disk.
+//!
+//! These tests generate real project trees into a temporary directory. They
+//! do not compile them -- a generated project depends on the published
+//! `arcature` crate, and building one from inside this repository would
+//! resolve against crates.io rather than the working tree.
 
 #![cfg(feature = "templates")]
 
-use arcature::templates::{ProjectName, TemplateError, generate};
+use std::path::{Path, PathBuf};
+
+use arcature::templates::{Database, ProjectName, Stack, TemplateError, generate};
+
+/// A temporary directory that removes itself, so a failing assertion does not
+/// leave a project tree behind in the system temp directory.
+struct Scratch {
+    path: PathBuf,
+}
+
+impl Scratch {
+    fn new(label: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "arcature-templates-{label}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&path).expect("scratch");
+        Self { path }
+    }
+
+    fn join(&self, name: &str) -> PathBuf {
+        self.path.join(name)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn read(root: &Path, relative: &str) -> String {
+    std::fs::read_to_string(root.join(relative)).unwrap_or_else(|e| panic!("{relative}: {e}"))
+}
+
+/// Walk a generated tree and hand back every file's path and contents.
+fn walk(root: &Path) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read_dir") {
+            let entry = entry.expect("entry");
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let relative = path
+                    .strip_prefix(root)
+                    .expect("prefix")
+                    .to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/");
+                let contents = std::fs::read_to_string(&path).unwrap_or_default();
+                found.push((relative, contents));
+            }
+        }
+    }
+    found.sort();
+    found
+}
 
 #[test]
-fn project_name_parse_valid() {
-    let name = ProjectName::parse("my-app").unwrap();
+fn a_project_name_keeps_its_hyphens_and_gains_an_underscored_crate_name() {
+    let name = ProjectName::parse("my-app").expect("valid");
     assert_eq!(name.raw(), "my-app");
     assert_eq!(name.rust_identifier(), "my_app");
 }
 
 #[test]
-fn project_name_parse_simple() {
-    let name = ProjectName::parse("blog").unwrap();
-    assert_eq!(name.raw(), "blog");
-    assert_eq!(name.rust_identifier(), "blog");
-}
-
-#[test]
-fn project_name_rejects_empty() {
-    assert!(matches!(
-        ProjectName::parse(""),
-        Err(TemplateError::InvalidName { .. })
-    ));
-}
-
-#[test]
-fn project_name_rejects_uppercase_start() {
-    assert!(matches!(
-        ProjectName::parse("MyApp"),
-        Err(TemplateError::InvalidName { .. })
-    ));
-}
-
-#[test]
-fn project_name_rejects_trailing_hyphen() {
-    assert!(matches!(
-        ProjectName::parse("my-app-"),
-        Err(TemplateError::InvalidName { .. })
-    ));
-}
-
-#[test]
-fn project_name_rejects_consecutive_hyphens() {
-    assert!(matches!(
-        ProjectName::parse("my--app"),
-        Err(TemplateError::InvalidName { .. })
-    ));
-}
-
-#[test]
-fn project_name_rejects_too_long() {
+fn a_name_that_would_not_survive_both_ecosystems_is_refused() {
+    for bad in ["", "MyApp", "my-app-", "my--app", "1app", "my_app"] {
+        assert!(
+            matches!(
+                ProjectName::parse(bad),
+                Err(TemplateError::InvalidName { .. })
+            ),
+            "{bad} should be refused"
+        );
+    }
     assert!(matches!(
         ProjectName::parse(&"a".repeat(65)),
         Err(TemplateError::InvalidName { .. })
@@ -59,103 +95,260 @@ fn project_name_rejects_too_long() {
 }
 
 #[test]
-fn generate_creates_a_project_tree() {
-    let temp = tempfile_dir();
-    let target = temp.join("test-app");
+fn every_stack_and_driver_combination_generates_a_coherent_tree() {
+    let scratch = Scratch::new("matrix");
+    for stack in Stack::ALL {
+        for database in Database::ALL {
+            let label = format!("{}-{}", stack.as_str(), database.as_str());
+            let target = scratch.join(&label);
+            generate(&target, stack, database).unwrap_or_else(|e| panic!("{label}: {e}"));
 
-    generate(&target).unwrap();
-
-    assert!(target.exists());
-    assert!(target.join("Cargo.toml").exists());
-    // dotfiles
-    assert!(target.join(".env").exists());
-    assert!(target.join(".env.example").exists());
-    assert!(target.join(".gitignore").exists());
-    // Rust entry points
-    assert!(target.join("src/main.rs").exists());
-    assert!(target.join("src/lib.rs").exists());
-    // bootstrap/ structure
-    assert!(target.join("bootstrap/mod.rs").exists());
-    assert!(target.join("bootstrap/app.rs").exists());
-    assert!(target.join("bootstrap/state.rs").exists());
-    // config/ structure
-    assert!(target.join("config/mod.rs").exists());
-    // database/ structure
-    assert!(target.join("database/mod.rs").exists());
-    assert!(target.join("database/migrations/mod.rs").exists());
-    // routes/ structure
-    assert!(target.join("routes/mod.rs").exists());
-    // app/ structure (folders + welcome page; business code is user-supplied)
-    assert!(target.join("app/mod.rs").exists());
-    assert!(target.join("app/controllers/mod.rs").exists());
-    assert!(target.join("app/controllers/home_controller.rs").exists());
-    assert!(target.join("app/models/mod.rs").exists());
-    assert!(target.join("app/services/mod.rs").exists());
-    assert!(target.join("app/requests/mod.rs").exists());
-    assert!(target.join("app/policies/mod.rs").exists());
-    assert!(target.join("app/resources/mod.rs").exists());
-    // resources/ structure (frontend)
-    assert!(target.join("resources/js/app.tsx").exists());
-    assert!(target.join("resources/js/pages/home.tsx").exists());
-    assert!(target.join("resources/js/layouts/default.tsx").exists());
-    assert!(target.join("resources/js/components/.gitkeep").exists());
-    assert!(target.join("resources/css/app.css").exists());
-    // public/ structure
-    assert!(target.join("public/robots.txt").exists());
-    assert!(target.join("public/.gitkeep").exists());
-    // storage/ structure
-    assert!(target.join("storage/logs/.gitkeep").exists());
-    assert!(target.join("storage/uploads/.gitkeep").exists());
-    assert!(target.join("storage/framework/.gitkeep").exists());
-    // tests/ structure
-    assert!(target.join("tests/smoke.rs").exists());
+            for required in [
+                "Cargo.toml",
+                ".cargo/config.toml",
+                ".env",
+                ".env.example",
+                ".gitignore",
+                "Dockerfile",
+                "docker-compose.yml",
+                "justfile",
+                "package.json",
+                "tsconfig.json",
+                "vite.config.ts",
+                "src/main.rs",
+                "src/lib.rs",
+                "bootstrap/mod.rs",
+                "bootstrap/app.rs",
+                "bootstrap/state.rs",
+                "bootstrap/error_pages.rs",
+                "config/mod.rs",
+                "database/mod.rs",
+                "database/migrations/mod.rs",
+                "database/seeders/mod.rs",
+                "routes/mod.rs",
+                "app/mod.rs",
+                "resources/css/app.css",
+                "public/robots.txt",
+                "tests/smoke.rs",
+            ] {
+                assert!(
+                    target.join(required).is_file(),
+                    "{label} is missing {required}"
+                );
+            }
+            assert!(
+                target.join(stack.entry()).is_file(),
+                "{label} is missing its Vite entry {}",
+                stack.entry()
+            );
+        }
+    }
 }
 
 #[test]
-fn generate_rejects_existing_target() {
-    let temp = tempfile_dir();
-    let target = temp.join("existing-app");
-    std::fs::create_dir_all(&target).unwrap();
+fn no_placeholder_token_survives_into_a_generated_project() {
+    let scratch = Scratch::new("tokens");
+    for stack in Stack::ALL {
+        for database in Database::ALL {
+            let label = format!("{}-{}", stack.as_str(), database.as_str());
+            let target = scratch.join(&label);
+            generate(&target, stack, database).expect("generated");
+            for (path, contents) in walk(&target) {
+                for token in [
+                    "__RUST_NAME__",
+                    "__PROJECT_NAME__",
+                    "__ARCATURE_VERSION__",
+                    "__STACK__",
+                    "__DB_DRIVER__",
+                    "__DATABASE_URL__",
+                    "__JS_ENTRY__",
+                ] {
+                    assert!(
+                        !contents.contains(token),
+                        "{label}/{path} still contains {token}"
+                    );
+                }
+            }
+        }
+    }
+}
 
+#[test]
+fn a_generated_project_depends_on_no_arcature_npm_package() {
+    let scratch = Scratch::new("npm");
+    for stack in Stack::ALL {
+        let target = scratch.join(stack.as_str());
+        generate(&target, stack, Database::default()).expect("generated");
+        for (path, contents) in walk(&target) {
+            assert!(
+                !contents.contains("@arcature/"),
+                "{}/{path} references an @arcature/ npm package; \
+                 the framework publishes none",
+                stack.as_str()
+            );
+        }
+        let manifest = read(&target, "package.json");
+        let adapter = match stack {
+            Stack::React => "@inertiajs/react",
+            Stack::Vue => "@inertiajs/vue3",
+            Stack::Svelte => "@inertiajs/svelte",
+        };
+        assert!(manifest.contains(adapter), "{manifest}");
+    }
+}
+
+#[test]
+fn the_vite_config_binds_no_tcp_port_of_its_own() {
+    let scratch = Scratch::new("oneport");
+    for stack in Stack::ALL {
+        let target = scratch.join(stack.as_str());
+        generate(&target, stack, Database::default()).expect("generated");
+        // Comments talk about ports at length; only the code may not.
+        let config = strip_line_comments(&read(&target, "vite.config.ts"));
+        // `export` and `import` both contain the substring `port`, so the
+        // check is on the keys a second port would need, not the word.
+        for banned in ["server", "strictPort", "port:"] {
+            assert!(
+                !config.contains(banned),
+                "{} vite.config.ts declares `{banned}` in code; Rust owns the only TCP port",
+                stack.as_str()
+            );
+        }
+    }
+}
+
+/// Drop `//` line comments so a test can look at the code alone, joining what
+/// is left with spaces. Good enough for the Vite configs, which contain no
+/// string literal holding a `//`.
+fn strip_line_comments(source: &str) -> String {
+    source
+        .lines()
+        .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn the_manifest_carries_the_driver_that_was_asked_for_and_no_cli_features() {
+    let scratch = Scratch::new("manifest");
+    for database in Database::ALL {
+        let target = scratch.join(database.as_str());
+        generate(&target, Stack::default(), database).expect("generated");
+        let manifest = read(&target, "Cargo.toml");
+        assert!(manifest.contains(&format!("\"{}\"", database.feature())));
+        for other in Database::ALL {
+            if other != database {
+                assert!(
+                    !manifest.contains(&format!("\"{}\"", other.feature())),
+                    "{manifest}"
+                );
+            }
+        }
+        assert!(manifest.contains("\"dx\""), "{manifest}");
+        assert!(!manifest.contains("\"cli\""), "{manifest}");
+        assert!(!manifest.contains("\"templates\""), "{manifest}");
+        assert!(
+            manifest.contains("dev = [\"arcature/dev-proxy\", \"arcature/uag\"]"),
+            "{manifest}"
+        );
+        // The graph dumper must not be linked by the dev loop. `dev` turns on
+        // the framework's `uag` feature, which is what makes the endpoint
+        // exist; the *binary* is held back by its own `required-features`, so
+        // `cargo build --features dev` never pays for the extra link.
+        assert!(
+            manifest.contains("required-features = [\"uag\"]"),
+            "{manifest}"
+        );
+        assert!(manifest.contains("uag = [\"arcature/uag\"]"), "{manifest}");
+        // Two `[[bin]]` targets make a bare `cargo run` ambiguous unless one
+        // of them is named as the default.
+        assert!(
+            manifest.contains(&format!("default-run = \"{}\"", database.as_str())),
+            "{manifest}"
+        );
+        assert!(
+            manifest.contains("debug = \"line-tables-only\""),
+            "{manifest}"
+        );
+        assert!(manifest.contains("codegen-units = 256"), "{manifest}");
+        assert!(
+            manifest.contains("[profile.dev.package.\"*\"]"),
+            "{manifest}"
+        );
+    }
+}
+
+#[test]
+fn the_env_file_ships_an_empty_app_key_and_the_matching_database_url() {
+    let scratch = Scratch::new("env");
+    for database in Database::ALL {
+        let target = scratch.join(database.as_str());
+        generate(&target, Stack::default(), database).expect("generated");
+        let env = read(&target, ".env");
+        assert!(
+            env.lines().any(|line| line.trim() == "APP_KEY="),
+            "APP_KEY must ship empty for `arc key:generate` to fill in: {env}"
+        );
+        let expected = database
+            .default_url()
+            .replace("__RUST_NAME__", database.as_str());
+        assert!(env.contains(&expected), "{env}");
+    }
+}
+
+#[test]
+fn the_gitignore_excludes_the_generated_typescript_and_the_dev_scratch_directory() {
+    let scratch = Scratch::new("gitignore");
+    let target = scratch.join("demo");
+    generate(&target, Stack::default(), Database::default()).expect("generated");
+    let ignore = read(&target, ".gitignore");
+    assert!(ignore.contains("resources/js/generated/"), "{ignore}");
+    assert!(ignore.contains(".arcature/"), "{ignore}");
+}
+
+#[test]
+fn the_typescript_config_aliases_the_generated_bindings() {
+    let scratch = Scratch::new("tsconfig");
+    for stack in Stack::ALL {
+        let target = scratch.join(stack.as_str());
+        generate(&target, stack, Database::default()).expect("generated");
+        let tsconfig = read(&target, "tsconfig.json");
+        assert!(tsconfig.contains("@/generated"), "{tsconfig}");
+        assert!(tsconfig.contains("resources/js/generated"), "{tsconfig}");
+    }
+}
+
+#[test]
+fn no_template_reaches_for_a_compile_time_checked_sqlx_query() {
+    let scratch = Scratch::new("sqlx");
+    let target = scratch.join("demo");
+    generate(&target, Stack::default(), Database::default()).expect("generated");
+    for (path, contents) in walk(&target) {
+        assert!(
+            !contents.contains("sqlx::query!"),
+            "{path} uses sqlx::query!, which needs a live database at compile time"
+        );
+    }
+}
+
+#[test]
+fn generating_over_something_that_already_exists_is_refused() {
+    let scratch = Scratch::new("existing");
+    let target = scratch.join("demo");
+    std::fs::create_dir_all(&target).expect("mkdir");
     assert!(matches!(
-        generate(&target),
+        generate(&target, Stack::default(), Database::default()),
         Err(TemplateError::ExistingTarget { .. })
     ));
 }
 
 #[test]
-fn generated_cargo_toml_has_substituted_name() {
-    let temp = tempfile_dir();
-    let target = temp.join("sub-app");
-    generate(&target).unwrap();
-
-    let cargo_toml = std::fs::read_to_string(target.join("Cargo.toml")).unwrap();
-    assert!(cargo_toml.contains("name = \"sub_app\""));
-    // The placeholder should be gone.
-    assert!(!cargo_toml.contains("__RUST_NAME__"));
-    assert!(!cargo_toml.contains("__ARCATURE_VERSION__"));
-}
-
-#[test]
-fn generated_main_rs_has_substituted_name() {
-    let temp = tempfile_dir();
-    let target = temp.join("gen-app");
-    generate(&target).unwrap();
-
-    let main_rs = std::fs::read_to_string(target.join("src/main.rs")).unwrap();
-    assert!(main_rs.contains("gen_app::run()"));
-    assert!(!main_rs.contains("__RUST_NAME__"));
-}
-
-/// Create a unique temporary directory for a test.
-fn tempfile_dir() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "arcature-test-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn the_crate_name_and_binary_are_named_after_the_destination_directory() {
+    let scratch = Scratch::new("naming");
+    let target = scratch.join("sub-app");
+    generate(&target, Stack::default(), Database::default()).expect("generated");
+    let manifest = read(&target, "Cargo.toml");
+    assert!(manifest.contains("name = \"sub_app\""), "{manifest}");
+    let main = read(&target, "src/main.rs");
+    assert!(main.contains("sub_app::run("), "{main}");
 }
