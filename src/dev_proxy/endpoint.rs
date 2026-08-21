@@ -18,6 +18,24 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// Windows' `ERROR_PIPE_BUSY`. Every instance of the named pipe is currently
+/// connected, so this open found none free.
+#[cfg(windows)]
+const PIPE_BUSY: i32 = 231;
+
+/// How long [`IpcEndpoint::connect`] keeps retrying a busy pipe.
+///
+/// The window it is covering is microseconds wide -- the listener creates the
+/// replacement instance immediately -- so a quarter of a second is far more
+/// than enough, while still being short enough that a genuinely wedged server
+/// is reported rather than waited on.
+#[cfg(windows)]
+const BUSY_DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// How long to pause between two attempts at a busy pipe.
+#[cfg(windows)]
+const BUSY_RETRY: std::time::Duration = std::time::Duration::from_millis(1);
+
 /// The IPC path where the Vite dev server listens in `middlewareMode`.
 ///
 /// Constructed by [`IpcEndpoint::new`]; the pipeline assembler stores it and
@@ -61,12 +79,29 @@ impl IpcEndpoint {
     /// WebSocket upgrades consume the connection, so per-request is the
     /// honest lifecycle.
     ///
+    /// # Windows: a busy pipe is not a failure
+    ///
+    /// A named pipe serves one client per instance. The listener creates the
+    /// replacement instance as soon as the current one is taken, but that is
+    /// not atomic, and a client opening inside that window gets
+    /// `ERROR_PIPE_BUSY` rather than a connection. Windows expects the client
+    /// to wait and try again; a client that treats the error as final instead
+    /// reports "Vite is not running" every time two requests arrive close
+    /// together -- which, for a page and the modules it imports, is every
+    /// page load. The visible symptom is worse than a wrong answer: the dev
+    /// proxy delegates the asset request to the application router, which has
+    /// no route for it, so the browser gets a `404` for a file that exists,
+    /// or under `arc dev` waits out the backend hold first. So a busy pipe is
+    /// retried until [`BUSY_DEADLINE`], and every other error is returned
+    /// immediately -- `NotFound` in particular, because "the server is not
+    /// there yet" is exactly the signal the fallthrough is built on.
+    ///
     /// # Errors
     ///
     /// `io::Error` if the Vite IPC server is not listening (startup race,
-    /// stale socket, or Vite crashed). The forward layer converts this into
-    /// a fallback to the application pipeline (or a 502 on a mid-request
-    /// failure).
+    /// stale socket, or Vite crashed), or if the pipe was still busy at the
+    /// deadline. The forward layer converts this into a fallback to the
+    /// application pipeline (or a 502 on a mid-request failure).
     pub(crate) async fn connect(&self) -> io::Result<IpcStream> {
         #[cfg(unix)]
         {
@@ -74,7 +109,22 @@ impl IpcEndpoint {
         }
         #[cfg(windows)]
         {
-            tokio::net::windows::named_pipe::ClientOptions::new().open(&self.path)
+            use tokio::net::windows::named_pipe::ClientOptions;
+
+            let deadline = std::time::Instant::now() + BUSY_DEADLINE;
+            loop {
+                match ClientOptions::new().open(&self.path) {
+                    Ok(client) => return Ok(client),
+                    Err(error) => {
+                        if error.raw_os_error() != Some(PIPE_BUSY)
+                            || std::time::Instant::now() >= deadline
+                        {
+                            return Err(error);
+                        }
+                    }
+                }
+                tokio::time::sleep(BUSY_RETRY).await;
+            }
         }
     }
 }
@@ -118,5 +168,76 @@ mod tests {
         assert!(result.is_ok());
         drop(listener);
         let _ = std::fs::remove_file("/tmp/arcature-vite-endpoint-listen-test.sock");
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_busy_pipe_is_waited_out_rather_than_reported_as_a_missing_server() {
+        use tokio::net::windows::named_pipe::ServerOptions;
+
+        let name = format!(r"\\.\pipe\arcature-busy-wait-{}", std::process::id());
+        let occupied = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(&name)
+            .expect("the first pipe instance should be creatable");
+        let endpoint = IpcEndpoint::new(PathBuf::from(&name));
+
+        // Take the only instance. Every further open now finds the pipe busy,
+        // which is the state `IpcListener::accept` passes through every time
+        // it hands a connection over.
+        let taken = endpoint
+            .connect()
+            .await
+            .expect("the free instance should open");
+
+        let replacing = tokio::spawn({
+            let name = name.clone();
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                ServerOptions::new().create(&name)
+            }
+        });
+
+        let second = endpoint.connect().await;
+        assert!(
+            second.is_ok(),
+            "a busy pipe must be retried, not reported as an absent server"
+        );
+
+        drop((taken, occupied, second));
+        drop(
+            replacing
+                .await
+                .expect("the replacement task should not panic"),
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_pipe_that_stays_busy_is_eventually_reported_rather_than_waited_on_forever() {
+        use tokio::net::windows::named_pipe::ServerOptions;
+
+        let name = format!(r"\\.\pipe\arcature-busy-forever-{}", std::process::id());
+        let occupied = ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(&name)
+            .expect("the first pipe instance should be creatable");
+        let endpoint = IpcEndpoint::new(PathBuf::from(&name));
+        let taken = endpoint
+            .connect()
+            .await
+            .expect("the free instance should open");
+
+        // Nothing ever creates a replacement. The retry must be bounded, or a
+        // wedged Vite would hold a request open with no page and no error.
+        let started = std::time::Instant::now();
+        let result = endpoint.connect().await;
+        assert!(result.is_err(), "the pipe never became free");
+        assert!(
+            started.elapsed() >= BUSY_DEADLINE,
+            "it gave up before the deadline"
+        );
+
+        drop((taken, occupied));
     }
 }
