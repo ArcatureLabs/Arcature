@@ -22,13 +22,14 @@ narrower than its name suggests, that is said in
 
 ## Install
 
-```toml
-[dependencies]
-arcature = { git = "https://github.com/ArcatureLabs/Arcature" }
+```sh
+cargo add arcature
 ```
 
-Pin a revision -- a branch reference will move under you. Once Arcature is
-published, `cargo add arcature` will be the whole install.
+`0.x` means a minor bump is the breaking one, so `arcature = "0.1"` will not
+carry you to `0.2` -- see [Versioning](#versioning). To follow `main` ahead of
+a release instead, take a git dependency and pin a revision; a branch reference
+will move under you.
 
 Requirements: Rust **1.97.1** or newer (edition 2024). Anything that uses the
 database or the job queue needs one of PostgreSQL 17, MySQL 8 or SQLite --
@@ -62,7 +63,7 @@ handler's, and deliberately do not share an error type with `Result<Response>`.
 To scaffold a whole Laravel-shaped project instead:
 
 ```sh
-cargo install --git https://github.com/ArcatureLabs/Arcature arcature --features cli
+cargo install arcature --features cli
 arc new my-app
 cd my-app
 cargo run
