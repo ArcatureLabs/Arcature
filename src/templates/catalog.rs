@@ -161,9 +161,17 @@ fn shared() -> Vec<TemplateFile> {
             path: ".gitignore",
             content: include_str!("files/shared/.gitignore"),
         },
+        // The source file is `Cargo.toml.in`, not `Cargo.toml`, and the
+        // suffix is load-bearing. `cargo package` skips any subdirectory
+        // holding a file named `Cargo.toml` -- it reads one as a nested
+        // package -- which silently dropped all 38 files under `shared/`
+        // from the published crate and left these `include_str!` calls
+        // pointing at nothing. Renaming the file is the whole fix; an
+        // explicit `include = [...]` in the root manifest does not override
+        // the rule. Only the emitted name below is `Cargo.toml`.
         TemplateFile {
             path: "Cargo.toml",
-            content: include_str!("files/shared/Cargo.toml"),
+            content: include_str!("files/shared/Cargo.toml.in"),
         },
         TemplateFile {
             path: "Dockerfile",
