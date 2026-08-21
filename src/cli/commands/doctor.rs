@@ -218,6 +218,11 @@ fn basename(value: &str) -> String {
 // ------------------------------------------------------------- av scanner
 
 /// The directory cargo writes build output into.
+///
+/// Windows only, like its one caller: the scanner check below is the only
+/// thing that needs this path, and a helper compiled on a platform where
+/// nothing calls it is dead code that `-D warnings` is right to reject.
+#[cfg(windows)]
 fn target_dir() -> PathBuf {
     std::env::var_os("CARGO_TARGET_DIR").map_or_else(
         || {
@@ -236,6 +241,7 @@ fn target_dir() -> PathBuf {
 /// to 3.3 seconds, and running the identical file a second time took 9
 /// milliseconds. Every `arc dev` reload pays the first number, because every
 /// reload runs a binary that has just been written.
+#[cfg(windows)]
 fn scanner_advice(target: &Path) -> String {
     format!(
         "Microsoft Defender real-time protection is on and does not exclude \
