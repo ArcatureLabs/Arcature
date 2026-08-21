@@ -17,10 +17,17 @@ it parses, `test_kit`, `uag` and `oauth` have to be exercised by real
 applications rather than only by their own tests, and the "Not yet
 implemented" list below has to be empty or deliberately closed out.
 
-**Nothing has been released.** Neither `arcature` nor `arcature-macros` is
-published to crates.io, so there is no released version to compare against and
-no upgrade path to describe. `0.1.0` below is the state of `main` prepared for
-a first publication, reconstructed from the commit history.
+**`0.1.0` restarts the version number.** The `arcature` name on crates.io
+already carries an earlier line, `2026.0.0` through `2026.2.1`, published from
+a predecessor repository that spread the framework over thirteen crates and
+was then abandoned. This repository is a rewrite down to the crate graph
+rather than an upgrade of it: no item, no feature name and no crate boundary
+survives unchanged, so there is no migration path from `2026.x` and none is
+offered. Those four versions are yanked when `0.1.0` publishes -- a yank
+removes a version from new resolution and leaves every existing lockfile
+resolving exactly as before, so nothing that already depends on `2026.x`
+breaks. `arcature-macros` has no prior release, and `0.1.0` below is
+therefore its first.
 
 ## [Unreleased]
 

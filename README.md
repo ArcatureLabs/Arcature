@@ -12,8 +12,10 @@ application lifecycle, the request pipeline order, the conventions, and a
 coherent vocabulary. The raw Axum, Tower, SeaORM and SQLx escape hatches stay
 available for when the framework's opinions run out.
 
-**Status: pre-release.** Nothing has been published to crates.io yet. `main`
-is the only version and it breaks without notice. Where a subsystem is
+**Status: pre-release.** `main` breaks without notice, and `0.x` says so
+deliberately. The `2026.x` versions on crates.io are from an abandoned
+predecessor repository, are yanked, and share nothing with this one but the
+name -- see [Versioning](#versioning). Where a subsystem is
 narrower than its name suggests, that is said in
 [the guide](docs/src/SUMMARY.md) and summarised under
 [What is not built yet](#what-is-not-built-yet).
@@ -148,6 +150,12 @@ bump is the minor (`0.1` -> `0.2`), the compatible one is the patch. So
 `arcature = "0.1"` takes patches and stops at `0.2`, and no exact pin is
 needed to stay safe. The public API is not frozen -- that is what `0.x` is
 for -- so read the changelog before a minor bump.
+
+`0.1.0` is the first release of this codebase and it restarts the numbering.
+crates.io also serves `arcature 2026.0.0` through `2026.2.1`, published from
+the predecessor repository this one replaces; those are yanked and are not an
+earlier version of what is documented here. A yank only withdraws a version
+from new resolution, so anything already pinned to `2026.x` keeps building.
 
 ## A tour
 
