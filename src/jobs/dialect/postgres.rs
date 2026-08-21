@@ -135,3 +135,55 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)"#;
     /// The schema, one statement per `--;;` separated chunk.
     pub(crate) const SCHEMA: &str = include_str!("../migrations/postgres/0001_jobs.sql");
 }
+
+// The statement text above is proven to parse, and to mean what the module
+// comment says it means, only by running it. These tests need a PostgreSQL
+// server; see `crate::jobs::test_support` for how they skip without one.
+#[cfg(all(test, feature = "test-kit"))]
+mod tests {
+    use crate::jobs::test_support::{
+        JOBS, WORKERS, assert_claimed_exactly_once, drain_concurrently, enqueue, queue,
+    };
+
+    /// The property the whole strategy exists for.
+    ///
+    /// `FOR UPDATE SKIP LOCKED` is what makes it hold: a claimer that meets a
+    /// row another claimer already locked steps over it, rather than waiting
+    /// for it or -- the bug -- reading the pre-update version and claiming it
+    /// as well. `RETURNING` then hands back exactly the rows this statement
+    /// wrote, so the worker's idea of what it owns is the database's.
+    ///
+    /// Eight claimers race over forty jobs in batches of five, so each is
+    /// contending for rows the others are also trying to take.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn every_job_goes_to_exactly_one_worker() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let enqueued = enqueue(pool, JOBS).await;
+        let claimed = drain_concurrently(pool, (JOBS / WORKERS) as i64).await;
+
+        assert_claimed_exactly_once(pool, &enqueued, &claimed).await;
+    }
+
+    /// The same race, one row at a time.
+    ///
+    /// A batch of five hides a class of bug: a claimer holding five locks for
+    /// the length of one statement is easy for the others to find and skip. A
+    /// batch of one is forty short statements per worker against the same head
+    /// of the queue, which is where two claimers actually collide.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_single_row_batch_is_still_exclusive() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let enqueued = enqueue(pool, JOBS).await;
+        let claimed = drain_concurrently(pool, 1).await;
+
+        assert_claimed_exactly_once(pool, &enqueued, &claimed).await;
+    }
+}

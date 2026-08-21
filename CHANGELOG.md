@@ -48,6 +48,15 @@ therefore its first.
   on every leg that starts a database, so a leg whose service failed to
   come up can no longer skip its way to a pass. `just db-test` runs the
   same thing locally, one build per driver.
+- **The PostgreSQL claim is proven to hand each job to one worker.**
+  `src/jobs/dialect/postgres.rs` had no tests at all, so `FOR UPDATE SKIP
+  LOCKED` and `RETURNING` were only ever checked by reading them. Eight
+  claimers now race over forty jobs against a live server, in batches of
+  five and again one at a time, and every job must come back owned by
+  exactly one worker with `attempts` at 1. A shared fixture,
+  `src/jobs/test_support.rs`, migrates and empties the table and hands out
+  an exclusive lock, since the claim is blind to `kind` and two tests
+  running at once would take each other's jobs.
 
 ### Deprecated
 

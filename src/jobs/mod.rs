@@ -65,6 +65,11 @@ mod migrate;
 mod observe;
 mod registry;
 mod scheduler;
+// The fixture the live-database tests share. Gated on `test-kit` because it
+// reuses that module's safety check rather than keeping a second copy of it;
+// see the module comment.
+#[cfg(all(test, feature = "test-kit"))]
+mod test_support;
 mod validate;
 mod worker;
 
