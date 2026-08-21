@@ -19,3 +19,6 @@ Cargo.lock.bak
 # node (frontend assets in generated apps)
 node_modules/
 dist/
+
+# the built guide -- `mdbook build docs` writes it, CI rebuilds it
+/docs/book/
