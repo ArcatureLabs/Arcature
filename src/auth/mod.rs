@@ -43,6 +43,7 @@
 pub mod csrf;
 pub mod dx;
 pub mod error;
+pub mod extract;
 pub mod password;
 pub mod password_config;
 pub mod session;
@@ -57,8 +58,10 @@ pub use argon2;
 
 pub use csrf::{CsrfConfig, CsrfLayer, CsrfMiddleware, CsrfToken};
 pub use dx::{
-    Auth, AuthError, AuthManager, AuthzError, Current, Flash, FlashError, FlashLevel, FlashMessage,
-    LoginBuilder, OptionalAuth, OptionalCurrent, Policy, Session, SessionError, UserLoader,
+    AuthzError, Flash, FlashError, FlashLevel, FlashMessage, Policy, Session, SessionError,
+};
+pub use extract::{
+    Auth, AuthError, AuthManager, Current, LoginBuilder, OptionalAuth, OptionalCurrent, UserLoader,
 };
 // The redirect mapper writes the same session key the `Flash` extractor
 // reads, and one spelling of it has to be authoritative.

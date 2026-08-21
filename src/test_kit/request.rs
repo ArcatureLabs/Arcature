@@ -191,7 +191,7 @@ impl TestRequest {
 }
 
 /// The session key the auth boundary stamps at login. Mirrors the private
-/// constant in `auth::dx`; the harness has to write the same key the loader
+/// constant in `auth::extract`; the harness has to write the same key the loader
 /// reads, and a mismatch would show up as `acting_as` silently taking the
 /// upgrade path.
 #[cfg(feature = "auth")]

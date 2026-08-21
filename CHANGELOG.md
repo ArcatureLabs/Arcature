@@ -31,6 +31,18 @@ therefore its first.
 
 ## [Unreleased]
 
+### Deprecated
+
+- **The auth extractors have a module that names them.** `Auth<U>`,
+  `OptionalAuth<U>`, `Current<U>`, `OptionalCurrent<U>`, `AuthManager<U>`,
+  `LoginBuilder`, `AuthError` and `UserLoader<S>` now live in
+  `arcature::auth::extract`. `dx` abbreviates "developer experience", which
+  names a goal rather than a thing, so `auth::dx` told a reader nothing about
+  what was inside it -- four unrelated concerns in one ~900-line file.
+  `arcature::auth::extract` says what it holds. The crate-root and
+  `arcature::auth` re-exports are unchanged, and `arcature::auth::dx` still
+  resolves.
+
 ### Fixed
 
 - **`arcature-macros` ships its licence text.** The crate declares
