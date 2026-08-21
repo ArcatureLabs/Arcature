@@ -59,7 +59,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Scorecard reads the repository, it never pushes. Leaving the
           # checkout credentials in `.git/config` for the rest of the job
@@ -67,10 +67,10 @@ jobs:
           # Scorecard's own Dangerous-Workflow check looks for exactly this.
           persist-credentials: false
 
-      # Upstream publishes no floating major tag for this action -- there is
-      # no `v2` ref, only point releases -- so the exact version is the only
-      # pinnable ref. Dependabot's github-actions entry will raise the bump.
-      - uses: ossf/scorecard-action@v2.4.4
+      # The trailing comment names the point release because upstream
+      # publishes no floating major tag for this action -- there is no `v2`
+      # ref to describe the pin against.
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
           results_file: results.sarif
           results_format: sarif
@@ -79,7 +79,7 @@ jobs:
       # The SARIF as a downloadable artifact. Code scanning keeps the alerts
       # but collapses them into its own model; the raw file is what you want
       # when a score drops and the question is which individual check moved.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: scorecard-sarif
           path: results.sarif
@@ -89,8 +89,8 @@ jobs:
 
       # `upload-sarif` and not `analyze`: the SARIF was produced by Scorecard,
       # not by a CodeQL database, so there is nothing for CodeQL to analyse.
-      # The `v4` here is the same major tag codeql.yml uses -- keep them
+      # The commit pinned here is the one codeql.yml pins -- keep the two
       # together when either moves.
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: results.sarif
