@@ -1,6 +1,6 @@
 //! `arc queue [--dsn <url>] <work|drain|stats>` — operate on the job queue.
 //!
-//! An operational utility that connects directly to PostgreSQL (no app
+//! An operational utility that connects directly to the database (no app
 //! binary), applies the queue schema, and runs one queue action:
 //!
 //! - `work`: claim and run jobs until interrupted (a standalone worker).
@@ -8,6 +8,16 @@
 //! - `stats`: print pending / running / dead / cancelled counts.
 //!
 //! `--dsn <url>` selects the database; defaults to `DATABASE_URL`.
+//!
+//! # Why there is no SQL here that names a dialect
+//!
+//! `arc queue` is built once per driver like everything else, so a statement
+//! that only parses on PostgreSQL is a runtime failure on the other two
+//! rather than a compile error. The counting query below is written in the
+//! subset all three accept, and the requeue goes through
+//! [`crate::jobs::admin::requeue_dead`] instead of writing its own `UPDATE`
+//! -- the timestamp column is a real timestamp on PostgreSQL and MySQL and
+//! epoch milliseconds on SQLite, and that difference already has one owner.
 
 use std::ffi::OsString;
 
@@ -107,15 +117,21 @@ fn resolve_dsn(dsn: Option<&str>) -> Result<String, QueueError> {
     std::env::var("DATABASE_URL").map_err(|_| QueueError::NoDsn)
 }
 
+/// The status counts, in the SQL subset all three drivers parse.
+///
+/// `count(*) FILTER (WHERE ..)` is the natural spelling and MySQL does not
+/// have it. `COUNT(CASE WHEN .. THEN 1 END)` is the same aggregate written
+/// in plain SQL-92, so one statement serves every driver rather than three
+/// that have to be kept in agreement.
 const COUNT_SQL: &str = r#"SELECT
-    count(*) FILTER (WHERE status = 'pending') AS pending,
-    count(*) FILTER (WHERE status = 'running') AS running,
-    count(*) FILTER (WHERE status = 'dead') AS dead,
-    count(*) FILTER (WHERE status = 'cancelled') AS cancelled
+    COUNT(CASE WHEN status = 'pending' THEN 1 END) AS pending,
+    COUNT(CASE WHEN status = 'running' THEN 1 END) AS running,
+    COUNT(CASE WHEN status = 'dead' THEN 1 END) AS dead,
+    COUNT(CASE WHEN status = 'cancelled' THEN 1 END) AS cancelled
     FROM arcature_jobs"#;
 
 /// Print the queue status counts.
-async fn print_stats(pool: &sqlx::PgPool) -> Result<(), QueueError> {
+async fn print_stats(pool: &crate::database::Pool) -> Result<(), QueueError> {
     let row: (i64, i64, i64, i64) = sqlx::query_as(COUNT_SQL)
         .fetch_one(pool)
         .await
@@ -127,26 +143,56 @@ async fn print_stats(pool: &sqlx::PgPool) -> Result<(), QueueError> {
     Ok(())
 }
 
+/// How many dead jobs to look up per round trip.
+///
+/// Bounded because a queue that has been failing for a week can hold more
+/// dead rows than fit comfortably in memory, and unbounded is the kind of
+/// thing that only shows up on the day it matters. The literal is inlined
+/// rather than bound because `LIMIT` placeholders are the one part of this
+/// statement whose spelling differs between drivers.
+const DEAD_BATCH: usize = 1024;
+
+/// The dead job ids, oldest first.
+const DEAD_IDS_SQL: &str =
+    "SELECT id FROM arcature_jobs WHERE status = 'dead' ORDER BY id LIMIT 1024";
+
 /// Requeue every dead job back to pending (resets attempts).
-async fn requeue_all_dead(pool: &sqlx::PgPool) -> Result<u64, QueueError> {
-    let rows = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'pending',
-               attempts = 0,
-               available_at = now(),
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL,
-               last_error = NULL,
-               last_error_kind = NULL,
-               failed_at = NULL
-           WHERE status = 'dead'"#,
-    )
-    .execute(pool)
-    .await
-    .map_err(QueueError::Sqlx)?
-    .rows_affected();
-    Ok(rows)
+///
+/// One statement per job rather than one `UPDATE ... WHERE status = 'dead'`.
+/// A set-based update would have to write `available_at` itself, and that
+/// column is a timestamp on PostgreSQL and MySQL and epoch milliseconds on
+/// SQLite; [`crate::jobs::admin::requeue_dead`] already knows which, and one
+/// place knowing it is worth the round trips on a command a human runs by
+/// hand.
+async fn requeue_all_dead(pool: &crate::database::Pool) -> Result<u64, QueueError> {
+    let mut total = 0u64;
+    loop {
+        let ids: Vec<uuid::Uuid> = sqlx::query_scalar(DEAD_IDS_SQL)
+            .fetch_all(pool)
+            .await
+            .map_err(QueueError::Sqlx)?;
+        if ids.is_empty() {
+            return Ok(total);
+        }
+
+        let mut requeued = 0u64;
+        for id in &ids {
+            requeued += crate::jobs::admin::requeue_dead(pool, *id)
+                .await
+                .map_err(QueueError::Admin)?;
+        }
+
+        // A full batch that requeued nothing means another process is
+        // holding those rows; looping again would spin rather than progress.
+        if requeued == 0 {
+            return Ok(total);
+        }
+        total += requeued;
+
+        if ids.len() < DEAD_BATCH {
+            return Ok(total);
+        }
+    }
 }
 
 /// An error from the `queue` command.
