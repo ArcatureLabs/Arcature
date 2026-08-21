@@ -63,6 +63,7 @@ pub mod controller_metadata;
 #[cfg(all(feature = "dx", feature = "database"))]
 pub mod db_from_state;
 pub mod field_metadata;
+pub mod from_state;
 pub mod graph;
 pub mod provider;
 #[cfg(feature = "dx")]
@@ -83,6 +84,16 @@ pub use controller_metadata::{ControllerMetadata, ControllerMethod};
 #[cfg(all(feature = "dx", feature = "database"))]
 pub use db_from_state::DbFromState;
 pub use field_metadata::{FieldShape, RequestMetadata, ResourceMetadata};
+#[cfg(feature = "cache")]
+pub use from_state::CacheFromState;
+#[cfg(feature = "events")]
+pub use from_state::EventsFromState;
+#[cfg(feature = "jobs")]
+pub use from_state::JobsFromState;
+#[cfg(feature = "mail")]
+pub use from_state::MailFromState;
+#[cfg(feature = "storage-fs")]
+pub use from_state::StorageFromState;
 // The A12 binding descriptors (`JobBinding`, `CommandBinding`, and the
 // re-exported `ListenerBinding` / `ScheduleBinding` / `ScheduleCadence`)
 // are pure compile-time metadata defined in `graph` (behind `dx` only),
