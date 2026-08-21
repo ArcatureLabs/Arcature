@@ -298,28 +298,28 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: "1.97.1"
 
-      # `arcature` cannot be dry-run yet, and that failure says nothing about
-      # this crate. Packaging resolves `arcature-macros = { version = "=0.1.0",
-      # path = "macros" }` against the registry -- `--no-verify` skips the
-      # build, not the resolve -- so before the first publish the step can only
-      # report
+      # This step used to be guarded on whether the sparse index served
+      # `arcature-macros` at all. Packaging `arcature` resolves
+      # `arcature-macros = { version = "=<same version>", path = "macros" }`
+      # against the registry -- `--no-verify` skips the build, not the resolve
+      # -- so before the first publish it could only report
       #
       #     no matching package named `arcature-macros` found
       #
-      # This is what turned every run on `main` red. A required job that cannot
-      # pass would hold `CI success` permanently red and make the gate
-      # meaningless, so the step asks the sparse index whether macros exists and
-      # runs only when the answer is yes. It begins working on its own the
-      # moment the first publish lands -- nothing here needs revisiting then.
+      # and a required job that cannot pass makes the gate meaningless.
+      #
+      # The guard is gone because it can no longer be false. `arcature-macros`
+      # 0.1.0 is published, and a published version stays in the index for
+      # good: yanking sets `yanked: true` on the entry rather than removing it,
+      # and a version number can never be reused. A condition that is now
+      # permanently true reads as though the unpublished case is still live.
+      #
+      # The dry run does still fail when the *pinned* version is unpublished,
+      # which is right. Between bumping the manifest and tagging, publishing
+      # macros first is the release job's business; this step going red on
+      # `main` afterwards means that ordering broke.
       - name: cargo publish --dry-run -p arcature
-        run: |
-          if curl --proto '=https' --tlsv1.2 --silent --show-error --fail \
-                  --location https://index.crates.io/ar/ca/arcature-macros \
-                  --output /dev/null; then
-            cargo publish --dry-run -p arcature
-          else
-            echo "::notice title=arcature dry run skipped::arcature-macros is not on crates.io, so packaging arcature would fail on the registry resolve rather than on anything in this tree."
-          fi
+        run: cargo publish --dry-run -p arcature
         env:
           RUSTUP_TOOLCHAIN: "1.97.1"
 
