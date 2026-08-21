@@ -171,7 +171,23 @@ pages = ["dep:http", "dep:tokio"]
 realtime = ["dep:tokio", "dep:futures", "dep:bytes"]
 
 # The `arc` CLI, generators, and the canonical application templates.
-cli = ["dep:clap", "dep:tokio", "dep:tokio-util", "dep:notify", "templates"]
+# The `arc` binary. It depends on `dev-proxy` because `arc dev` is a
+# supervisor that reuses the dev proxy's Vite detection and IPC forwarding
+# rather than reimplementing them -- two spellings of "is this Vite's?" would
+# eventually disagree, and the whole point of the one-port design is that
+# they cannot.
+cli = [
+    "dep:clap",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:notify",
+    "dev-proxy",
+    "templates",
+    # `arc routes`, `arc typegen` and `arc build` read the UAG artifact back
+    # from JSON and run its validator and codegen, so the CLI cannot be built
+    # without it.
+    "uag",
+]
 templates = []
 
 # Developer one-port proxy (framework internal; powers `arc dev`).
