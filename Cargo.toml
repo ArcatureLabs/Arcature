@@ -376,3 +376,52 @@ reqwest = { version = "0.13.4", default-features = false, features = ["rustls", 
 tempfile = { version = "3.23.0", default-features = false }
 serde_urlencoded = { version = "0.7.1", default-features = false }
 tower-sessions-memory-store = { version = "0.15.0", default-features = false }
+
+# Benchmarks. `default-features = false` drops `plotters` and `rayon`: the
+# numbers are read from the terminal and from `target/criterion`, and a
+# charting stack in the dev-dependency graph is a compile cost every
+# `cargo test` pays for a report nobody opens. `async_tokio` is what lets a
+# bench measure an `async fn` without hand-rolling a runtime per iteration.
+criterion = { version = "0.8.2", default-features = false, features = [
+    "cargo_bench_support",
+    "async_tokio",
+] }
+
+# ---------------------------------------------------------------------------
+# Benchmarks
+# ---------------------------------------------------------------------------
+#
+# Each of these measures a cost the framework makes a claim about, and only
+# those. `harness = false` on every entry because criterion supplies its own.
+# `required-features` is what keeps a plain `cargo bench` working on the
+# default feature set: a bench whose subject is not compiled is skipped
+# rather than failing the run.
+
+# The claim in `src/application/pipeline.rs`: "every stage from 4 down is off
+# unless asked for". This puts a number on the unconfigured pipeline against
+# a bare `axum::Router`, and on the configured one against both.
+[[bench]]
+name = "pipeline"
+harness = false
+required-features = ["inertia", "auth", "observe"]
+
+# The per-request cost of `RateLimit`, in-memory backend. A limiter is on the
+# path of every request it guards, so its own cost is the thing to know.
+[[bench]]
+name = "rate_limit"
+harness = false
+
+# Inertia's two response shapes: the first-visit HTML document and the
+# subsequent JSON page object. Every page a browser sees pays one of these.
+[[bench]]
+name = "inertia_render"
+harness = false
+required-features = ["inertia"]
+
+# UAG assembly and serialisation. `arc dev` rebuilds this artifact on every
+# backend restart, inside a dev loop with a stated 2.5s budget, so its cost
+# is a budget line rather than a curiosity.
+[[bench]]
+name = "uag"
+harness = false
+required-features = ["uag"]
