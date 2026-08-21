@@ -1,0 +1,77 @@
+# The guide, published.
+#
+# `mdbook build docs` already runs in ci.yml on every pull request, which
+# proves the book compiles. Nothing served it: the output went into
+# `docs/book/` on a runner and was thrown away with the runner. Anyone who
+# wanted to read the guide had to clone the repository and install mdBook,
+# which is a reasonable ask of a contributor and an unreasonable one of
+# someone deciding whether to try the framework at all.
+#
+# This file is the other half. On `main`, build the book again and hand it to
+# GitHub Pages, which serves it at https://arcaturelabs.github.io/Arcature/.
+#
+# The duplication with ci.yml's `book` job is deliberate. That job gates the
+# merge and must stay in the required set; this one publishes and must not,
+# because a Pages outage is not a reason to block a pull request.
+
+name: Guide
+
+on:
+  push:
+    branches: [main]
+    # A code-only change cannot alter the rendered book, and re-deploying an
+    # identical site on every commit to `main` makes the deployment history
+    # useless for answering "when did the guide last change".
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# The build job only reads. `pages: write` and `id-token: write` are what
+# `deploy-pages` needs, and they are declared on that job alone -- the step
+# that runs mdBook over repository content is the one with the widest blast
+# radius, and it is the one holding the narrowest token.
+permissions:
+  contents: read
+
+# One deployment at a time, and never cancel one in flight: an interrupted
+# `deploy-pages` can leave the site mid-swap. Queueing costs a minute and
+# always lands on a complete build.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    # A fork has no Pages site to publish to, and the deploy job below would
+    # fail on every push to its `main`.
+    if: github.repository == 'ArcatureLabs/Arcature'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: taiki-e/install-action@a2a5f6e99e1a31540baa0468acfa302cff0f359f # v2.86.4
+        with:
+          tool: mdbook
+
+      - name: Build the guide
+        run: mdbook build docs
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/book
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

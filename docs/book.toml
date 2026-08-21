@@ -23,6 +23,17 @@ default-theme = "rust"
 preferred-dark-theme = "ayu"
 git-repository-url = "https://github.com/ArcatureLabs/Arcature"
 edit-url-template = "https://github.com/ArcatureLabs/Arcature/edit/main/docs/{path}"
+# Served from a project page, so the book lives under a path rather than at
+# the root of a domain. mdBook stamps `<base href>` into 404.html from this,
+# and the default is `/`: every asset and every nav link on a missing page
+# would resolve against arcaturelabs.github.io instead of
+# arcaturelabs.github.io/Arcature, so the one page a lost reader lands on
+# would be the one that renders unstyled and navigates nowhere.
+site-url = "/Arcature/"
+# Served from a project page, so the book lives under a path rather than at
+# the root of a domain. mdBook writes 404.html with absolute asset paths, and
+# without this they resolve to arcaturelabs.github.io/css/... -- every missing
+# page would render unstyled and with dead navigation.
 # Code samples in this guide are illustrative Rust that needs a database, a
 # mail server, or an application around it. Nothing here is a doctest, so the
 # play button would offer to run what cannot run.
