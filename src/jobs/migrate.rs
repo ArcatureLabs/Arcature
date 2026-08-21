@@ -176,3 +176,120 @@ mod tests {
         assert_eq!(split, vec!["CREATE TABLE a (i INT)", "SELECT 1"]);
     }
 }
+
+// The tests above split text. Whether the text they split is SQL this
+// dialect's server accepts is a different question, and only the server can
+// answer it: three files, three grammars, and a `CREATE TABLE` that parses on
+// PostgreSQL says nothing about MySQL's refusal of `CREATE INDEX IF NOT
+// EXISTS`. These tests need a server; see `crate::jobs::test_support` for how
+// they skip without one. Which dialect is exercised is the build's choice of
+// driver, so the three are covered by running the suite three times rather
+// than by three tests.
+#[cfg(all(test, feature = "test-kit"))]
+mod live_tests {
+    use super::*;
+    use crate::jobs::test_support::{enqueue, queue, rows};
+
+    /// Read the applied versions out of the history table.
+    async fn applied(pool: &JobPool) -> Vec<String> {
+        sqlx::query("SELECT version FROM arcature_jobs_schema_migrations")
+            .fetch_all(pool)
+            .await
+            .expect("read the migration history")
+            .iter()
+            .map(|row| row.try_get::<String, _>("version").expect("version"))
+            .collect()
+    }
+
+    /// Every statement in this dialect's file is accepted, and the table it
+    /// creates is the one the queue writes to.
+    ///
+    /// The fixture has already applied the migration by the time the test
+    /// body runs -- that is what makes an empty `arcature_jobs` available at
+    /// all -- so the assertion is about what the migration produced: a table
+    /// that takes an enqueue, and a history row naming the version.
+    #[tokio::test]
+    async fn the_bundled_migration_runs_and_leaves_a_usable_table() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let versions = applied(pool).await;
+        for &(version, _) in MIGRATIONS {
+            assert!(
+                versions.iter().any(|applied| applied == version),
+                "{version} is not recorded in the history table: {versions:?}"
+            );
+        }
+
+        let enqueued = enqueue(pool, 1).await;
+        assert_eq!(
+            rows(pool).await,
+            vec![(enqueued[0], "pending".to_owned(), 0)],
+            "the migrated table did not accept an ordinary enqueue"
+        );
+    }
+
+    /// Applying twice is a no-op rather than an error.
+    ///
+    /// This is not a theoretical concern: every process that boots calls
+    /// `migrate`, so the second application is the normal case and the first
+    /// is the exception. It also exercises the dialect's lock -- PostgreSQL's
+    /// `pg_advisory_lock`, MySQL's `GET_LOCK`, SQLite's deliberate absence of
+    /// one -- including the release, since a session that failed to release
+    /// would hang the next `apply` on the same pool rather than fail it.
+    #[tokio::test]
+    async fn applying_again_changes_nothing() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+        let before = applied(pool).await;
+
+        apply(pool).await.expect("apply a second time");
+        apply(pool).await.expect("apply a third time");
+
+        let after = applied(pool).await;
+        assert_eq!(
+            after.len(),
+            before.len(),
+            "re-applying added history rows: {before:?} then {after:?}"
+        );
+    }
+
+    /// The caller's transaction is honoured: rolling it back unapplies the
+    /// migration's bookkeeping.
+    ///
+    /// `apply_tx` exists so an application can migrate inside a transaction it
+    /// already has. What that must not do is take a session-scoped lock the
+    /// caller's transaction then outlives, or record a version the rollback
+    /// discards. Applying inside a transaction that is rolled back, then
+    /// applying normally, would deadlock or double-record if either were
+    /// wrong.
+    ///
+    /// PostgreSQL and SQLite roll DDL back; MySQL commits it implicitly, so
+    /// the assertion is deliberately only that both calls succeed and the
+    /// history ends up with one row per migration -- true either way.
+    #[tokio::test]
+    async fn applying_inside_a_rolled_back_transaction_leaves_the_history_consistent() {
+        let Some(fixture) = queue().await else {
+            return;
+        };
+        let pool = fixture.pool();
+
+        let mut tx = pool.begin().await.expect("begin");
+        apply_tx(&mut tx).await.expect("apply inside a transaction");
+        tx.rollback().await.expect("roll back");
+
+        apply(pool).await.expect("apply after the rollback");
+
+        let versions = applied(pool).await;
+        assert_eq!(
+            versions.len(),
+            MIGRATIONS.len(),
+            "the history holds {versions:?} for {} migration(s)",
+            MIGRATIONS.len()
+        );
+    }
+}

@@ -84,6 +84,16 @@ therefore its first.
   retry, death and heartbeat all to be refused while the second worker's
   are accepted. The claim token is per claim, so the reclaim's token
   differs and the stale writes land on nothing.
+- **The job migrations are run against all three dialects.** The existing
+  tests split the migration files into statements; nothing ever handed
+  those statements to a server, so three grammars were being trusted on
+  the strength of one. `src/jobs/migrate.rs` now applies the bundled
+  migration for real, checks the history table records it, enqueues into
+  the table it created, applies twice more to prove idempotence and that
+  the dialect's advisory lock is released, and applies inside a
+  transaction the caller then rolls back. Which dialect is exercised is
+  the build's choice of driver, so CI's `Database` matrix covers all
+  three.
 
 ### Deprecated
 
