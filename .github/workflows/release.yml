@@ -34,8 +34,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Three of the four jobs below only read the repository: they check out, they
+# compile, they hand artifacts to the Actions artifact service, which does not
+# go through this token at all. Only `release` creates or updates a GitHub
+# release, so `contents: write` is declared there and nowhere else -- a tag
+# push should not hand a write-capable token to a `cargo test` step.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -212,6 +217,10 @@ jobs:
     name: Attach the binaries to the release
     needs: [verify, binaries]
     runs-on: ubuntu-latest
+    # The one job in this file that writes: `gh release create` and
+    # `gh release upload` are both contents-scoped.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
