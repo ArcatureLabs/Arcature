@@ -3,8 +3,8 @@
 //! An attribute macro applied to an `async fn`. Emits the function unchanged
 //! (it remains a genuine listener closure the app registers on the
 //! `Dispatcher`) and, next to it, a `pub static LISTENER_BINDING:
-//! ListenerBinding` const recording the event-to-listener binding for `arc
-//! check` / `arc modules` inspection.
+//! ListenerBinding` const recording the event-to-listener binding for the
+//! Unified Application Graph.
 //!
 //! One file, one macro: this is the entirety of the `#[listener]` expansion.
 

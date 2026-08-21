@@ -4,9 +4,10 @@
 //! struct's named fields: the field name, the Rust type rendered as a clean
 //! string, and the `#[validate(...)]` rule strings (present only on
 //! `#[request]` inputs). The Rust -> TypeScript type mapping lives in
-//! `arcature-build` codegen -- the single generator -- so this module
-//! renders no TypeScript; it faithfully captures the Rust type string and
-//! lets codegen own the cross-stack mapping.
+//! `arcature::uag::codegen::type_map` -- the one place a Rust type string
+//! becomes anything else -- so this module renders no TypeScript; it
+//! faithfully captures the Rust type string and lets codegen own the
+//! cross-stack mapping.
 //!
 //! The output is plain `&'static` data: the macro emits a
 //! `const FIELDS: &'static [::arcature::FieldShape] = &[ ... ];` slice,

@@ -3,10 +3,10 @@
 //! A **service** is cheap per-request composition from application
 //! resources. The macro generates three impls:
 //!
-//! 1. `impl ::arcature::DxComponent` -- the static `NAME` for
-//!    `arc services` inspection.
+//! 1. `impl ::arcature::DxComponent` -- the static `NAME` the module graph
+//!    lists it under.
 //! 2. `impl ::arcature::Service` -- the service marker with `DEPS`
-//!    metadata for `arc check` graph validation.
+//!    metadata: the dependency type names.
 //! 3. `impl ::arcature::Resolve<S>` -- per-state construction from the
 //!    `Resolve<S>` impls of the struct's field types.
 //!
@@ -87,7 +87,7 @@ pub fn service(attr: TokenStream, item: TokenStream) -> MacroResult {
     let fields: Vec<&syn::Field> = named.named.iter().collect();
 
     // DEPS metadata: the simple type name of each field (e.g. "Db",
-    // "Cache", "LinkService"). This feeds `arc check` graph validation.
+    // "Cache", "LinkService").
     let deps_lits: Vec<String> = fields.iter().map(|f| simple_type_name(&f.ty)).collect();
 
     let field_idents: Vec<&syn::Ident> = fields.iter().filter_map(|f| f.ident.as_ref()).collect();
@@ -168,10 +168,9 @@ impl Parse for ServiceArgs {
 /// Extracts the simple (unqualified) type name for `DEPS` metadata.
 ///
 /// For `Db` -> `"Db"`, for `arcature::database::Db` -> `"Db"`, for
-/// `Vec<u8>` -> `"Vec"`. This is the name used in `arc check` graph
-/// validation -- it matches the names registered in
-/// `ModuleDescriptor.services` and the `DxComponent::NAME` of dependency
-/// types.
+/// `Vec<u8>` -> `"Vec"`. The simple name is what matches the names
+/// registered in `ModuleDescriptor.services` and the `DxComponent::NAME`
+/// of dependency types.
 fn simple_type_name(ty: &syn::Type) -> String {
     let s = ty.to_token_stream().to_string();
     let s = s.split("::").last().unwrap_or(&s);

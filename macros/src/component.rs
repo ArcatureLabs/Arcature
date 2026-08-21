@@ -2,7 +2,7 @@
 //!
 //! Generates an `impl ::arcature::DxComponent` for the annotated type,
 //! providing a static component name used in application-graph inspection
-//! (`arc modules`, `arc services`) without runtime reflection.
+//! without runtime reflection.
 //!
 //! ## Helper attribute
 //!
