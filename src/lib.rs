@@ -103,11 +103,13 @@ pub use dx::{
     Resolve, ResourceMetadata, RouteDescriptor, RouteMethod, Service, page,
 };
 #[cfg(feature = "dx")]
-pub use dx::{Command, CommandError, CommandRegistry};
+pub use dx::{Command, CommandError, CommandFuture, CommandRegistry};
 #[cfg(feature = "dx")]
 pub use dx::{CommandBinding, JobBinding};
 #[cfg(all(feature = "dx", feature = "database"))]
 pub use dx::{DbFromState, RouteModel};
+#[cfg(feature = "dx")]
+pub use dx::{RequestCache, RequestCacheKey};
 
 // --- Feature-gated subsystems ----------------------------------------------
 
