@@ -35,6 +35,26 @@ impl LifecycleState {
     pub fn is_live(self) -> bool {
         !matches!(self, LifecycleState::Stopped)
     }
+
+    /// The state's wire name, as it appears in the health endpoints' JSON.
+    ///
+    /// Lowercase and stable: an operator's dashboard or alert rule matches on
+    /// these strings, so renaming one is a breaking change.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LifecycleState::Starting => "starting",
+            LifecycleState::Ready => "ready",
+            LifecycleState::Draining => "draining",
+            LifecycleState::Stopped => "stopped",
+        }
+    }
+}
+
+impl std::fmt::Display for LifecycleState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// The lifecycle handle, cheaply cloneable (Arc-backed).
