@@ -28,6 +28,18 @@ path = "src/lib.rs"
 # Workspace — the proc-macro crate lives alongside `arcature` as a path dep.
 # Only `arcature` is the public release unit; `arcature-macros` is an
 # implementation detail Rust requires (proc-macros must be a separate crate).
+#
+# There is no `examples/` directory, and its absence is the deliberate half of
+# a trade. Four application packages used to be members here, on the argument
+# that "the layout `arc new` writes is the layout CI compiles" — but they were
+# four one-line placeholders, so they compiled nothing and proved nothing, and
+# every template change would have had to be copied into all four by hand or
+# they would drift into lying about the layout.
+#
+# The property was worth keeping; the copies were not. CI's `scaffold` job runs
+# `arc new` for each stack and compiles what comes out, so the layout under
+# test is the one the templates actually produce, on every run, with nothing to
+# keep in sync. `just scaffold` is the same thing locally.
 # ---------------------------------------------------------------------------
 [workspace]
 members = [".", "macros"]
