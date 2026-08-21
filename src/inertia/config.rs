@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use super::error::InertiaError;
 use super::props::SharedProps;
+use crate::http::security::CspNonce;
 
 /// The current asset version, compared against `X-Inertia-Version`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -38,14 +39,52 @@ impl AsRef<str> for AssetVersion {
 /// element followed by the `<div id="...">` mount point — already escaped for
 /// safe embedding. Constructed only by the adapter; applications receive it
 /// in their root document renderer and embed it via `Display`.
+///
+/// It also carries this request's [`CspNonce`], when there is one. That is why
+/// the type is a struct rather than a `String`: the nonce could be added to it
+/// without touching [`RootDocument::render`], and every application that
+/// passes a plain `Fn(ScriptBody) -> String` closure kept compiling.
 #[derive(Debug, Clone)]
 pub struct ScriptBody {
     html: Arc<str>,
+    nonce: Option<CspNonce>,
 }
 
 impl ScriptBody {
-    pub(crate) fn from_escaped(html: Arc<str>) -> ScriptBody {
-        ScriptBody { html }
+    pub(crate) fn from_escaped(html: Arc<str>, nonce: Option<CspNonce>) -> ScriptBody {
+        ScriptBody { html, nonce }
+    }
+
+    /// This request's Content-Security-Policy nonce, if the application
+    /// installed [`SecurityHeaders::with_csp_nonce`].
+    ///
+    /// The payload script this body contains already carries it. This is for
+    /// the *other* elements a hand-written root document writes — its own
+    /// `<script>` and `<style>` tags, an analytics snippet — which the
+    /// framework cannot stamp because it never sees them.
+    ///
+    /// [`SecurityHeaders::with_csp_nonce`]: crate::http::security::SecurityHeaders::with_csp_nonce
+    #[must_use]
+    pub fn nonce(&self) -> Option<&CspNonce> {
+        self.nonce.as_ref()
+    }
+
+    /// The nonce as an HTML attribute with a leading space, or the empty
+    /// string when there is none.
+    ///
+    /// Written to be interpolated straight into a tag, which is what makes a
+    /// nonce-aware root document readable:
+    ///
+    /// ```ignore
+    /// let nonce = body.nonce_attribute();
+    /// format!("<body>{body}<script{nonce} src=\"/js/app.js\"></script></body>")
+    /// ```
+    #[must_use]
+    pub fn nonce_attribute(&self) -> String {
+        self.nonce
+            .as_ref()
+            .map(CspNonce::attribute)
+            .unwrap_or_default()
     }
 }
 
@@ -92,7 +131,7 @@ impl fmt::Debug for InertiaConfig {
 
 #[derive(Clone)]
 struct ConfigInner {
-    version: AssetVersion,
+    version: Option<AssetVersion>,
     root_document: Arc<dyn RootDocument>,
     shared_props: SharedProps,
     page_id: String,
@@ -106,12 +145,35 @@ impl InertiaConfig {
     ) -> Result<InertiaConfig, InertiaError> {
         Ok(InertiaConfig {
             inner: Arc::new(ConfigInner {
-                version: AssetVersion::new(version)?,
+                version: Some(AssetVersion::new(version)?),
                 root_document: Arc::new(root_document),
                 shared_props: SharedProps::new(),
                 page_id: "app".to_string(),
             }),
         })
+    }
+
+    /// Create a configuration with no asset version.
+    ///
+    /// The client types `version` as `string | null` and sends back whatever
+    /// it was given, so an application with no build step has a coherent
+    /// answer: `null` in the page object, no `X-Inertia-Version` to compare,
+    /// and therefore no version mismatch to force a hard reload. There is
+    /// nothing to invalidate when nothing is hashed.
+    ///
+    /// Every application that does build assets wants
+    /// [`new`](Self::new) instead -- without a version the client keeps
+    /// running last deploy's JavaScript against this deploy's props until
+    /// something else makes it reload.
+    pub fn versionless(root_document: impl RootDocument + 'static) -> InertiaConfig {
+        InertiaConfig {
+            inner: Arc::new(ConfigInner {
+                version: None,
+                root_document: Arc::new(root_document),
+                shared_props: SharedProps::new(),
+                page_id: "app".to_string(),
+            }),
+        }
     }
 
     /// Register shared props.
@@ -120,9 +182,26 @@ impl InertiaConfig {
         self
     }
 
-    /// The current asset version.
-    pub fn version(&self) -> &AssetVersion {
-        &self.inner.version
+    /// Use a different id for the page element and its mount point.
+    ///
+    /// `app` is the default on both sides. Change it only alongside the
+    /// client's `createInertiaApp({ id })` -- the two names are one
+    /// agreement, and a server that renames alone renders a page the client
+    /// cannot find.
+    pub fn with_page_id(mut self, id: impl Into<String>) -> Self {
+        Arc::make_mut(&mut self.inner).page_id = id.into();
+        self
+    }
+
+    /// The current asset version, if the application has one.
+    pub fn version(&self) -> Option<&AssetVersion> {
+        self.inner.version.as_ref()
+    }
+
+    /// The asset version as the protocol compares it: the empty string when
+    /// there is none, which is exactly what a client with no version sends.
+    pub(crate) fn version_str(&self) -> &str {
+        self.inner.version.as_ref().map_or("", AssetVersion::as_str)
     }
 
     pub(crate) fn root_document(&self) -> &Arc<dyn RootDocument> {
@@ -150,11 +229,16 @@ impl InertiaConfig {
 pub fn default_root_document(title: &str) -> impl RootDocument + use<> {
     let title = title.to_string();
     move |body: ScriptBody| {
+        // Both the stylesheet link and the module script carry the request's
+        // nonce when there is one, and nothing when there is not. A
+        // `script-src 'nonce-X'` policy that this document did not satisfy
+        // would render the page blank rather than merely unstyled.
+        let nonce = body.nonce_attribute();
         format!(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
              <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
-             <title>{title}</title>\n  <link rel=\"stylesheet\" href=\"/css/app.css\" />\n</head>\n\
-             <body>\n  {body}\n  <script type=\"module\" src=\"/js/app.js\"></script>\n</body>\n</html>"
+             <title>{title}</title>\n  <link{nonce} rel=\"stylesheet\" href=\"/css/app.css\" />\n</head>\n\
+             <body>\n  {body}\n  <script{nonce} type=\"module\" src=\"/js/app.js\"></script>\n</body>\n</html>"
         )
     }
 }
@@ -167,15 +251,18 @@ pub fn default_root_document(title: &str) -> impl RootDocument + use<> {
 /// resolves through `manifest.json` to the hashed build output, which is the
 /// only way the reference can still be correct after a rebuild.
 ///
-/// The tags are resolved **once**, here, not per request: [`Assets`] is
+/// The entry is resolved **once**, here, not per request: [`Assets`] is
 /// already the loaded manifest, and the answer cannot change while the
-/// process runs.
+/// process runs. Only the tags are re-formatted per request, and only because
+/// they carry that request's Content-Security-Policy nonce -- the URLs inside
+/// them were settled at startup.
 ///
 /// ```ignore
 /// let assets = Assets::detect(&AssetsConfig::new())?;
-/// let config = InertiaConfig::builder()
-///     .root_document(vite_root_document("Acme", &assets, "resources/js/app.tsx"))
-///     .build();
+/// let config = InertiaConfig::new(
+///     env!("CARGO_PKG_VERSION"),
+///     vite_root_document("Acme", &assets, "resources/js/app.tsx"),
+/// )?;
 /// ```
 ///
 /// [`Assets`]: crate::assets::Assets
@@ -185,9 +272,16 @@ pub fn vite_root_document(
     entry: &str,
 ) -> impl RootDocument + use<> {
     let title = title.to_string();
-    let head = assets.head_tags(entry);
-    let scripts = assets.body_tags(entry);
+    let resolved = assets.resolve(entry);
+    let dev = assets.is_dev();
     move |body: ScriptBody| {
+        let nonce = body.nonce().map(CspNonce::as_str);
+        let head = crate::assets::style_tags(
+            resolved.as_ref().map(|r| r.css.as_slice()).unwrap_or(&[]),
+            nonce,
+        );
+        let scripts =
+            crate::assets::script_tags(resolved.as_ref().map(|r| r.js.as_str()), dev, nonce);
         format!(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
              <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
