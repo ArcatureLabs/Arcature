@@ -36,6 +36,16 @@ updates:
       - dependency-name: "validator"
         update-types: ["version-update:semver-major"]
 
+  # Every `uses:` in .github/workflows is pinned to a full commit SHA with the
+  # version in a trailing comment. A tag is a mutable pointer: whoever can move
+  # `v4` can run their code inside a job holding this repository's token, and
+  # that is a supply-chain compromise with no commit to review. A SHA cannot be
+  # moved.
+  #
+  # This entry is what keeps the pins from rotting. Dependabot rewrites both
+  # the SHA and the comment, so a pinned action still arrives as a reviewable
+  # pull request every week rather than freezing at whatever was current the
+  # day it was written.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
