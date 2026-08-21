@@ -1,49 +1,56 @@
-//! `arc new <name> [--dest <path>]` — generate a new application.
+//! `arc new <name> [--dest <path>] [--stack <s>] [--db <d>]` -- generate a new
+//! application.
 //!
-//! Parses its own arguments and runs the template generator. This file holds
-//! only the `new` command: its parser, its executor, and its error.
+//! Parsing lives in [`super::super::parser`]; this file holds the executor and
+//! the command's error.
+//!
+//! # Why the flags are translated rather than passed through
+//!
+//! [`crate::templates`] declares its own `Stack` and `Database` so the
+//! `templates` feature stands on its own without `cli`. The two enums are
+//! deliberately separate types, and this file is the single place that maps
+//! one onto the other -- an exhaustive `match` here means adding a stack to
+//! the CLI without adding it to the catalog fails to compile.
 
-use std::ffi::OsString;
 use std::path::PathBuf;
 
-use super::super::parser::{Subcommand, SubcommandError};
-
-/// Parse `arc new` arguments into a [`Subcommand::New`].
-pub fn parse<'a>(iter: &mut std::slice::Iter<'a, OsString>) -> Result<Subcommand, SubcommandError> {
-    let project_name = iter
-        .next()
-        .ok_or(SubcommandError::MissingArg {
-            subcommand: "new".into(),
-            arg: "<name>".into(),
-        })?
-        .to_string_lossy()
-        .into_owned();
-
-    // Parse optional --dest <path>.
-    let mut dest = None;
-    while let Some(arg) = iter.next() {
-        let arg_str = arg.to_string_lossy();
-        if arg_str == "--dest" {
-            let value = iter.next().ok_or(SubcommandError::MissingFlagValue {
-                subcommand: "new".into(),
-                flag: "--dest".into(),
-            })?;
-            dest = Some(PathBuf::from(value.to_string_lossy().into_owned()));
-        }
-    }
-
-    Ok(Subcommand::New {
-        name: project_name,
-        dest,
-    })
-}
+use crate::cli::parser::{Database, Stack};
+use crate::templates::{Database as TemplateDatabase, Stack as TemplateStack};
 
 /// Execute the `new` subcommand: generate the application and report the path.
-pub fn run(name: &str, dest: Option<PathBuf>) -> Result<(), NewError> {
+///
+/// # Errors
+///
+/// See [`NewError`].
+pub fn run(
+    name: &str,
+    dest: Option<PathBuf>,
+    stack: Stack,
+    database: Database,
+) -> Result<(), NewError> {
     let target = dest.unwrap_or_else(|| PathBuf::from(name));
-    crate::templates::generate(&target).map_err(NewError::Template)?;
+    crate::templates::generate(&target, template_stack(stack), template_database(database))
+        .map_err(NewError::Template)?;
     println!("Created {name} at {}", target.display());
     Ok(())
+}
+
+/// Map the CLI's stack onto the catalog's.
+const fn template_stack(stack: Stack) -> TemplateStack {
+    match stack {
+        Stack::React => TemplateStack::React,
+        Stack::Vue => TemplateStack::Vue,
+        Stack::Svelte => TemplateStack::Svelte,
+    }
+}
+
+/// Map the CLI's driver onto the catalog's.
+const fn template_database(database: Database) -> TemplateDatabase {
+    match database {
+        Database::Postgres => TemplateDatabase::Postgres,
+        Database::Sqlite => TemplateDatabase::Sqlite,
+        Database::Mysql => TemplateDatabase::Mysql,
+    }
 }
 
 /// An error from the `new` command.
@@ -54,17 +61,84 @@ pub enum NewError {
 }
 
 impl std::fmt::Display for NewError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Template(e) => write!(f, "{e}"),
+            Self::Template(error) => write!(formatter, "{error}"),
         }
     }
 }
 
-impl std::error::Error for NewError {}
+impl std::error::Error for NewError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Template(error) => Some(error),
+        }
+    }
+}
 
 impl From<crate::templates::TemplateError> for NewError {
-    fn from(e: crate::templates::TemplateError) -> Self {
-        Self::Template(e)
+    fn from(error: crate::templates::TemplateError) -> Self {
+        Self::Template(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_stack_flag_reaches_a_catalog_stack() {
+        let pairs = [
+            (Stack::React, TemplateStack::React),
+            (Stack::Vue, TemplateStack::Vue),
+            (Stack::Svelte, TemplateStack::Svelte),
+        ];
+        for (cli, catalog) in pairs {
+            assert_eq!(template_stack(cli), catalog);
+            assert_eq!(cli.as_str(), catalog.as_str());
+        }
+    }
+
+    #[test]
+    fn every_driver_flag_reaches_a_catalog_driver() {
+        let pairs = [
+            (Database::Postgres, TemplateDatabase::Postgres),
+            (Database::Sqlite, TemplateDatabase::Sqlite),
+            (Database::Mysql, TemplateDatabase::Mysql),
+        ];
+        for (cli, catalog) in pairs {
+            assert_eq!(template_database(cli), catalog);
+            assert_eq!(cli.as_str(), catalog.as_str());
+            assert_eq!(cli.feature(), catalog.feature());
+        }
+    }
+
+    #[test]
+    fn a_non_default_stack_and_driver_now_generate_rather_than_refuse() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("demo");
+        run(
+            "demo",
+            Some(target.clone()),
+            Stack::Svelte,
+            Database::Sqlite,
+        )
+        .expect("generated");
+        assert!(target.join("resources/js/app.ts").exists());
+        let manifest = std::fs::read_to_string(target.join("Cargo.toml")).expect("Cargo.toml");
+        assert!(manifest.contains("db-sqlite"), "{manifest}");
+    }
+
+    #[test]
+    fn generating_over_an_existing_directory_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("demo");
+        std::fs::create_dir_all(&target).expect("mkdir");
+        let error =
+            run("demo", Some(target), Stack::default(), Database::default()).expect_err("refused");
+        assert!(matches!(
+            error,
+            NewError::Template(crate::templates::TemplateError::ExistingTarget { .. })
+        ));
     }
 }
