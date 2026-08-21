@@ -51,15 +51,13 @@ jobs:
     name: Review added dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # No floating major tag exists for this action -- upstream publishes
-      # v1, v2 and v3 and stopped, so `@v4` and `@v5` do not resolve and the
-      # exact release tag is the only thing that can be pinned. Same
-      # discipline as everywhere else in this repository (use the ref upstream
-      # actually publishes), not a second convention. Dependabot's
-      # github-actions entry will raise the bump.
-      - uses: actions/dependency-review-action@v5.0.0
+      # The trailing comment names v5.0.0 rather than a floating major
+      # because upstream publishes v1, v2 and v3 and stopped: `@v5` is not a
+      # ref that exists, so there is no major tag this pin could be described
+      # against.
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           # `high` and above fails. Not `low`: the Rust graph carries a steady
           # trickle of low and moderate advisories against transitive crates
