@@ -47,6 +47,7 @@ pub mod extract;
 pub mod password;
 pub mod password_config;
 pub mod session;
+pub mod session_api;
 
 // Re-export the certified tower-sessions crate so downstream code targets the
 // Arcature-pinned version and reaches the certified `cookie` crate through
@@ -57,9 +58,7 @@ pub use tower_sessions;
 pub use argon2;
 
 pub use csrf::{CsrfConfig, CsrfLayer, CsrfMiddleware, CsrfToken};
-pub use dx::{
-    AuthzError, Flash, FlashError, FlashLevel, FlashMessage, Policy, Session, SessionError,
-};
+pub use dx::{AuthzError, Flash, FlashError, FlashLevel, FlashMessage, Policy};
 pub use extract::{
     Auth, AuthError, AuthManager, Current, LoginBuilder, OptionalAuth, OptionalCurrent, UserLoader,
 };
@@ -75,6 +74,7 @@ pub use password::{
 };
 pub use password_config::PasswordConfig;
 pub use session::{SameSite, SessionConfig, SessionKey, SessionLayer};
+pub use session_api::{Session, SessionError};
 
 // Re-export the redacting secret wrapper for credential/token holders.
 pub use secrecy;
