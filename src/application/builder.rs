@@ -192,10 +192,22 @@ impl<S: RouterState> Application<S> {
         &self.bind_addr
     }
 
-    /// The bind port.
+    /// The bind port, as configured.
+    ///
+    /// The port actually listened on may differ: the environment is consulted
+    /// at serve time, not here. See
+    /// [`ApplicationBuilder::config`] for the precedence.
     #[must_use]
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// The [`AppConfig`](crate::config::AppConfig) this application was built
+    /// with, or the default if [`ApplicationBuilder::config`] was never
+    /// called.
+    #[must_use]
+    pub fn config(&self) -> &crate::config::AppConfig {
+        &self.app_config
     }
 
     /// Consume the application and return the fully composed router.
@@ -945,8 +957,14 @@ impl Application<()> {
         L: axum::serve::Listener,
         L::Addr: std::fmt::Debug,
     {
-        let lifecycle = Lifecycle::new();
-        let _resources = Resources::empty();
+        let lifecycle = self.lifecycle.clone();
+        // No subsystems on this path -- `serve` is the escape hatch that
+        // skips ordered startup -- but the health endpoints still get the
+        // (empty) resource set, so `/up/ready` reports on the lifecycle
+        // rather than on nothing at all.
+        if let Some(health) = &self.health {
+            health.publish(Resources::empty());
+        }
         lifecycle.mark_ready();
         let service = crate::application::pipeline::compose_service(
             self.router,
@@ -976,36 +994,32 @@ impl<S: RouterState> Application<S> {
     ///
     /// Requires the `macros` feature.
     #[cfg(feature = "macros")]
+    // `self` is mutated by exactly one thing: the `jobs` block's `.take()`
+    // calls. The other subsystems read `&self` and mutate `resources`, which
+    // carries its own `mut`. So the predicate is `jobs`, not the list of every
+    // subsystem -- with `cache` on and `jobs` off, `mut self` is dead and the
+    // wider predicate let the warning through. One `expect` covers both
+    // bindings, which is what the all-off case needs.
     #[cfg_attr(
-        not(any(
-            feature = "database",
-            feature = "jobs",
-            feature = "cache",
-            feature = "storage-fs",
-            feature = "mail"
-        )),
+        not(feature = "jobs"),
         expect(
             unused_mut,
-            reason = "with no subsystem to start, neither `self` nor `resources` is mutated"
+            reason = "`self` is only mutated to take the job registry and scheduler;                       with no subsystem at all, `resources` is not mutated either"
         )
     )]
     pub async fn run_with_state(mut self, state_fn: StateFn<S>) -> EngineResult<()> {
-        use tokio::net::TcpListener;
-
         let port = resolve_port(self.port);
         let addr: SocketAddr = format!("{}:{}", self.bind_addr, port)
             .parse()
             .map_err(|_| EngineError::InvalidPort(port))?;
 
-        let listener =
-            TcpListener::bind(addr)
-                .await
-                .map_err(|source| EngineError::BindListener {
-                    address: addr.to_string(),
-                    source,
-                })?;
+        // Where this process listens is not always a port: under `arc dev`
+        // the supervisor owns the only TCP listener and the application is a
+        // child on a private IPC endpoint. See
+        // [`crate::application::serve_ipc`].
+        let listener = crate::application::serve_ipc::ServeTarget::bind(addr).await?;
 
-        let lifecycle = Lifecycle::new();
+        let lifecycle = self.lifecycle.clone();
 
         // Take ownership of the jobs fields up front: the worker needs the
         // registry by value and the scheduler is not Clone (its entries hold
@@ -1074,6 +1088,14 @@ impl<S: RouterState> Application<S> {
             resources.set_mail(mailer);
         }
 
+        // Hand the started subsystems to the health endpoints. Before this
+        // point the readiness report lists no checks and the lifecycle is
+        // still `Starting`, so `/up/ready` answers `503` -- which is the
+        // honest answer for a process that has not finished booting.
+        if let Some(health) = &self.health {
+            health.publish(resources.clone());
+        }
+
         // Build the application state from the started resources.
         let state = state_fn(&resources, &lifecycle);
 
@@ -1090,14 +1112,26 @@ impl<S: RouterState> Application<S> {
             #[cfg(feature = "dev-proxy")]
             self.dev_proxy_endpoint.clone(),
         );
-        use crate::axum::ServiceExt as _;
 
         lifecycle.mark_ready();
 
-        axum::serve(listener, service.into_make_service())
-            .with_graceful_shutdown(shutdown_signal())
-            .await
-            .map_err(|source| EngineError::Serve { source })?;
+        // The one line a booting application prints, and the only one the
+        // framework emits unprompted. It goes out *after* `mark_ready`, so
+        // the address it names is one that already answers: a line printed
+        // before the subsystems finished starting would invite a request the
+        // process is not yet able to serve.
+        //
+        // Through `tracing`, not `println!`, for the same reason as
+        // everything else here -- it carries a field rather than a sentence,
+        // it lands in whatever the operator configured, and a process that
+        // installed no subscriber stays quiet by its own choice. See
+        // [`crate::observe::install_logging`].
+        #[cfg(feature = "observe")]
+        tracing::info!(at = %listener.describe(), "listening");
+        #[cfg(not(feature = "observe"))]
+        eprintln!("listening on {}", listener.describe());
+
+        listener.serve(service, shutdown_signal()).await?;
 
         lifecycle.begin_drain();
 
