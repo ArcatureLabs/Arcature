@@ -72,6 +72,34 @@ jobs:
           fi
           echo "version=$tag" >> "$GITHUB_OUTPUT"
 
+      # crates.io accepts category slugs only from a fixed list it keeps
+      # server-side, and it checks them at the very end of an upload. A bad
+      # slug therefore fails *after* packaging and a full verify build have
+      # passed -- and, because the two crates publish in sequence, after the
+      # macro crate is already on the registry and unrecallable. That is
+      # exactly how 0.1.0 first failed, on the word "framework". Nothing
+      # local catches it: `cargo package` and `cargo publish --dry-run` both
+      # accept whatever the manifest says. So the check happens here, before
+      # any job has published anything.
+      - name: Check the category slugs against crates.io
+        shell: bash
+        run: |
+          set -euo pipefail
+          ua="arcature-release (github.com/ArcatureLabs/Arcature)"
+          status=0
+          slugs=$(cargo metadata --no-deps --format-version 1             | jq -r '.packages[] | .name as $p | .categories[] | "\($p) \(.)"')
+          while read -r pkg slug; do
+            [ -n "$slug" ] || continue
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $ua"               "https://crates.io/api/v1/categories/$slug")
+            if [ "$code" = "200" ]; then
+              echo "ok    $pkg: $slug"
+            else
+              echo "::error::$pkg declares category '$slug', which crates.io does not support (HTTP $code). See https://crates.io/category_slugs"
+              status=1
+            fi
+          done <<< "$slugs"
+          exit $status
+
   publish:
     name: Publish to crates.io
     needs: verify
