@@ -82,3 +82,125 @@ where
         crate::database::Db::db_from_state(state)
     }
 }
+
+/// `Resolve<S>` for `Cache` -- delegates to
+/// [`CacheFromState<S>`](crate::dx::from_state::CacheFromState).
+#[cfg(feature = "cache")]
+impl<S> Resolve<S> for crate::cache::Cache
+where
+    crate::cache::Cache: crate::dx::from_state::CacheFromState<S>,
+    S: Send + Sync,
+{
+    fn resolve(state: &S) -> Self {
+        use crate::dx::from_state::CacheFromState;
+        crate::cache::Cache::cache_from_state(state)
+    }
+}
+
+/// `Resolve<S>` for `Storage` -- delegates to
+/// [`StorageFromState<S>`](crate::dx::from_state::StorageFromState).
+#[cfg(feature = "storage-fs")]
+impl<S> Resolve<S> for crate::storage::Storage
+where
+    crate::storage::Storage: crate::dx::from_state::StorageFromState<S>,
+    S: Send + Sync,
+{
+    fn resolve(state: &S) -> Self {
+        use crate::dx::from_state::StorageFromState;
+        crate::storage::Storage::storage_from_state(state)
+    }
+}
+
+/// `Resolve<S>` for `Mail` -- delegates to
+/// [`MailFromState<S>`](crate::dx::from_state::MailFromState).
+#[cfg(feature = "mail")]
+impl<S> Resolve<S> for crate::mail::Mail
+where
+    crate::mail::Mail: crate::dx::from_state::MailFromState<S>,
+    S: Send + Sync,
+{
+    fn resolve(state: &S) -> Self {
+        use crate::dx::from_state::MailFromState;
+        crate::mail::Mail::mail_from_state(state)
+    }
+}
+
+/// `Resolve<S>` for `Jobs` -- delegates to
+/// [`JobsFromState<S>`](crate::dx::from_state::JobsFromState).
+#[cfg(feature = "jobs")]
+impl<S> Resolve<S> for crate::jobs::Jobs
+where
+    crate::jobs::Jobs: crate::dx::from_state::JobsFromState<S>,
+    S: Send + Sync,
+{
+    fn resolve(state: &S) -> Self {
+        use crate::dx::from_state::JobsFromState;
+        crate::jobs::Jobs::jobs_from_state(state)
+    }
+}
+
+/// `Resolve<S>` for the event `Dispatcher` -- delegates to
+/// [`EventsFromState<S>`](crate::dx::from_state::EventsFromState).
+#[cfg(feature = "events")]
+impl<S> Resolve<S> for crate::events::Dispatcher
+where
+    crate::events::Dispatcher: crate::dx::from_state::EventsFromState<S>,
+    S: Send + Sync,
+{
+    fn resolve(state: &S) -> Self {
+        use crate::dx::from_state::EventsFromState;
+        crate::events::Dispatcher::events_from_state(state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Resolve;
+
+    // The identity seams: when the state *is* the handle, `Resolve` must
+    // already work with no application code at all. These compile-only
+    // checks are the regression guard -- a missing `Resolve` impl is a
+    // compile error at the `Inject<T>` call site, which is a long way from
+    // here.
+    #[cfg(feature = "cache")]
+    #[test]
+    fn cache_resolves_from_itself() {
+        fn assert_resolves<T: Resolve<T>>() {}
+        assert_resolves::<crate::cache::Cache>();
+    }
+
+    #[cfg(feature = "storage-fs")]
+    #[test]
+    fn storage_resolves_from_itself() {
+        fn assert_resolves<T: Resolve<T>>() {}
+        assert_resolves::<crate::storage::Storage>();
+    }
+
+    #[cfg(feature = "mail")]
+    #[test]
+    fn mail_resolves_from_itself() {
+        fn assert_resolves<T: Resolve<T>>() {}
+        assert_resolves::<crate::mail::Mail>();
+    }
+
+    #[cfg(feature = "jobs")]
+    #[test]
+    fn jobs_resolves_from_itself() {
+        fn assert_resolves<T: Resolve<T>>() {}
+        assert_resolves::<crate::jobs::Jobs>();
+    }
+
+    #[cfg(feature = "events")]
+    #[test]
+    fn events_resolve_from_themselves() {
+        fn assert_resolves<T: Resolve<T>>() {}
+        assert_resolves::<crate::events::Dispatcher>();
+    }
+
+    #[cfg(feature = "database")]
+    #[test]
+    fn db_resolves_from_itself() {
+        fn assert_resolves<T: Resolve<T>>() {}
+        assert_resolves::<crate::database::Db>();
+    }
+}
