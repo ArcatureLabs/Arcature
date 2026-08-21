@@ -42,6 +42,10 @@ pub struct ModuleDeclaration {
     pub commands: Vec<(String, String)>,
     /// Schedule bindings, as (job kind, version, cadence) triples.
     pub schedules: Vec<(String, i16, ScheduleSpec)>,
+    /// Paths to the `#[page]` types this module owns. Paths rather than
+    /// bare names because page types usually live in a `pages` submodule,
+    /// and the expansion reads a const off each one.
+    pub pages: Vec<syn::Path>,
 }
 
 /// The section keywords the `module!` body accepts.
@@ -56,6 +60,7 @@ mod keyword {
     syn::custom_keyword!(jobs);
     syn::custom_keyword!(commands);
     syn::custom_keyword!(schedules);
+    syn::custom_keyword!(pages);
 }
 
 impl syn::parse::Parse for ModuleDeclaration {
@@ -85,6 +90,7 @@ impl syn::parse::Parse for ModuleDeclaration {
             jobs: Vec::new(),
             commands: Vec::new(),
             schedules: Vec::new(),
+            pages: Vec::new(),
         };
 
         while !content.is_empty() {
@@ -132,6 +138,8 @@ impl ModuleDeclaration {
         } else if lookahead.peek(keyword::schedules) {
             self.schedules =
                 parse_keyed(input, |i| i.parse::<keyword::schedules>(), parse_schedules)?;
+        } else if lookahead.peek(keyword::pages) {
+            self.pages = parse_keyed(input, |i| i.parse::<keyword::pages>(), parse_paths)?;
         } else {
             return Err(lookahead.error());
         }
@@ -160,6 +168,17 @@ fn parse_idents(input: ParseStream<'_>) -> syn::Result<Vec<String>> {
         syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated(&content)?
             .into_iter()
             .map(|ident| ident.to_string())
+            .collect(),
+    )
+}
+
+/// Parses `[path::To::Item, Item, ...]` into the paths it lists.
+fn parse_paths(input: ParseStream<'_>) -> syn::Result<Vec<syn::Path>> {
+    let content;
+    syn::bracketed!(content in input);
+    Ok(
+        syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated(&content)?
+            .into_iter()
             .collect(),
     )
 }
@@ -328,6 +347,7 @@ mod tests {
         assert!(declaration.controllers.is_empty());
         assert!(declaration.routes.is_none());
         assert!(declaration.schedules.is_empty());
+        assert!(declaration.pages.is_empty());
     }
 
     #[test]
@@ -389,6 +409,16 @@ mod tests {
                 hour: 3,
                 minute: 30
             }
+        );
+    }
+
+    #[test]
+    fn parses_page_paths() {
+        let declaration = parse(quote! { A { pages: [HomePage, pages::NewLinkPage] } }).unwrap();
+        assert_eq!(declaration.pages.len(), 2);
+        assert_eq!(
+            declaration.pages[1].segments.last().unwrap().ident,
+            "NewLinkPage"
         );
     }
 

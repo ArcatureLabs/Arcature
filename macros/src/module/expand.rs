@@ -80,6 +80,15 @@ pub fn expand(declaration: &ModuleDeclaration) -> TokenStream {
             }
         });
 
+    // Each page contributes the identity off its own `PAGE_CONTRACT_ENTRY`,
+    // rather than a name repeated here. The const only exists on a type
+    // `#[page]` accepted, so a `Serialize`-only type named in `pages:` is a
+    // compile error at this line -- the Client Exposure Firewall holds
+    // without the module macro re-checking anything.
+    let pages = declaration.pages.iter().map(|path| {
+        quote! { #path::PAGE_CONTRACT_ENTRY.name }
+    });
+
     let doc = format!("Returns the module descriptor for the `{name}` module.");
 
     quote! {
@@ -97,6 +106,7 @@ pub fn expand(declaration: &ModuleDeclaration) -> TokenStream {
                 jobs: &[#(#jobs),*],
                 commands: &[#(#commands),*],
                 schedules: &[#(#schedules),*],
+                pages: &[#(#pages),*],
             };
 
         #[doc = #doc]
@@ -166,6 +176,24 @@ mod tests {
         assert!(s.contains("version : 2i16"), "got: {s}");
         assert!(s.contains("CommandBinding"), "got: {s}");
         assert!(s.contains("\"users:prune\""), "got: {s}");
+    }
+
+    #[test]
+    fn reads_each_page_identity_off_its_contract_entry() {
+        let s = expand_module(quote! { A { pages: [HomePage, pages::NewLinkPage] } });
+        assert!(
+            s.contains("HomePage :: PAGE_CONTRACT_ENTRY . name"),
+            "got: {s}"
+        );
+        assert!(
+            s.contains("pages :: NewLinkPage :: PAGE_CONTRACT_ENTRY . name"),
+            "got: {s}"
+        );
+    }
+
+    #[test]
+    fn pages_defaults_to_an_empty_slice() {
+        assert!(expand_module(quote! { A {} }).contains("pages : & []"));
     }
 
     #[test]

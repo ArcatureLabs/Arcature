@@ -28,6 +28,7 @@ pub fn validate(declaration: &ModuleDeclaration) -> Result<(), MacroError> {
     check_jobs(&declaration.jobs, span)?;
     check_commands(&declaration.commands, span)?;
     check_schedules(&declaration.schedules, span)?;
+    check_pages(&declaration.pages, span)?;
 
     Ok(())
 }
@@ -111,6 +112,29 @@ fn check_schedules(
     Ok(())
 }
 
+/// Rejects the same page listed twice.
+///
+/// Compared by the final path segment, because that is the name the
+/// descriptor records: `pages::HomePage` and `HomePage` are one page
+/// written two ways, and listing both would double-count it in the graph.
+fn check_pages(pages: &[syn::Path], span: Span) -> Result<(), MacroError> {
+    let mut seen = BTreeSet::new();
+    for page in pages {
+        let name = page
+            .segments
+            .last()
+            .map_or_else(String::new, |segment| segment.ident.to_string());
+        if !seen.insert(name.clone()) {
+            return Err(MacroError::new(
+                MacroErrorCode::ArcM002,
+                span,
+                format!("duplicate entry `{name}` in `pages`"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +193,18 @@ mod tests {
     fn rejects_a_duplicate_command() {
         let err = validate_module(quote! { A { commands: ["p" => one, "p" => two] } }).unwrap_err();
         assert!(err.to_compile_error().to_string().contains("command"));
+    }
+
+    #[test]
+    fn rejects_the_same_page_listed_twice_under_different_paths() {
+        let err = validate_module(quote! { A { pages: [HomePage, pages::HomePage] } }).unwrap_err();
+        assert_eq!(err.code(), MacroErrorCode::ArcM002);
+        assert!(err.to_compile_error().to_string().contains("pages"));
+    }
+
+    #[test]
+    fn accepts_distinct_pages() {
+        assert!(validate_module(quote! { A { pages: [HomePage, pages::NewLinkPage] } }).is_ok());
     }
 
     #[test]

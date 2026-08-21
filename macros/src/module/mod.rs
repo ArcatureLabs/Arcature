@@ -1,8 +1,9 @@
 //! `module!` -- declares a module's metadata as a `const ModuleDescriptor`.
 //!
 //! A module is the unit of composition in the Arcature DSL: it names the
-//! controllers, services, policies, routes, listeners, jobs, commands, and
-//! schedules that belong together, and the modules it imports.
+//! controllers, services, policies, routes, pages, listeners, jobs,
+//! commands, and schedules that belong together, and the modules it
+//! imports.
 //!
 //! ```ignore
 //! module! {
@@ -25,6 +26,7 @@
 //!         schedules: [
 //!             cleanup_sessions every "5m",
 //!         ],
+//!         pages: [pages::SignInPage, pages::ProfilePage],
 //!     }
 //! }
 //! ```
@@ -88,6 +90,7 @@ mod tests {
                 jobs: [send_email v2 => handle_send_email],
                 commands: ["users:prune" => prune_users],
                 schedules: [cleanup_sessions every "5m"],
+                pages: [pages::SignInPage],
             }
         })
         .unwrap()
@@ -97,6 +100,16 @@ mod tests {
         assert!(s.contains("fn accounts_module ()"), "got: {s}");
         assert!(s.contains("ACCOUNTS_ROUTES"), "got: {s}");
         assert!(s.contains("\"users:prune\""), "got: {s}");
+        assert!(
+            s.contains("pages :: SignInPage :: PAGE_CONTRACT_ENTRY"),
+            "got: {s}"
+        );
+    }
+
+    #[test]
+    fn reports_a_page_listed_twice_as_arc_m002() {
+        let err = module(quote! { A { pages: [P, pages::P] } }).unwrap_err();
+        assert_eq!(err.code(), MacroErrorCode::ArcM002);
     }
 
     #[test]
