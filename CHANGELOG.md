@@ -192,6 +192,14 @@ therefore its first.
     not a `Result<Response>` -- a continuation cannot fail. Both are fixed,
     with the reason for each stated above the block, and the missing
     `#[derive(Clone)]` that `Middleware: Clone` requires is now there.
+  - **`config` and `database`.** The `database` module example wrote
+    `index(db: Db)` and then called `inertia!(..)`, a macro that expands to
+    `Inertia::render(&inertia, ..)` and therefore needs an `Inertia` in the
+    handler. It also assumed a `User` model that the example never declared.
+    The corrected version declares one with `#[model]` and renders through
+    `Inertia::render` rather than the `inertia!()` shorthand, which does not
+    compile from any call site (see the `inertia` bullet). `Model`'s example
+    filtered on `UserColumn::Role` over a struct that has no `role` field.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

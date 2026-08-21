@@ -10,13 +10,23 @@
 //! database type and every driver-shaped item in the crate is written
 //! against it rather than against `Postgres`.
 //!
-//! ```ignore
+//! ```no_run
 //! use arcature::prelude::*;
 //!
-//! pub async fn index(db: Db) -> Result<Response> {
-//!     let users = User::query(&db).all().await?;
-//!     inertia!("users/index", { users })
+//! #[model(table = "users")]
+//! pub struct User {
+//!     #[sea_orm(primary_key)]
+//!     pub id: i64,
+//!     pub email: String,
 //! }
+//!
+//! pub async fn index(inertia: Inertia, db: Db) -> Result<Response> {
+//!     let users = User::query(&db).all().await?;
+//!     Ok(inertia
+//!         .render("users/index", arcature::serde_json::json!({ "users": users }))
+//!         .await?)
+//! }
+//! # fn main() {}
 //! ```
 
 pub mod config;
@@ -113,18 +123,24 @@ pub use uuid;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
+/// use arcature::prelude::*;
+///
 /// #[model(table = "users")]
 /// pub struct User {
 ///     #[sea_orm(primary_key)]
 ///     pub id: i64,
 ///     pub email: String,
+///     pub role: String,
 /// }
 ///
-/// let admins = User::query(&db)
-///     .where_eq(UserColumn::Role, "admin")
-///     .all()
-///     .await?;
+/// // `UserColumn` is one of the sibling types `#[model]` generates from the
+/// // struct, so the filter is checked against the schema rather than against
+/// // a string.
+/// async fn admins(db: &Db) -> Result<Vec<User>> {
+///     User::query(db).where_eq(UserColumn::Role, "admin").all().await
+/// }
+/// # fn main() {}
 /// ```
 pub trait Model: sea_orm::ModelTrait {
     /// Start a typed query over this model's table, bound to `db`.

@@ -4,12 +4,16 @@
 //! with constructors and builder methods. Secrets live in the environment
 //! (`.env` for local dev), never in `arcature.toml`.
 //!
-//! ```ignore
+//! ```
+//! use arcature::prelude::*;
+//!
 //! pub fn app() -> AppConfig {
 //!     AppConfig::new()
 //!         .name(env_or("APP_NAME", "Arcature"))
 //!         .url(env_or("APP_URL", "http://localhost:3000"))
 //! }
+//!
+//! assert!(app().base_url().starts_with("http"));
 //! ```
 
 use std::env;
