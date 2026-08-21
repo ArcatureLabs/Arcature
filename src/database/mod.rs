@@ -21,6 +21,18 @@
 
 pub mod config;
 pub mod connection;
+// Everything a runtime-assembled statement still has to know about the
+// dialect. Crate-internal: the framework writes portable SQL so applications
+// do not have to.
+//
+// Gated on `test-kit` because that is the only caller today -- `assert_database_has`
+// builds its `WHERE` clause from a caller-supplied column list, which is the
+// one place a statement is assembled rather than written out. Everything else
+// is either fixed text behind `jobs::dialect` or a SeaORM query that renders
+// itself. Widen this gate when a second consumer appears; leaving it
+// ungated only buys a dead-code warning on every build that has no caller.
+#[cfg(feature = "test-kit")]
+pub(crate) mod dialect;
 pub mod migration;
 pub mod query;
 pub mod transaction;
