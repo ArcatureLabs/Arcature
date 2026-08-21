@@ -41,9 +41,9 @@ body:
     attributes:
       label: Arcature version or commit
       description: >
-        The crate is not published yet, so this is a commit SHA from `main`
-        unless you are on a fork.
-      placeholder: "f5826bd"
+        A released version, such as `0.1.0`. If you are building from `main`
+        or a fork, a commit SHA instead.
+      placeholder: "0.1.0"
     validations:
       required: true
 
