@@ -461,9 +461,20 @@ by design from gating behaviour. That is stated on the type, and in
 
 ## Contributing
 
-See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the build, test and lint gates, and
-[SECURITY.md](.github/SECURITY.md) for reporting a vulnerability privately. Changes are
-recorded in [CHANGELOG.md](CHANGELOG.md).
+What the project says about itself lives in `.github/`, one file per question:
+
+- [SUPPORT.md](.github/SUPPORT.md) -- where to ask what. A bug, a feature, a
+  question and a vulnerability each have a different door, and this names them.
+- [CONTRIBUTING.md](.github/CONTRIBUTING.md) -- the build, test and lint gates,
+  what a change should look like, and how commits and releases are shaped.
+- [SECURITY.md](.github/SECURITY.md) -- reporting a vulnerability privately,
+  which versions get fixes, and what a reporter is promised in return.
+- [GOVERNANCE.md](.github/GOVERNANCE.md) -- who decides, on what basis, and
+  what happens to the project if that person stops.
+- [CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md) -- expected behaviour, and
+  the mailbox that enforces it.
+
+Released changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 The gates in one line each:
 
