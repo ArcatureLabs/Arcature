@@ -1,0 +1,89 @@
+# Dependency review: what a pull request ADDS to the dependency graph.
+#
+# This overlaps with the `deny` job in ci.yml, and the overlap is deliberate
+# but not total. The difference is scope and source:
+#
+#   cargo-deny        the whole resolved graph, every run, read from the
+#                     checked-in Cargo.lock with `all-features = true`.
+#                     Advisories come from the RustSec database. Licences come
+#                     from the allow-list in deny.toml. It answers "is the
+#                     tree, as it stands, acceptable?"
+#   dependency-review the diff only -- the crates this pull request introduces
+#                     or bumps, and nothing else. Advisories come from the
+#                     GitHub Advisory Database, which imports RustSec but also
+#                     carries malware advisories and is occasionally ahead of
+#                     it. It answers "what is this pull request bringing in?"
+#
+# The practical value is the second question. A cargo-deny failure names a
+# crate somewhere in a 500-crate graph; this names the crate the author just
+# added, in the pull request that added it, in seconds and without a build.
+#
+# ----------------------------------------------------------------------------
+# WARNING, and the reason this block exists rather than a bare severity gate:
+# `allow-licenses` below is a SECOND COPY of the allow-list in deny.toml.
+# deny.toml is the source of truth -- it has the reasoning, the per-crate
+# exceptions and the confidence threshold, and it is what `just deny` runs.
+# If you add a licence there, add it here in the same commit, or a dependency
+# that cargo-deny accepts will be rejected here and the two checks will
+# disagree in front of a contributor. There is no mechanism keeping them in
+# step; there is only this comment.
+# ----------------------------------------------------------------------------
+
+name: Dependency review
+
+on: pull_request
+
+# Nothing here writes. `comment-summary-in-pr` would post the review as a pull
+# request comment, which is nice and costs `pull-requests: write`; the check's
+# own job summary carries the same information, so the permission is not worth
+# it.
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  # A new push to the branch replaces the diff being reviewed, so the previous
+  # run is reviewing a diff that no longer exists.
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review added dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No floating major tag exists for this action -- upstream publishes
+      # v1, v2 and v3 and stopped, so `@v4` and `@v5` do not resolve and the
+      # exact release tag is the only thing that can be pinned. Same
+      # discipline as everywhere else in this repository (use the ref upstream
+      # actually publishes), not a second convention. Dependabot's
+      # github-actions entry will raise the bump.
+      - uses: actions/dependency-review-action@v5.0.0
+        with:
+          # `high` and above fails. Not `low`: the Rust graph carries a steady
+          # trickle of low and moderate advisories against transitive crates
+          # with no fixed version available, and a gate that fires on those
+          # teaches everyone to merge past a red check. cargo-deny still sees
+          # every one of them on the whole-graph pass.
+          fail-on-severity: high
+
+          # Mirrors deny.toml's `[licenses] allow`. See the warning above.
+          # `deny-licenses` would be the smaller list, but upstream has
+          # deprecated it for removal in the next major, so the allow-list is
+          # the only form with a future.
+          allow-licenses: >-
+            Apache-2.0,
+            Apache-2.0 WITH LLVM-exception,
+            MIT,
+            MIT-0,
+            0BSD,
+            BSD-2-Clause,
+            BSD-3-Clause,
+            ISC,
+            Zlib,
+            BSL-1.0,
+            CC0-1.0,
+            Unlicense,
+            Unicode-3.0,
+            CDLA-Permissive-2.0
