@@ -52,7 +52,15 @@
 //!   resources. Carries `Error` and `DEPS`. The developer writes the init
 //!   logic (business behavior, not mechanical plumbing).
 //! - [`Command`] / [`CommandRegistry`] -- typed application commands
-//!   invoked from the CLI via `arc run <name>`.
+//!   dispatched by name through `CommandRegistry::run`. `#[command]`
+//!   generates the `Command` impl; `CommandRegistry::register_command`
+//!   wires it up.
+//! - [`RequestCache`] / [`RequestCacheKey`] -- the per-request memo store
+//!   `#[request_cache]` resolves through. An Axum extractor backed by the
+//!   request's own extensions, so a memo cannot outlive or escape the
+//!   request that produced it.
+//! - [`RequestCacheDescriptor`] -- the compile-time half of the same
+//!   feature: what the UAG records about a memoized resolver.
 
 pub mod application_graph;
 #[cfg(all(feature = "dx", feature = "database", feature = "api"))]
