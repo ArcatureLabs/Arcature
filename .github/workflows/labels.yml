@@ -1,0 +1,103 @@
+# Label sync: `.github/labels.yml` is the definition, the repository is the
+# copy.
+#
+# Labels are normally edited in the web UI, which means the set drifts, nobody
+# remembers why a colour is what it is, and a label someone deletes by
+# accident is gone with no record. Putting them in a file under review makes a
+# label change a pull request like any other.
+#
+# ----------------------------------------------------------------------------
+# This is a SYNC, not a merge. `skip-delete` is left at its default of false,
+# so a label present on the repository but absent from `.github/labels.yml` is
+# DELETED, and deleting a label strips it from every issue and pull request
+# carrying it. That is the correct behaviour for a file that claims to define
+# the label set -- but it means `.github/labels.yml` has to list every label
+# the repository keeps, including ones no human applies:
+#
+#   * `dependencies` -- Dependabot applies it to its own pull requests and
+#     recreates it if missing, so leaving it out of the file would produce a
+#     delete-recreate cycle on every sync. It is in `.github/labels.yml`
+#     today; do not tidy it away on the grounds that no human uses it.
+#
+# The `dry-run` job below exists so this is discovered in review rather than
+# after a merge.
+# ----------------------------------------------------------------------------
+
+name: Labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/labels.yml"
+      # A change to the sync itself has to be able to run the sync.
+      - ".github/workflows/labels.yml"
+  pull_request:
+    paths:
+      - ".github/labels.yml"
+      - ".github/workflows/labels.yml"
+  # For re-running after a label was changed by hand in the web UI, which is
+  # the one case with no commit to trigger on.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: labels-${{ github.ref }}
+  # The sync is idempotent and converges on the file, so a superseded run has
+  # nothing to contribute. Two runs racing on the labels API would only
+  # produce confusing partial states.
+  cancel-in-progress: true
+
+jobs:
+  # Split in two purely for the permissions. A dry run has no business holding
+  # a token that can delete labels, and a single job cannot vary its
+  # permissions by event.
+  dry-run:
+    name: Dry run
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Reading the current labels to diff against the file. Labels live under
+      # the issues API, hence the scope name. Read, not write -- the point of
+      # this job is that it cannot change anything. (Pull requests from forks
+      # get a read-only token regardless; this makes the intent explicit for
+      # branches in this repository, where they would not.)
+      issues: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: crazy-max/ghaction-github-labeler@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          yaml-file: .github/labels.yml
+          # Prints the create/update/delete plan and exits. A malformed file,
+          # a duplicate name or an unintended deletion shows up in the check
+          # output while the pull request is still open.
+          dry-run: true
+
+  sync:
+    name: Sync
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Creating, recolouring, renaming and deleting labels. This is the only
+      # write in any of the five security workflows that touches repository
+      # content rather than the security tab, and it is the narrowest scope
+      # that can do it.
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: crazy-max/ghaction-github-labeler@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          yaml-file: .github/labels.yml
+          skip-delete: false
