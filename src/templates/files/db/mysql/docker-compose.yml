@@ -1,0 +1,42 @@
+# Development services. The application itself is not here: `arc dev` runs it
+# on the host so the rebuild loop stays fast and the one TCP port stays on
+# localhost.
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: __RUST_NAME__
+      MYSQL_USER: __RUST_NAME__
+      MYSQL_PASSWORD: secret
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Catches every outgoing mail and shows it at http://127.0.0.1:8025 rather
+  # than delivering it. MAIL_URL points at its SMTP port.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  mysql-data:

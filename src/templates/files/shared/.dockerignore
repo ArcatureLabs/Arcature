@@ -1,0 +1,20 @@
+# Everything here would be sent to the daemon as build context and then
+# thrown away: the image builds its own copies in the assets and build
+# stages. `target/` alone is routinely several gigabytes.
+target
+node_modules
+public/build
+resources/js/generated
+.arcature
+.git
+.env
+
+# Runtime data does not belong in an image, but the directories themselves
+# do: the app expects them to exist and cannot create them under a read-only
+# root. Keeping the `.gitkeep` files is what keeps the directories.
+storage/logs/*
+!storage/logs/.gitkeep
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/framework/*
+!storage/framework/.gitkeep

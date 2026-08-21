@@ -1,0 +1,23 @@
+# Development services. SQLite is a file, so there is no database container
+# here -- `storage/__RUST_NAME__.sqlite` is the whole of it. The application
+# itself is not here either: `arc dev` runs it on the host so the rebuild loop
+# stays fast and the one TCP port stays on localhost.
+
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Catches every outgoing mail and shows it at http://127.0.0.1:8025 rather
+  # than delivering it. MAIL_URL points at its SMTP port.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
