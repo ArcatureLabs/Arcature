@@ -8,6 +8,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[route_model(entity = link::Entity, key = "id", key_type = i64)]
 //! pub struct Link(pub link::Model);
 //! ```

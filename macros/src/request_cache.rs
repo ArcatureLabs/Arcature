@@ -11,6 +11,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[request_cache(name = "load_profile", key = "user_id")]
 //! pub async fn load_profile(
 //!     cache: RequestCache,
@@ -28,6 +31,9 @@
 //! ## What the wrapper does
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! let key = RequestCacheKey::new("load_profile").field("user_id", &user_id);
 //! if let Some(hit) = cache.get(&key) { return Ok(hit); }
 //! let outcome = uncached(cache.clone(), user_id).await;

@@ -256,6 +256,15 @@ therefore its first.
     as one compiled function, which is the point of the example: the state
     and the verifier that leave step one are the same two values step two
     reads back.
+  - **`arcature-macros` -- the 25 that stay ignored, and why.** Every
+    example in the proc-macro crate's module docs shows code naming
+    `::arcature::` items, and `arcature-macros` must not depend on
+    `arcature` -- that dependency is the cycle. There is nothing in that
+    crate for those blocks to compile against, so all 25 keep `ignore` and
+    each now carries the reason on its first line rather than leaving a
+    reader to guess whether the tag was laziness. `lib.rs` states it once
+    at length and points at `arcature`, where the compiled examples for
+    the items these macros generate impls for actually live.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

@@ -15,6 +15,12 @@
 //! reference Arcature APIs via absolute `::arcature::` paths that resolve in
 //! the downstream app crate. This crate must NOT depend on `arcature` (would
 //! create a cycle); it depends only on `syn`, `quote`, and `proc-macro2`.
+//!
+//! That cycle is also why every example in this crate's module docs is
+//! tagged ```` ```ignore ````. The examples show what a developer writes and
+//! what the macro expands to, and both name `::arcature::` items that no
+//! doctest compiled here can resolve. The examples that *are* compiled live
+//! in `arcature` itself, on the items these macros generate impls for.
 
 mod application;
 mod command;

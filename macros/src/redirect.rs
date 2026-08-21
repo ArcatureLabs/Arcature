@@ -2,6 +2,9 @@
 //! redirect response.
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! redirect!(route::links::show(link.id))
 //! // expands to: ::arcature::redirect().to(route::links::show(link.id))
 //! ```
@@ -12,6 +15,9 @@
 //! may keep chaining the response vocabulary:
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! redirect!(route::links::index()).with("status", "Link created")
 //! ```
 //!

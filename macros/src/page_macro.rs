@@ -4,6 +4,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! page!(ShowUserPage {
 //!     user: UserResource::from(user),
 //! })
@@ -12,6 +15,9 @@
 //! Expands to, conceptually:
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! {
 //!     const fn _assert_client_data<T: ::arcature::inertia::ClientData>() {}
 //!     _assert_client_data::<ShowUserPage>();

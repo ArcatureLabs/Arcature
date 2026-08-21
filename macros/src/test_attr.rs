@@ -4,6 +4,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[arcature::test(app = my_app::router())]
 //! async fn the_index_page_lists_users(app: TestApp) {
 //!     app.get("/users").send().await.assert_ok();

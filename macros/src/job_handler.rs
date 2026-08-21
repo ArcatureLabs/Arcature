@@ -7,6 +7,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[job_handler]
 //! pub async fn handle_send_email(job: SendVerificationEmail) -> Result<()> {
 //!     ...

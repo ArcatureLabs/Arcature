@@ -1,6 +1,9 @@
 //! `application!` -- composes modules into a validated application graph.
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! application! {
 //!     pub App {
 //!         modules: [accounts::accounts_module, links::links_module],

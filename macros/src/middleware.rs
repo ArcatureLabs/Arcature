@@ -14,6 +14,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[middleware]
 //! pub async fn require_auth(request: Request, next: Next) -> Result<Response> {
 //!     next.run(request).await.pipe(Ok)

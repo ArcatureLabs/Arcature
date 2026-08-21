@@ -14,6 +14,9 @@
 //! four companion types under predictable names:
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[model(table = "users")]
 //! pub struct User {
 //!     #[sea_orm(primary_key)]

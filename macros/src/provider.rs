@@ -11,6 +11,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[provider(error = StripeInitError, deps = [Db, Config])]
 //! pub struct StripeClient { client: HttpClient }
 //! ```
@@ -42,6 +45,9 @@
 //! ## Custom name
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[provider(name = "Stripe")]
 //! pub struct StripeClient { client: HttpClient }
 //! ```

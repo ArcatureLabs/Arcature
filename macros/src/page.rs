@@ -21,6 +21,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[page("users/show")]
 //! pub struct ShowUserPage {
 //!     pub user: UserResource,

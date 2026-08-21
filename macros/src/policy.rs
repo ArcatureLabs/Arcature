@@ -10,6 +10,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[policy(Link)]
 //! pub struct LinkPolicy;
 //!
@@ -31,6 +34,9 @@
 //! ## Custom name
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[policy(Link, name = "LinkAuthz")]
 //! pub struct LinkPolicy;
 //! ```

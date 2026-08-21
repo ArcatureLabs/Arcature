@@ -11,6 +11,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[command("users:prune")]
 //! pub async fn prune_users(users: UserService) -> Result<()> {
 //!     users.prune_inactive().await
@@ -30,6 +33,9 @@
 //! maps its error into `CommandError::Failed`:
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! CommandRegistry::<AppState>::new()
 //!     .register_command::<PruneUsersCommand>()
 //! ```

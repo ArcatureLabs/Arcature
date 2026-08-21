@@ -13,6 +13,9 @@
 //! ## Syntax
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[service]
 //! pub struct LinkService {
 //!     db: Db,
@@ -43,6 +46,9 @@
 //! ## Custom name
 //!
 //! ```ignore
+//! // Not compiled: `arcature-macros` cannot depend on `arcature`
+//! // (that is the cycle `lib.rs` describes), so an example naming
+//! // Arcature items has nothing here to compile against.
 //! #[service(name = "LinkSvc")]
 //! pub struct LinkService { db: Db }
 //! ```
