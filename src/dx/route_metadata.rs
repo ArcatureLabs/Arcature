@@ -137,6 +137,21 @@ pub struct RouteDescriptor {
     /// query-string contract.
     #[serde(default)]
     pub query_string_type: &'static str,
+    /// The policies that guard this route, declared via the `policy:` /
+    /// `policies:` route option and recorded by type name (the final path
+    /// segment, so `crate::policies::LinkPolicy` and `LinkPolicy` record the
+    /// same thing). A resource action inherits its resource's list. Empty
+    /// (`&[]`) for a route no policy guards.
+    ///
+    /// This is a *declaration*, not enforcement: nothing in the router calls
+    /// a policy on this route's behalf, and `Auth::authorize` in the handler
+    /// remains the only thing that denies a request. What the declaration
+    /// buys is the cross-check -- the Unified Application Graph can see that
+    /// a route names `LinkPolicy` while no module exports it, or that a
+    /// mutating route names no policy at all, neither of which is visible
+    /// from the handler body.
+    #[serde(default)]
+    pub policies: &'static [&'static str],
 }
 
 /// A canonical resource action, used by `resource` route expansion and
@@ -252,6 +267,7 @@ mod tests {
             query_array: false,
             query_string_fields: &[],
             query_string_type: "",
+            policies: &[],
         };
         let json = serde_json::to_string(&descriptor).unwrap();
         assert!(
