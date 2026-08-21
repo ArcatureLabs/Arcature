@@ -1,0 +1,247 @@
+# Release: publish the crates, then ship the `arc` binaries.
+#
+# Triggered by a version tag. Arcature follows SemVer, so a tag looks like
+# `v0.1.0`, or `v0.2.0-rc.1` for a pre-release. The tag must already match
+# `version` in `Cargo.toml`; the first job checks that rather than trusting it.
+#
+# While the crate is pre-1.0 the breaking bump is the *minor* one -- Cargo
+# treats `0.1` and `0.2` as incompatible -- so a release that changes the
+# public API is `0.x+1.0`, not `0.x.y+1`. See CHANGELOG.md.
+#
+# There is no npm step in this file, and there is not going to be one.
+# Arcature publishes no JavaScript package -- applications use the official
+# `@inertiajs/*` adapters, and everything the Rust side hands the client goes
+# as generated `.ts` files in the application's own source tree. See
+# docs/decisions/0001-no-npm-package.md.
+
+name: Release
+
+on:
+  push:
+    tags:
+      # SemVer, with an optional pre-release suffix so `v0.2.0-rc.1` ships
+      # through the same path as a final release. Build metadata (`+meta`) is
+      # deliberately not matched: crates.io rejects it.
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build binaries for (does not publish)"
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify the tag matches Cargo.toml
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: version
+        name: Compare the tag with the manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "arcature") | .version')
+          macros=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "arcature-macros") | .version')
+          echo "tag=$tag manifest=$manifest macros=$macros"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::tag $tag does not match arcature $manifest in Cargo.toml"
+            exit 1
+          fi
+          if [ "$macros" != "$manifest" ]; then
+            echo "::error::arcature-macros $macros does not match arcature $manifest"
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish to crates.io
+    needs: verify
+    runs-on: ubuntu-latest
+    # A manual run builds binaries for an existing tag and must not republish.
+    if: github.event_name == 'push'
+    environment: crates-io
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: arcature_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Test before publishing
+        run: cargo test --locked
+
+      # Order matters and cannot be automated away. `arcature` depends on
+      # `arcature-macros = { path = "macros", version = "=<same version>" }`,
+      # so the macro crate has to exist on crates.io before the facade can be
+      # verified against it. This is why the two are separate steps rather
+      # than one workspace publish.
+      - name: Publish arcature-macros
+        working-directory: macros
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked
+
+      # crates.io serves a new version to the index asynchronously. Without
+      # this wait the next step fails resolving a crate that was accepted
+      # seconds ago, which looks like a real error and is not.
+      - name: Wait for the index to serve arcature-macros
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.verify.outputs.version }}"
+          for attempt in $(seq 1 30); do
+            if curl -sSf "https://index.crates.io/ar/ca/arcature-macros" \
+                 | jq -e --arg v "$version" 'select(.vers == $v)' > /dev/null; then
+              echo "index has arcature-macros $version"
+              exit 0
+            fi
+            echo "attempt $attempt: not indexed yet"
+            sleep 10
+          done
+          echo "::error::arcature-macros $version never appeared in the index"
+          exit 1
+
+      - name: Publish arcature
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked
+
+  binaries:
+    name: arc (${{ matrix.target }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          # Intel macOS needs a runner named for it. `macos-latest` is Apple
+          # silicon, and `macos-13` -- the label this used to carry -- was
+          # retired, so the leg would have failed on the first release tag and
+          # nowhere earlier: `fail-fast: false` means the other four would have
+          # succeeded and shipped a release quietly missing this binary.
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # `arc` lives in the same package as the library, behind the `cli`
+      # feature, so a normal application never compiles it. Here it is the
+      # whole point, hence the explicit feature.
+      - name: Build arc
+        run: cargo build --release --locked --bin arc --features cli --target ${{ matrix.target }}
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="arc-${{ needs.verify.outputs.version }}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/arc" "dist/$name/"
+          cp LICENSE README.md "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          shasum -a 256 "dist/$name.tar.gz" > "dist/$name.tar.gz.sha256"
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $name = "arc-${{ needs.verify.outputs.version }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/arc.exe" "dist/$name/"
+          Copy-Item LICENSE, README.md "dist/$name/"
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
+          Set-Content "dist/$name.zip.sha256" "$hash  $name.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arc-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: Attach the binaries to the release
+    needs: [verify, binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # The release notes are the CHANGELOG.md section for this version,
+      # written by a person before the tag is pushed. They are not generated
+      # from commit subjects afterwards.
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            # A tag carrying a pre-release suffix must not take the "Latest"
+            # badge -- that badge is what a reader trusts when they arrive at
+            # the repository looking for the version to depend on.
+            prerelease=""
+            case "$tag" in
+              *-*) prerelease="--prerelease" ;;
+            esac
+            gh release create "$tag" dist/* \
+              --title "$tag" \
+              $prerelease \
+              --notes "See CHANGELOG.md for the entries in this release."
+          fi
