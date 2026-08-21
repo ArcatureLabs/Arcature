@@ -43,3 +43,8 @@ pub(crate) mod vite;
 // `DevProxyService` are `pub(crate)`-reachable via their module paths; no
 // crate-root re-export is needed.
 pub use service::DevProxyLayer;
+
+// `arc dev` reuses this module's transport (`endpoint::IpcEndpoint`), its
+// routing decision (`vite::ViteRoutes`), and its HTTP-over-IPC forwarding
+// (`service::forward`) rather than growing a second copy of any of them.
+// They are `pub(crate)` for that reason; see `crate::cli::commands::dev`.
