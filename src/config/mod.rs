@@ -24,6 +24,17 @@ use std::env;
 /// same name would let those two disagree.
 pub const VITE_IPC_ENV: &str = "ARCATURE_VITE_IPC";
 
+/// The environment variable `arc dev` sets to the IPC path the application
+/// itself must listen on.
+///
+/// It is the mirror image of [`VITE_IPC_ENV`]. Under `cargo run --features
+/// dev` the application owns the TCP port and forwards Vite's requests to
+/// Vite; under `arc dev` the supervisor owns the only TCP port and the
+/// application is a child process listening here instead. Unset means the
+/// application binds its configured TCP address, which is what production
+/// does.
+pub const APP_IPC_ENV: &str = "ARCATURE_APP_IPC";
+
 /// Read an environment variable, returning the default when unset or empty.
 #[must_use]
 pub fn env_or(key: &str, default: &str) -> String {
@@ -56,12 +67,55 @@ where
 }
 
 /// Top-level application configuration.
+///
+/// Hand this to [`ApplicationBuilder::config`](crate::application::ApplicationBuilder::config)
+/// and the framework reads it; build it yourself, or take the four
+/// conventional environment variables with [`AppConfig::from_env`].
+///
+/// The fields are public *and* there are same-named builder methods. That is
+/// deliberate rather than an oversight: `config.url` reads the value and
+/// `config.url("..")` sets it, and Rust resolves the two by whether a call
+/// follows. Reading through a `*_value()` getter purely to dodge the name
+/// collision was the worse trade.
+///
+/// # What each field is allowed to do
+///
+/// [`AppConfig::env`] gates **nothing**, and no other environment variable is
+/// allowed to either. Every protection that could plausibly key off a
+/// deployment environment keys off something an operator cannot reach:
+///
+/// - Release redaction of 5xx messages
+///   ([`ErrorMapping`](crate::http::error_mapping::ErrorMapping)) and the
+///   dev-only UAG endpoint
+///   ([`UagEndpoint`](crate::application::uag_endpoint::UagEndpoint)) key off
+///   `cfg!(debug_assertions)`, decided when the binary is built.
+/// - The security headers and `Strict-Transport-Security`
+///   ([`SecurityHeaders::with_hsts`](crate::http::security::SecurityHeaders::with_hsts))
+///   are explicit builder opt-ins, so they are decided by code in `main`.
+///
+/// `APP_ENV` is a string an operator can set. A build whose protections could
+/// be switched off by an environment variable has protections in name only --
+/// anyone who could reach the process environment would be able to downgrade
+/// a production binary to development behaviour without redeploying it. This
+/// field is for what an application wants to *display* and *log*.
 #[derive(Debug, Clone)]
 pub struct AppConfig {
-    pub(crate) name: String,
-    pub(crate) url: String,
-    pub(crate) env: AppEnvironment,
-    pub(crate) port: u16,
+    /// The human-readable application name (`APP_NAME`).
+    pub name: String,
+    /// The externally reachable base URL, no trailing slash (`APP_URL`).
+    ///
+    /// This is the one thing the framework cannot infer from a request:
+    /// an absolute link in outgoing mail, or an OAuth `redirect_uri`, is
+    /// built while no request is in scope, and behind a reverse proxy the
+    /// `Host` header is not authoritative anyway.
+    pub url: String,
+    /// The deployment environment (`APP_ENV`). Display and logging only --
+    /// see the type documentation.
+    pub env: AppEnvironment,
+    /// The port to listen on (`APP_PORT`). Overridable at run time; see
+    /// [`ApplicationBuilder::config`](crate::application::ApplicationBuilder::config)
+    /// for the full precedence.
+    pub port: u16,
 }
 
 /// The deployment environment.
@@ -151,37 +205,5 @@ impl AppConfig {
             .url(env_or("APP_URL", "http://localhost:3000"))
             .environment(AppEnvironment::parse(&env_or("APP_ENV", "development")))
             .port(env_parsed("APP_PORT", 3000))
-    }
-
-    // Accessors named to avoid clashing with the fluent builder methods
-    // above.
-    //
-    // Nothing reads these yet: `AppConfig` parses `APP_NAME`, `APP_URL`,
-    // `APP_ENV` and `APP_PORT` and the application then ignores all four.
-    // They are the inputs the security headers, the HSTS decision and the
-    // release-mode error redaction all need, so they are kept rather than
-    // deleted.
-    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
-    #[must_use]
-    pub(crate) fn name_value(&self) -> &str {
-        &self.name
-    }
-
-    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
-    #[must_use]
-    pub(crate) fn url_value(&self) -> &str {
-        &self.url
-    }
-
-    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
-    #[must_use]
-    pub(crate) fn environment_value(&self) -> AppEnvironment {
-        self.env
-    }
-
-    #[expect(dead_code, reason = "consumed once AppConfig reaches the builder")]
-    #[must_use]
-    pub(crate) fn port_value(&self) -> u16 {
-        self.port
     }
 }
