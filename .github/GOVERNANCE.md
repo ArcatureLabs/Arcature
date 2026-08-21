@@ -54,11 +54,11 @@ contributor meets it. There are five:
 
 | # | Decision |
 |---|---|
-| [0001](docs/decisions/0001-no-npm-package.md) | Arcature publishes no npm package |
-| [0002](docs/decisions/0002-xsrf-token-cookie.md) | The CSRF cookie is `XSRF-TOKEN`, not `__Host-csrf` |
-| [0003](docs/decisions/0003-one-tcp-port.md) | Exactly one TCP port, in development as well as production |
-| [0004](docs/decisions/0004-layer-order-contract.md) | Layer order is a written contract |
-| [0005](docs/decisions/0005-no-hidden-registry.md) | There is no hidden registry |
+| [0001](../docs/decisions/0001-no-npm-package.md) | Arcature publishes no npm package |
+| [0002](../docs/decisions/0002-xsrf-token-cookie.md) | The CSRF cookie is `XSRF-TOKEN`, not `__Host-csrf` |
+| [0003](../docs/decisions/0003-one-tcp-port.md) | Exactly one TCP port, in development as well as production |
+| [0004](../docs/decisions/0004-layer-order-contract.md) | Layer order is a written contract |
+| [0005](../docs/decisions/0005-no-hidden-registry.md) | There is no hidden registry |
 
 A record is **required** when a change:
 

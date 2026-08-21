@@ -37,7 +37,7 @@ and a question that reveals the guide is unclear is worth turning into a
 documentation issue afterwards, which is easier from a thread than from a closed
 ticket.
 
-Before asking, the answer may already be written down. [The guide](docs/src/SUMMARY.md)
+Before asking, the answer may already be written down. [The guide](../docs/src/SUMMARY.md)
 covers the intended path; `docs/decisions/` records the choices that are settled
 and why, which is usually what "why is it like this" is asking about.
 

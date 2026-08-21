@@ -461,8 +461,8 @@ by design from gating behaviour. That is stated on the type, and in
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the build, test and lint gates, and
-[SECURITY.md](SECURITY.md) for reporting a vulnerability privately. Changes are
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the build, test and lint gates, and
+[SECURITY.md](.github/SECURITY.md) for reporting a vulnerability privately. Changes are
 recorded in [CHANGELOG.md](CHANGELOG.md).
 
 The gates in one line each:
