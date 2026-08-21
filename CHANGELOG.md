@@ -341,6 +341,27 @@ therefore its first.
 
 ### Performance
 
+- **A generated application no longer carries its dependencies' debug
+  information.** `[profile.dev.package."*"]` in the scaffold adds
+  `debug = false`, and a new `[profile.dev.build-override]` does the same for
+  build scripts and proc macros. Dependency debuginfo is not a one-time cost:
+  generic code from a dependency is monomorphised into the application's own
+  crate, so rustc writes it and the linker merges it on every save. Measured
+  with `cargo build --timings` on a generated application, the same one-line
+  handler change, both runs reporting `Max concurrency: 1 (jobs=4 ncpu=4)`:
+  the two units the change dirties fell from 90.0s to 45.3s of *per-unit
+  compile time*, and the program database from 71 MB to 29 MB. That is not a
+  wall-clock claim. Wall-clock rebuild series taken minutes apart on the
+  measuring machine varied by more than the change being measured, so they
+  are not offered as evidence for anything; `The dev loop` in the guide has
+  the method and the full table. Backtraces are unaffected -- the application's
+  own crates keep `line-tables-only` -- and a full step debugger is one
+  `CARGO_PROFILE_DEV_PACKAGE_*_DEBUG=2` away.
+- **The framework's own debug builds drop the same weight.** The workspace had
+  no `[profile.dev]`, so `cargo test` and `cargo clippy` in this repository
+  were paying for full debug information nobody reads. It is now
+  `line-tables-only`, matching what the scaffold has always given a generated
+  application.
 - **Proc macros and build scripts compile optimised.** The workspace had no
   `[profile.dev]` of any kind, so `arcature-macros` and the `syn` stack
   beneath it were built at `opt-level = 0` with full debug information.

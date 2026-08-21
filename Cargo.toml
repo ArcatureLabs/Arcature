@@ -432,6 +432,29 @@ harness = false
 required-features = ["uag"]
 
 # ---------------------------------------------------------------------------
+# The development profile
+# ---------------------------------------------------------------------------
+#
+# Debug information is the dominant cost of a debug build here, and most of it
+# is never read. `line-tables-only` keeps what a backtrace needs -- file, line,
+# function -- and drops what only a step debugger uses: variable locations,
+# types, lexical scopes. Measured on a generated application, dropping the
+# equivalent information halved the time spent generating code and linking.
+#
+# This is the same setting the scaffold gives a generated application, so a
+# contributor and a user get the same trade. Anyone who wants a full step
+# debugger can override it for one run with `CARGO_PROFILE_DEV_DEBUG=2`.
+#
+# `split-debuginfo` is the obvious next lever and is deliberately absent. It
+# is target-specific -- `rustc --print split-debuginfo` reports `packed` as
+# the only stable value on `*-pc-windows-msvc`, which is what MSVC already
+# does by writing a `.pdb` beside the executable -- so setting it
+# unconditionally would either be a no-op or a hard error depending on who
+# runs the build.
+[profile.dev]
+debug = "line-tables-only"
+
+# ---------------------------------------------------------------------------
 # The proc-macro build path
 # ---------------------------------------------------------------------------
 #

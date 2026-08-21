@@ -105,10 +105,30 @@ incremental = true
 # speed in this crate, which is irrelevant while developing.
 codegen-units = 256
 
+# `split-debuginfo` is not set on purpose. Its legal values differ per target
+# -- `rustc --print split-debuginfo` reports only `packed` on
+# `*-pc-windows-msvc`, which is what MSVC already does -- so a fixed value
+# here would be a no-op for some developers and a hard error for others.
+
 [profile.dev.package."*"]
 # Dependencies compile once and then sit in `target/`, so optimising them is
 # a one-time cost that makes the dev server itself usable.
 opt-level = 2
+# Their debug information, though, is paid for on every save. Generic code
+# from a dependency is monomorphised into *this* crate, so its debuginfo is
+# written by rustc and merged by the linker on each rebuild -- and nobody
+# steps through `tokio` while debugging a controller. Measured on a generated
+# application: the program database fell from 71 MB to 29 MB and the two
+# units a handler change dirties went from 90.0s to 45.3s of compile time.
+debug = false
+
+[profile.dev.build-override]
+# Build scripts and proc-macro crates are not shipped code: rustc loads them
+# and runs them, once per invocation, in every crate that uses one. How fast
+# they run is a tax on every later build; their debug information is read by
+# nobody.
+opt-level = 2
+debug = false
 
 [profile.release]
 codegen-units = 1
