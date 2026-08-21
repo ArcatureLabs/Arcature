@@ -376,6 +376,13 @@ pub trait UserLoader<S>: AuthUser + Sized {
 
 /// Load the user from the session + state. Shared by `Auth<U>` and
 /// `OptionalAuth<U>`.
+///
+/// The error is a whole `Response` rather than a small error enum because
+/// both callers are extractors whose `Rejection` is `Response`: an enum here
+/// would be converted into exactly this value one line later. Clippy counts
+/// the 128 bytes and suggests boxing, which would only move the unboxing to
+/// the two call sites without removing a single copy.
+#[allow(clippy::result_large_err)]
 async fn load_user<U, S>(
     parts: &mut axum::http::request::Parts,
     state: &S,
