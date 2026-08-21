@@ -79,8 +79,11 @@ impl<U: AuthUser> Auth<U> {
     ///
     /// # Example
     ///
+    /// Both type parameters have to be named: `M` is the resource type and
+    /// `P` the policy, and Rust allows no partial turbofish.
+    ///
     /// ```ignore
-    /// auth.authorize::<LinkPolicy>("update", &link)?;
+    /// auth.authorize::<Link, LinkPolicy>("update", &link)?;
     /// ```
     pub fn authorize<M, P: Policy<M, User = U>>(
         &self,
