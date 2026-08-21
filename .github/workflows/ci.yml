@@ -279,3 +279,48 @@ jobs:
           fi
         env:
           RUSTUP_TOOLCHAIN: "1.97.1"
+
+  # ---------------------------------------------------------------------------
+  # The one check branch protection requires.
+  #
+  # `main` requires exactly one status check: this job. Listing the real jobs
+  # individually would work today and rot tomorrow -- `test` and `scaffold` are
+  # matrices, so their check names carry their matrix values (`Test (stable)`,
+  # `Scaffold and compile (react, sqlite)`), and adding a stack, a driver or a
+  # toolchain silently adds a check that protection does not require. A leg that
+  # nobody requires is a leg that can go red without blocking a merge.
+  #
+  # `if: always()` is what makes this a gate rather than a formality. Without
+  # it the job is skipped when anything it needs fails, and a skipped required
+  # check reads to the merge button as "not failing".
+  #
+  # `powerset` is deliberately absent: it only runs on the schedule, so
+  # requiring it would leave every pull request waiting on a job that never
+  # starts.
+  ci-success:
+    name: CI success
+    if: always()
+    needs:
+      - test
+      - drivers
+      - features
+      - scaffold
+      - deny
+      - book
+      - publish-dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless every required job succeeded
+        # `cancelled` and `skipped` are failures here for the same reason
+        # `always()` is above: neither one is a green build, and treating
+        # either as passing hands the merge button a result nobody produced.
+        if: >-
+          contains(needs.*.result, 'failure')
+          || contains(needs.*.result, 'cancelled')
+          || contains(needs.*.result, 'skipped')
+        run: |
+          echo "One or more required jobs did not succeed."
+          exit 1
+
+      - name: Report
+        run: echo "Every required job succeeded."
