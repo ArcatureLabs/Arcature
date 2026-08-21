@@ -1,6 +1,6 @@
 [package]
 name = "arcature"
-version = "2026.3.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.1"
 license = "Apache-2.0"
@@ -242,7 +242,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("storage")
 # Proc-macro crate (the #[model], #[request], #[controller], #[derive(Job)],
 # #[derive(Event)] macros). A separate crate because Rust requires proc-macros
 # to live in their own crate.
-arcature-macros = { path = "macros", version = "=2026.3.0", optional = true }
+arcature-macros = { path = "macros", version = "=0.1.0", optional = true }
 
 # HTTP / async runtime kernel.
 axum = { version = "0.8.9", default-features = false, features = ["tokio", "http1", "ws", "json", "form", "query"] }
