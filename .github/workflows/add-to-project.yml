@@ -37,7 +37,7 @@ jobs:
     if: ${{ github.repository == 'ArcatureLabs/Arcature' }}
     steps:
       - name: Add
-        uses: actions/add-to-project@v2
+        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
         continue-on-error: true
         with:
           project-url: https://github.com/orgs/ArcatureLabs/projects/2
