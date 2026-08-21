@@ -1,8 +1,9 @@
 //! HTTP routing.
 //!
 //! Routes are ordinary Rust values, built with the [`Routes`] collection and
-//! the [`Route`] constructors. There is no route DSL macro: ordinary Rust reads
-//! cleanly enough, and it stays debuggable.
+//! the [`Route`] constructors. Nothing here is reachable only through a macro:
+//! the `routes!` macro is a shorthand that expands to exactly these calls, so
+//! a route table stays debuggable whichever spelling it was written in.
 //!
 //! ```ignore
 //! pub fn routes() -> Routes {
@@ -505,9 +506,29 @@ impl<S: RouterState> Routes<S> {
         &self.router
     }
 
-    /// Iterate over named routes (for `arc routes`).
+    /// Iterate over named routes.
+    ///
+    /// The order is a `HashMap`'s, which is to say arbitrary and different
+    /// on every run. Anything that *renders* the table wants
+    /// [`table`](Self::table) instead.
     pub fn named(&self) -> impl Iterator<Item = (&String, &String)> {
         self.names.iter()
+    }
+
+    /// Take a [`RouteTable`] snapshot: the named routes on their own, without
+    /// the router and without the state type.
+    ///
+    /// This is how URL generation escapes `Routes`. The redirect response
+    /// mapper and `arc routes` both need name-to-path resolution and neither
+    /// can hold a `Routes<S>` -- the mapper because a layer must not be
+    /// generic over the application state, the CLI because it has no state
+    /// value at all.
+    #[must_use]
+    pub fn table(&self) -> RouteTable {
+        self.names
+            .iter()
+            .map(|(name, template)| (name.as_str(), template.as_str()))
+            .collect()
     }
 }
 
