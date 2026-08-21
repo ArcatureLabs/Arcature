@@ -246,6 +246,16 @@ therefore its first.
     -- a macro this crate does not define, over a module the example never
     declared. It compiles now, and `redirect()` is shown as what it is, a
     builder.
+  - **`oauth` -- the PKCE flow.** Behind a non-default feature, so
+    `cargo test --doc` alone never sees it; verified with
+    `cargo test --doc --features oauth`. The example wrote
+    `oauth::GITHUB` from inside the `oauth` module itself, called a
+    `session` that was never introduced, and returned a `redirect(..)`
+    from a snippet with no function around it. It is `no_run` -- the token
+    exchange would reach GitHub -- and now shows both halves of the flow
+    as one compiled function, which is the point of the example: the state
+    and the verifier that leave step one are the same two values step two
+    reads back.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

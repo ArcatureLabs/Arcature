@@ -7,18 +7,36 @@
 //!
 //! # The flow
 //!
-//! ```ignore
-//! // 1. Starting a sign-in.
-//! let client = OauthClient::new(oauth::GITHUB, id, Some(secret), "https://app.test/callback")?;
-//! let start = client.authorize(&["read:user"])?;
-//! session.insert("oauth.state", start.state().as_str());
-//! session.insert("oauth.verifier", start.verifier().secret());
-//! redirect(start.url().as_str())
+//! ```no_run
+//! use arcature::oauth::{GITHUB, OauthClient, OauthState, PkceVerifier};
 //!
-//! // 2. The callback.
-//! let stored = OauthState::from_stored(session.take("oauth.state")?);
-//! let verifier = PkceVerifier::from_secret(session.take("oauth.verifier")?);
-//! let tokens = client.exchange(&stored, &query.state, &query.code, verifier).await?;
+//! # async fn flow(
+//! #     id: String,
+//! #     secret: String,
+//! #     session_state: String,
+//! #     session_verifier: String,
+//! #     returned_state: &str,
+//! #     returned_code: &str,
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
+//! // 1. Starting a sign-in. The state and the verifier go to the session;
+//! //    the browser is only ever handed the URL.
+//! let client = OauthClient::new(GITHUB, id, Some(secret), "https://app.test/callback")?;
+//! let start = client.authorize(&["read:user"])?;
+//!
+//! let to_session_state = start.state().as_str().to_string();
+//! let to_session_verifier = start.verifier().secret().to_string();
+//! let redirect_to = start.url().as_str().to_string();
+//!
+//! // 2. The callback, one request later, reading both back out. `exchange`
+//! //    compares the stored state with the returned one itself.
+//! let stored = OauthState::from_stored(session_state);
+//! let verifier = PkceVerifier::from_secret(session_verifier);
+//! let tokens = client
+//!     .exchange(&stored, returned_state, returned_code, verifier)
+//!     .await?;
+//! # let _ = (to_session_state, to_session_verifier, redirect_to, tokens);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # What this module refuses to do
