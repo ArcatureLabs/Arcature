@@ -327,14 +327,19 @@ impl<S: RouterState> ApplicationBuilder<S> {
 
     /// Supply the top-level [`AppConfig`].
     ///
-    /// Today the framework consumes exactly one field of it: `port` becomes
-    /// the port this process listens on, as though [`port`](Self::port) had
-    /// been called. `name`, `url` and `env` are carried so that
-    /// [`Application::config`] can hand them back, and are read by nothing in
-    /// the framework -- no framework surface builds an absolute URL yet, and
-    /// `env` is forbidden from gating behaviour (see [`AppConfig`]). They are
-    /// stored rather than dropped because an application that has already
-    /// parsed `APP_URL` should not have to parse it twice.
+    /// `port` becomes the port this process listens on, as though
+    /// [`port`](Self::port) had been called. `name` and `url` are read on the
+    /// startup line: the framework's one unprompted log record names the
+    /// application and the base URL it believes it is reachable at, so a
+    /// deployment that is answering on an address nobody expected says so in
+    /// its first line of output rather than in a broken link three days
+    /// later.
+    ///
+    /// Beyond that line, `url` is reached through
+    /// [`AppConfig::absolute_url`](crate::config::AppConfig::absolute_url) --
+    /// the accessor any subsystem that needs a link with no request in scope
+    /// is meant to call. `env` is read by nothing and is forbidden from
+    /// gating behaviour (see [`AppConfig`]).
     ///
     /// # Port precedence
     ///
@@ -1126,10 +1131,27 @@ impl<S: RouterState> Application<S> {
         // it lands in whatever the operator configured, and a process that
         // installed no subscriber stays quiet by its own choice. See
         // [`crate::observe::install_logging`].
+        //
+        // `app` and `url` come from `AppConfig`. They are on this record
+        // rather than nowhere because the commonest deployment mistake with
+        // `APP_URL` is silent: the value is only spent on links built outside
+        // a request, so a wrong one produces a working service that mails out
+        // unreachable addresses. Printing what the process believes about
+        // itself at boot turns that into something an operator can see.
         #[cfg(feature = "observe")]
-        tracing::info!(at = %listener.describe(), "listening");
+        tracing::info!(
+            at = %listener.describe(),
+            app = %self.app_config.name,
+            url = %self.app_config.base_url(),
+            "listening"
+        );
         #[cfg(not(feature = "observe"))]
-        eprintln!("listening on {}", listener.describe());
+        eprintln!(
+            "{} listening on {} ({})",
+            self.app_config.name,
+            listener.describe(),
+            self.app_config.base_url()
+        );
 
         listener.serve(service, shutdown_signal()).await?;
 

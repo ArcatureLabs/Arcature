@@ -201,10 +201,21 @@ would fail with a message about the port being in use.
 
 `AppConfig::from_env()` reads `APP_NAME`, `APP_URL`, `APP_ENV` and `APP_PORT`.
 Hand the result to `.config(..)` and `port` becomes the port the server binds.
-`name`, `url` and `env` are carried and readable back through
-`Application::config()`, but **the framework itself reads none of the three**:
-nothing in it builds an absolute URL yet, and `env` is deliberately barred
-from gating behaviour. Every protection that could plausibly key off an
+
+`name` and `url` appear on the startup line -- the one record a booting
+application emits unprompted -- so a process that believes it is reachable at
+an address nobody expected says so immediately rather than three days later in
+a broken emailed link. `url` is otherwise spent through
+`AppConfig::absolute_url(path)`, which roots a path at `APP_URL` with the
+trailing slash normalised away; that is the accessor to reach for whenever a
+link has to be built with no request in scope, which is every link that
+matters -- password resets, `redirect_uri`, anything signed. `path` is joined
+and never substituted, so passing something that looks like a URL of its own
+produces a path segment under the configured host rather than a link to
+another one.
+
+`env` is carried, readable back through `Application::config()`, and
+**deliberately barred from gating behaviour**. Every protection that could plausibly key off an
 environment -- the security headers, HSTS, release redaction of error
 messages, the UAG endpoint -- keys off `cfg!(debug_assertions)` instead, so it
 is decided when the binary is built. An `APP_ENV` that could switch them off

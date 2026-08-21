@@ -471,10 +471,13 @@ Nothing on this list. Every surface the guide documents is wired to something
 that reads it; where a surface is narrower than its name suggests, the
 narrowing is written into its own documentation rather than tracked here.
 
-The nearest thing to an exception is `AppConfig`: `port` is consumed, and
-`name`, `url` and `env` are carried and readable but read by no framework
-code -- no framework surface builds an absolute URL yet, and `env` is barred
-by design from gating behaviour. That is stated on the type, and in
+The nearest thing to an exception is `AppConfig::env`, which is carried and
+readable but read by no framework code -- barred by design from gating
+behaviour, because a protection an environment variable can switch off is a
+protection in name only. `port`, `name` and `url` are all consumed: `port`
+binds the listener, `name` and `url` are on the startup line, and `url` is
+spent through `AppConfig::absolute_url(path)` wherever a link has to be built
+with no request in scope. That is stated on the type, and in
 [the deployment chapter](docs/src/deployment.md).
 
 ## Contributing

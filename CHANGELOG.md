@@ -12,8 +12,7 @@ gives at `1.x` and above. No extra pinning is needed.
 
 **The public API is not frozen.** `0.x` says so, and it is meant literally:
 any release before `1.0` may remove or reshape a public item. Before `1.0`
-can be tagged, `AppConfig` has to actually consume the environment variables
-it parses, `test_kit`, `uag` and `oauth` have to be exercised by real
+can be tagged, `test_kit`, `uag` and `oauth` have to be exercised by real
 applications rather than only by their own tests, and the "Not yet
 implemented" list below has to be empty or deliberately closed out.
 
@@ -94,6 +93,22 @@ therefore its first.
   transaction the caller then rolls back. Which dialect is exercised is
   the build's choice of driver, so CI's `Database` matrix covers all
   three.
+- **`AppConfig` consumes `APP_URL` and `APP_NAME`.** Both were parsed from the
+  environment, stored, and read by nothing; the changelog entry below promising
+  that a `1.0` cannot ship until they are consumed was the only place either
+  had an effect. Two accessors make `url` reachable rather than merely
+  present: `AppConfig::base_url` returns it with trailing slashes trimmed, and
+  `AppConfig::absolute_url` joins a path onto it with exactly one separator.
+  `absolute_url` *joins*, it never substitutes -- a path of `//evil.test`,
+  `///evil.test` or `https://evil.test` lands as a path segment under
+  `APP_URL`, because the leading slashes are stripped before the join. That
+  property is what makes the accessor safe to reach for from the signed-URL
+  and mail-link code that will call it, and it is pinned by a test. `name` and
+  `base_url` are also now what the process announces at startup: the
+  `listening` line carries both, so the application says which application it
+  is and at which public address, instead of only the socket it happened to
+  bind. Nothing was removed and no signature changed; `AppConfig::url` and
+  `AppConfig::name` remain the fields they were. Closes #9.
 
 ### Deprecated
 

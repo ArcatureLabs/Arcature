@@ -196,6 +196,77 @@ impl AppConfig {
         self
     }
 
+    /// The configured base URL with any trailing slash removed.
+    ///
+    /// Read [`url`](Self::url) directly when you want back exactly what was
+    /// configured. Read this when you are about to concatenate. `APP_URL` is
+    /// written by an operator and half of them write `https://example.com/`
+    /// while the other half write `https://example.com`; normalising on the
+    /// way out rather than on the way in keeps the field equal to what was
+    /// set, so a config that is printed or logged still shows the operator
+    /// their own string.
+    ///
+    /// ```
+    /// use arcature::config::AppConfig;
+    ///
+    /// let config = AppConfig::new().url("https://example.com/");
+    /// assert_eq!(config.base_url(), "https://example.com");
+    /// assert_eq!(config.url, "https://example.com/");
+    /// ```
+    #[must_use]
+    pub fn base_url(&self) -> &str {
+        self.url.trim_end_matches('/')
+    }
+
+    /// An absolute URL for `path`, rooted at [`base_url`](Self::base_url).
+    ///
+    /// This is the accessor every part of the framework that needs a link
+    /// should reach for. A link built while a request is in scope could in
+    /// principle come from the `Host` header, but behind a reverse proxy that
+    /// header is not authoritative, and the links that matter most --- a
+    /// password-reset URL in an email, an OAuth `redirect_uri`, a signed
+    /// expiring URL --- are built with no request in scope at all. `APP_URL`
+    /// is the only thing that knows where the application actually answers
+    /// from, and this is how to spend it.
+    ///
+    /// # The result is always under the base
+    ///
+    /// `path` is joined, never substituted: leading slashes are collapsed, so
+    /// a `path` that looks like a URL of its own (`https://evil.example/`) or
+    /// is scheme-relative (`//evil.example/`) comes back as a path segment
+    /// under the configured host rather than as a different host. That makes
+    /// this safe to call with a value that reached the process from outside,
+    /// though a caller doing so should still be asking why.
+    ///
+    /// No percent-encoding is applied, and none is applied by
+    /// [`Routes::url_for`](crate::routing::Routes::url_for) either: it
+    /// substitutes parameters into the path pattern verbatim. `path` is
+    /// therefore expected to be a URL path a caller has already made safe.
+    ///
+    /// ```
+    /// use arcature::config::AppConfig;
+    ///
+    /// let config = AppConfig::new().url("https://example.com");
+    ///
+    /// assert_eq!(config.absolute_url("/reset"), "https://example.com/reset");
+    /// assert_eq!(config.absolute_url("reset"), "https://example.com/reset");
+    /// assert_eq!(config.absolute_url(""), "https://example.com");
+    /// // Not an escape hatch to another origin.
+    /// assert_eq!(
+    ///     config.absolute_url("//evil.example/x"),
+    ///     "https://example.com/evil.example/x"
+    /// );
+    /// ```
+    #[must_use]
+    pub fn absolute_url(&self, path: &str) -> String {
+        let base = self.base_url();
+        let path = path.trim_start_matches('/');
+        if path.is_empty() {
+            return base.to_string();
+        }
+        format!("{base}/{path}")
+    }
+
     /// Load the config from the environment (the canonical generated-app path).
     /// Reads `APP_NAME`, `APP_URL`, `APP_ENV`, `APP_PORT`.
     #[must_use]
@@ -205,5 +276,81 @@ impl AppConfig {
             .url(env_or("APP_URL", "http://localhost:3000"))
             .environment(AppEnvironment::parse(&env_or("APP_ENV", "development")))
             .port(env_parsed("APP_PORT", 3000))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppConfig, AppEnvironment};
+
+    #[test]
+    fn base_url_drops_a_trailing_slash_without_changing_the_field() {
+        let config = AppConfig::new().url("https://example.com/");
+        assert_eq!(config.base_url(), "https://example.com");
+        // The field still reads back what the operator wrote.
+        assert_eq!(config.url, "https://example.com/");
+    }
+
+    #[test]
+    fn base_url_drops_every_trailing_slash() {
+        let config = AppConfig::new().url("https://example.com///");
+        assert_eq!(config.base_url(), "https://example.com");
+    }
+
+    #[test]
+    fn absolute_url_joins_with_exactly_one_slash() {
+        let config = AppConfig::new().url("https://example.com");
+        assert_eq!(config.absolute_url("/reset"), "https://example.com/reset");
+        assert_eq!(config.absolute_url("reset"), "https://example.com/reset");
+
+        let trailing = AppConfig::new().url("https://example.com/");
+        assert_eq!(trailing.absolute_url("/reset"), "https://example.com/reset");
+        assert_eq!(trailing.absolute_url("reset"), "https://example.com/reset");
+    }
+
+    #[test]
+    fn absolute_url_of_the_root_is_the_base() {
+        let config = AppConfig::new().url("https://example.com/");
+        assert_eq!(config.absolute_url(""), "https://example.com");
+        assert_eq!(config.absolute_url("/"), "https://example.com");
+    }
+
+    #[test]
+    fn absolute_url_keeps_a_subpath_base() {
+        // A reverse proxy that mounts the application under a prefix.
+        let config = AppConfig::new().url("https://example.com/app/");
+        assert_eq!(
+            config.absolute_url("/reset"),
+            "https://example.com/app/reset"
+        );
+    }
+
+    // The property that makes this safe to call with a value that arrived
+    // from outside: `path` is joined, never substituted, so it cannot move
+    // the result to another origin.
+    #[test]
+    fn absolute_url_cannot_be_redirected_to_another_host() {
+        let config = AppConfig::new().url("https://example.com");
+        assert_eq!(
+            config.absolute_url("//evil.example/x"),
+            "https://example.com/evil.example/x"
+        );
+        assert_eq!(
+            config.absolute_url("///evil.example/x"),
+            "https://example.com/evil.example/x"
+        );
+        assert_eq!(
+            config.absolute_url("https://evil.example/x"),
+            "https://example.com/https://evil.example/x"
+        );
+    }
+
+    #[test]
+    fn the_defaults_are_the_development_ones() {
+        let config = AppConfig::new();
+        assert_eq!(config.name, "Arcature");
+        assert_eq!(config.base_url(), "http://localhost:3000");
+        assert_eq!(config.env, AppEnvironment::Development);
+        assert_eq!(config.port, 3000);
     }
 }
