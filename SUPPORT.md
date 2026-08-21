@@ -13,7 +13,8 @@ before filing. You do have to say what you read and what it said -- that is the
 whole difference between a report someone can act on and a report someone has
 to reproduce from scratch.
 
-The crate is not published yet, so "version" means a commit SHA from `main`.
+"Version" means a released version -- `arcature 0.1.0` -- or, if you are
+following `main` ahead of a release, the commit SHA you built from.
 Feature flags matter more here than in most crates: they change which code
 exists at all, and a report without them is frequently unreproducible.
 
