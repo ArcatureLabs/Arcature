@@ -10,9 +10,8 @@
 //! domain model that merely derives `Serialize` cannot accidentally reach
 //! the browser, because `render_page` requires `P: ClientData`.
 //!
-//! The same metadata graph drives the cross-stack linker, `arc exposure`,
-//! and the generated TypeScript contract -- there is one source of truth,
-//! not two.
+//! The same metadata graph drives the cross-stack linker and the generated
+//! TypeScript contract -- there is one source of truth, not two.
 //!
 //! Each responsibility lives in its own file:
 //!
@@ -20,8 +19,8 @@
 //! * [`prop_schema`] -- [`PropSchema`], one prop's type and requiredness.
 //! * [`props_schema`] -- [`PropsSchema`], the browser prop object schema.
 //! * [`client_data`] -- [`ClientData`] and [`PageProps`], the exposure traits.
-//! * [`page_contract`] -- [`PageContract`] and [`PageContractEntry`], page
-//!   identity bound to a prop type.
+//! * [`page_contract`] -- [`PageContract`], [`PageContractEntry`] and
+//!   [`PageType`], page identity bound to a prop type.
 //! * [`page_schema`] -- [`PageSchema`], one registered page's schema.
 //! * [`registry`] -- [`PageContracts`], the explicit registry.
 //! * [`artifact`] -- [`ContractArtifact`], the machine-readable output.
@@ -43,7 +42,7 @@ pub use artifact::ContractArtifact;
 pub use client_data::{ClientData, PageProps};
 pub use contract_type::ContractType;
 pub use error::ContractError;
-pub use page_contract::{PageContract, PageContractEntry};
+pub use page_contract::{PageContract, PageContractEntry, PageType};
 pub use page_schema::PageSchema;
 pub use prop_schema::PropSchema;
 pub use props_schema::PropsSchema;

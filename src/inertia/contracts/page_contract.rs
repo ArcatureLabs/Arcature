@@ -33,6 +33,28 @@ impl<P> PageContract<P> {
     }
 }
 
+/// The trait form of the `#[page]`-generated `PAGE_CONTRACT` const.
+///
+/// `PAGE_CONTRACT` is an *inherent* associated const, which is enough for a
+/// macro that names the type literally (`<HomePage>::PAGE_CONTRACT.name()`)
+/// but not for generic code: `Page<T>` cannot reach an inherent const of an
+/// unknown `T`. This trait is that same const, made reachable through a
+/// bound.
+///
+/// The firewall is unchanged and in fact tightened: `PageType` requires
+/// [`ClientData`](super::ClientData), so a `Serialize`-only type still
+/// cannot be rendered -- and now cannot even be *named* as the payload of a
+/// [`Page`](crate::dx::Page).
+///
+/// The `#[page]` macro emits the impl. Implementing it by hand is allowed
+/// and does not weaken anything: `ClientData` is the boundary, and it must
+/// be satisfied first.
+pub trait PageType: super::ClientData + Sized {
+    /// This type's page identity -- the same value as the macro-generated
+    /// `PAGE_CONTRACT` inherent const.
+    const CONTRACT: PageContract<Self>;
+}
+
 /// A non-generic, const-constructible page-contract descriptor.
 ///
 /// Carries the stable page identity (`name`) and a function pointer to the

@@ -14,8 +14,8 @@ use super::props_schema::PropsSchema;
 ///
 /// The `#[page]` and `#[resource]` macros implement this trait from a
 /// struct's named fields. The exposure schema they build is the same
-/// metadata graph the cross-stack linker, `arc exposure`, and the generated
-/// TypeScript contract consume -- one source of truth. Nested exposed values
+/// metadata graph the cross-stack linker and the generated TypeScript
+/// contract consume -- one source of truth. Nested exposed values
 /// must themselves satisfy this contract; use
 /// [`PropsSchema::nested`](super::PropsSchema::nested) (and `nested_array`,
 /// `nested_optional`) so the `T: ClientData` bound is checked at the call
@@ -23,10 +23,11 @@ use super::props_schema::PropsSchema;
 ///
 /// # Security note
 ///
-/// Field-name linting for secret-bearing names (`password`, `token`, ...) is
-/// a defence-in-depth diagnostic performed by `arc exposure`; it is **not**
-/// the security boundary. The boundary is the explicit `impl ClientData for
-/// T` opt-in plus the `render_page` type bound.
+/// The boundary is the explicit `impl ClientData for T` opt-in plus the
+/// `render_page` type bound. The exposure schema carries enough to lint
+/// field names for secret-bearing words (`password`, `token`, ...), but no
+/// command performs that audit -- nothing will catch a secret you certify
+/// by hand.
 pub trait ClientData: serde::Serialize {
     /// The deterministic, side-effect-free browser exposure schema for this
     /// type.
@@ -42,8 +43,8 @@ pub trait PageProps {
 }
 
 /// Every [`ClientData`] type satisfies the [`PageProps`] metadata seam, so
-/// the cross-stack linker and `arc exposure` consume one metadata graph
-/// rather than two competing systems.
+/// the cross-stack linker and the generated TypeScript contract consume
+/// one metadata graph rather than two competing systems.
 impl<T: ClientData> PageProps for T {
     fn props_schema() -> PropsSchema {
         <T as ClientData>::exposure_schema()

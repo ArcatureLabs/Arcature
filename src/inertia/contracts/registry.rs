@@ -31,8 +31,8 @@ impl PageContracts {
     ///
     /// The `P: ClientData` bound is the Client Exposure Firewall: only types
     /// explicitly certified as browser-safe enter the contract artifact that
-    /// `arc check`, `arc build`, `arc exposure`, and the cross-stack linker
-    /// consume. A plain `Serialize` type cannot be registered here.
+    /// `arc typegen`, `arc build`, and the cross-stack linker consume. A
+    /// plain `Serialize` type cannot be registered here.
     ///
     /// # Errors
     ///
@@ -63,7 +63,7 @@ impl PageContracts {
         self.insert(entry.name, entry.schema)
     }
 
-    /// Produce the artifact consumed by `arc check` and `arc build`.
+    /// Produce the artifact consumed by `arc typegen` and `arc build`.
     #[must_use]
     pub fn artifact(&self) -> ContractArtifact {
         ContractArtifact::new(self.pages.clone())

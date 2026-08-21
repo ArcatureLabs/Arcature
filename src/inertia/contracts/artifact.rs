@@ -1,5 +1,5 @@
 //! [`ContractArtifact`]: the machine-readable page-contract registry that
-//! `arc check`, `arc build`, and `arc exposure` consume.
+//! `arc typegen` and `arc build` consume.
 
 use std::collections::BTreeMap;
 
@@ -11,8 +11,8 @@ use super::page_schema::PageSchema;
 ///
 /// Produced by [`PageContracts::artifact`](super::PageContracts::artifact).
 /// Pages are stored in a `BTreeMap`, so the JSON is byte-for-byte
-/// deterministic across runs -- the property that lets `arc check` diff an
-/// artifact against a committed one.
+/// deterministic across runs -- two builds of an unchanged application
+/// produce identical bytes, so a diff means the contracts really changed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContractArtifact {
     format: String,
