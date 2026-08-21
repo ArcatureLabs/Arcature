@@ -51,6 +51,16 @@ therefore its first.
   ordinary mistakes -- and the full `ARC-M001`..`ARC-M014` diagnostic
   table. A README is part of the published tarball, so this reaches
   crates.io with the next release rather than retroactively.
+- **The community-health files moved into `.github/`.**
+  `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `SECURITY.md`
+  and `SUPPORT.md` are no longer at the repository root, which leaves
+  `README.md`, `CHANGELOG.md` and `LICENSE` there. GitHub reads all five
+  from `.github/`, so nothing it surfaces changes, but a direct link to an
+  old path now 404s and the paths inside the published tarball changed
+  with them. All five also gained an entry point: the README lists them
+  with the question each answers, and the guide has a `The project` page
+  in its back matter. Before this, nothing anywhere linked to
+  `GOVERNANCE.md` or `SUPPORT.md`.
 
 ## [0.1.0]
 
