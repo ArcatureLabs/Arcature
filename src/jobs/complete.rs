@@ -1,7 +1,7 @@
 //! Completion decision logic and the fenced persistence mutations.
 //!
-//! Every completion mutation fences on `id = $1 AND status = 'running' AND
-//! claim_token = $2`. A stale worker (lease expired, sweep requeued, another
+//! Every completion mutation fences on `id = ? AND status = 'running' AND
+//! claim_token = ?`. A stale worker (lease expired, sweep requeued, another
 //! worker reclaimed with a fresh token) affects zero rows, so the stale
 //! observer event is suppressed (not emitted). This is genuine fencing, not
 //! time comparison.
@@ -9,11 +9,17 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use sqlx::postgres::PgExecutor;
 use uuid::Uuid;
 
 use super::config::RetryPolicy;
+use super::dialect::{JobDb, JobPool, sql, stored_time};
 use super::error::{JobError, WorkerError, truncate_for_storage};
+
+/// What every fenced mutation below accepts: the application's pool, or a
+/// connection borrowed from it. Spelled out once so the mutations read the
+/// same in all three dialects.
+pub trait Fenced<'e>: sqlx::Executor<'e, Database = JobDb> {}
+impl<'e, E: sqlx::Executor<'e, Database = JobDb>> Fenced<'e> for E {}
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -153,89 +159,58 @@ pub(crate) fn decide(
 
 /// Mark a job as succeeded. Fenced on the claim token.
 pub(crate) async fn mark_succeeded(
-    executor: impl for<'e> PgExecutor<'e>,
+    executor: impl for<'e> Fenced<'e>,
     job_id: Uuid,
     claim_token: Uuid,
 ) -> Result<ClaimTransition, WorkerError> {
-    let rows = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'succeeded',
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL,
-               last_error = NULL,
-               last_error_kind = NULL,
-               failed_at = NULL
-           WHERE id = $1 AND status = 'running' AND claim_token = $2"#,
-    )
-    .bind(job_id)
-    .bind(claim_token)
-    .execute(executor)
-    .await?
-    .rows_affected();
+    let rows = sqlx::query(sql::MARK_SUCCEEDED)
+        .bind(job_id)
+        .bind(claim_token)
+        .execute(executor)
+        .await?
+        .rows_affected();
     Ok(ClaimTransition::from_affected(rows))
 }
 
 /// Mark a job for retry. Fenced on the claim token. The message is
 /// pre-truncated.
 pub(crate) async fn mark_retry(
-    executor: impl for<'e> PgExecutor<'e>,
+    executor: impl for<'e> Fenced<'e>,
     job_id: Uuid,
     claim_token: Uuid,
     available_at: DateTime<Utc>,
     message: String,
 ) -> Result<ClaimTransition, WorkerError> {
     let message = truncate_for_storage(&message);
-    let rows = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'pending',
-               available_at = $3,
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL,
-               last_error = $4,
-               last_error_kind = 'retryable',
-               failed_at = NULL
-           WHERE id = $1 AND status = 'running' AND claim_token = $2"#,
-    )
-    .bind(job_id)
-    .bind(claim_token)
-    .bind(available_at)
-    .bind(message)
-    .execute(executor)
-    .await?
-    .rows_affected();
+    let rows = sqlx::query(sql::MARK_RETRY)
+        .bind(stored_time(available_at))
+        .bind(message)
+        .bind(job_id)
+        .bind(claim_token)
+        .execute(executor)
+        .await?
+        .rows_affected();
     Ok(ClaimTransition::from_affected(rows))
 }
 
 /// Mark a job as dead. Fenced on the claim token. The message is
 /// pre-truncated.
 pub(crate) async fn mark_dead(
-    executor: impl for<'e> PgExecutor<'e>,
+    executor: impl for<'e> Fenced<'e>,
     job_id: Uuid,
     claim_token: Uuid,
     error_kind: ErrorKind,
     message: String,
 ) -> Result<ClaimTransition, WorkerError> {
     let message = truncate_for_storage(&message);
-    let rows = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'dead',
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL,
-               last_error = $3,
-               last_error_kind = $4,
-               failed_at = now()
-           WHERE id = $1 AND status = 'running' AND claim_token = $2"#,
-    )
-    .bind(job_id)
-    .bind(claim_token)
-    .bind(message)
-    .bind(error_kind.as_str())
-    .execute(executor)
-    .await?
-    .rows_affected();
+    let rows = sqlx::query(sql::MARK_DEAD)
+        .bind(message)
+        .bind(error_kind.as_str())
+        .bind(job_id)
+        .bind(claim_token)
+        .execute(executor)
+        .await?
+        .rows_affected();
     Ok(ClaimTransition::from_affected(rows))
 }
 
@@ -243,78 +218,41 @@ pub(crate) async fn mark_dead(
 /// refreshed (claim still owned), `false` if the claim was lost (lease expired,
 /// sweep requeued to another worker).
 pub(crate) async fn heartbeat(
-    executor: impl for<'e> PgExecutor<'e>,
+    executor: impl for<'e> Fenced<'e>,
     job_id: Uuid,
     claim_token: Uuid,
     lease: Duration,
 ) -> Result<bool, WorkerError> {
     let lease_seconds = lease.as_secs().min(i32::MAX as u64) as i32;
-    let rows = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET locked_at = now(),
-               lease_seconds = $3
-           WHERE id = $1 AND status = 'running' AND claim_token = $2"#,
-    )
-    .bind(job_id)
-    .bind(claim_token)
-    .bind(lease_seconds)
-    .execute(executor)
-    .await?
-    .rows_affected();
+    let rows = sqlx::query(sql::HEARTBEAT)
+        .bind(lease_seconds)
+        .bind(job_id)
+        .bind(claim_token)
+        .execute(executor)
+        .await?
+        .rows_affected();
     Ok(rows > 0)
 }
 
-/// Sweep expired leases. Expired-lease rows with `attempts >= max_attempts` go
-/// `dead` (`exhausted`); those with attempts remaining go back to `pending`.
-/// Returns the total number of rows affected (dead + requeued).
-pub async fn sweep_expired_leases(pool: &sqlx::PgPool, batch: i64) -> Result<u64, WorkerError> {
-    // Mark dead the expired-lease rows that have exhausted their attempts.
-    let dead = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'dead',
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL,
-               last_error = 'job exhausted its max_attempts after a crash',
-               last_error_kind = 'exhausted',
-               failed_at = now()
-           WHERE id IN (
-             SELECT id FROM arcature_jobs
-             WHERE status = 'running'
-               AND locked_at IS NOT NULL
-               AND locked_at + (lease_seconds || ' seconds')::interval < now()
-               AND attempts >= max_attempts
-             LIMIT $1
-             FOR UPDATE SKIP LOCKED
-           )"#,
-    )
-    .bind(batch)
-    .execute(pool)
-    .await?
-    .rows_affected();
+/// Sweep expired leases. Expired-lease rows with `attempts >= max_attempts`
+/// go `dead` (`exhausted`); those with attempts remaining go back to
+/// `pending`. Returns the total number of rows affected (dead + requeued).
+///
+/// This is what makes a crashed worker's jobs claimable again: the crashed
+/// process never releases anything, so recovery is entirely a function of the
+/// lease having elapsed on the database's own clock.
+pub async fn sweep_expired_leases(pool: &JobPool, batch: i64) -> Result<u64, WorkerError> {
+    let dead = sqlx::query(sql::SWEEP_DEAD)
+        .bind(batch)
+        .execute(pool)
+        .await?
+        .rows_affected();
 
-    // Requeue the expired-lease rows that still have attempts remaining.
-    let requeued = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'pending',
-               available_at = now(),
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL
-           WHERE id IN (
-             SELECT id FROM arcature_jobs
-             WHERE status = 'running'
-               AND locked_at IS NOT NULL
-               AND locked_at + (lease_seconds || ' seconds')::interval < now()
-               AND attempts < max_attempts
-             LIMIT $1
-             FOR UPDATE SKIP LOCKED
-           )"#,
-    )
-    .bind(batch)
-    .execute(pool)
-    .await?
-    .rows_affected();
+    let requeued = sqlx::query(sql::SWEEP_REQUEUE)
+        .bind(batch)
+        .execute(pool)
+        .await?
+        .rows_affected();
 
     Ok(dead + requeued)
 }
@@ -325,47 +263,25 @@ pub async fn sweep_expired_leases(pool: &sqlx::PgPool, batch: i64) -> Result<u64
 
 /// Cancel a job (set status to `cancelled` for `pending` or `running` rows).
 /// Returns the number of rows affected.
-pub async fn cancel(
-    executor: impl for<'e> PgExecutor<'e>,
-    job_id: Uuid,
-) -> Result<u64, WorkerError> {
-    let rows = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'cancelled',
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL
-           WHERE id = $1 AND status IN ('pending', 'running')"#,
-    )
-    .bind(job_id)
-    .execute(executor)
-    .await?
-    .rows_affected();
+pub async fn cancel(executor: impl for<'e> Fenced<'e>, job_id: Uuid) -> Result<u64, WorkerError> {
+    let rows = sqlx::query(sql::CANCEL)
+        .bind(job_id)
+        .execute(executor)
+        .await?
+        .rows_affected();
     Ok(rows)
 }
 
 /// Requeue a dead job: reset attempts to 0, set status to `pending`, clear
 /// error and failed_at. Returns the number of rows affected.
 pub async fn requeue_dead(
-    executor: impl for<'e> PgExecutor<'e>,
+    executor: impl for<'e> Fenced<'e>,
     job_id: Uuid,
 ) -> Result<u64, WorkerError> {
-    let rows = sqlx::query(
-        r#"UPDATE arcature_jobs
-           SET status = 'pending',
-               attempts = 0,
-               available_at = now(),
-               locked_by = NULL,
-               locked_at = NULL,
-               claim_token = NULL,
-               last_error = NULL,
-               last_error_kind = NULL,
-               failed_at = NULL
-           WHERE id = $1 AND status = 'dead'"#,
-    )
-    .bind(job_id)
-    .execute(executor)
-    .await?
-    .rows_affected();
+    let rows = sqlx::query(sql::REQUEUE_DEAD)
+        .bind(job_id)
+        .execute(executor)
+        .await?
+        .rows_affected();
     Ok(rows)
 }
