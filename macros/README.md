@@ -25,6 +25,7 @@ use arcature::prelude::*;
 
 #[arcature::model(table = "users")]
 pub struct User {
+    #[sea_orm(primary_key)]
     pub id: i64,
     pub email: String,
 }
