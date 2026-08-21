@@ -18,6 +18,13 @@
 //! prefix. Middleware composes on Tower/Axum via the [`Middleware`] trait, not
 //! a separate engine.
 
+pub mod rate_limit;
+pub mod redirect_mapper;
+pub mod table;
+pub use rate_limit::{Decision, KeyFn, KeySource, OnBackendError, RateLimit, RateLimitService};
+pub use redirect_mapper::{RedirectMapper, RedirectMapperService};
+pub use table::RouteTable;
+
 use crate::error::{Error, Result};
 use axum::Router;
 use axum::handler::Handler as AxumHandler;
