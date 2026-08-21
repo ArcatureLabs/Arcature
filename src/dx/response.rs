@@ -68,12 +68,12 @@ impl IntoResponse for Empty {
     }
 }
 
-/// A generic page response shell.
+/// A page response.
 ///
-/// `Page<T>` is the high-level response type for Inertia-rendered pages.
-/// It is a thin shell that serializes `T` as JSON. The full `#[page]` /
-/// `page!` declaration machinery, `PageContract` integration, `ClientData`
-/// exposure, and Cross-Stack Linker wiring arrive with the `pages` module.
+/// `Page<T>` is the high-level return type for an Inertia-rendered page. A
+/// handler returns `Page<HomePage>` and the component identity, the props
+/// schema, and the browser-safety certificate all come from `T` -- there is
+/// nothing to repeat at the route.
 ///
 /// `Page<T>` is also the **golden-path return type** for the `#[controller]`
 /// macro's page-response derivation: a handler returning `Result<Page<T>, E>`
@@ -83,19 +83,55 @@ impl IntoResponse for Empty {
 /// exists only then, so a non-page type fails to compile (the Client
 /// Exposure Firewall applied to the return type).
 ///
-/// `Serialize` does NOT imply browser-safe. The `T` in `Page<T>` must be a
-/// declared page/resource with explicit exposure boundaries.
+/// `Serialize` does NOT imply browser-safe. With the `inertia` feature on,
+/// the [`IntoResponse`] impl below requires
+/// [`PageType`](crate::inertia::PageType), which requires
+/// [`ClientData`](crate::inertia::ClientData) -- so the firewall applies to
+/// the return type itself, not merely to the render call.
+///
+/// # How it renders
+///
+/// `into_response` cannot render an Inertia page by itself: the choice
+/// between an HTML document and a JSON page object is made from the request
+/// headers, and `IntoResponse` never sees the request. So `Page<T>` records
+/// a [`PendingPage`](crate::inertia::PendingPage) in the response extensions
+/// and the Inertia middleware -- which does hold the request -- performs the
+/// render on the way out. Without an installed `InertiaLayer` the
+/// placeholder body is a `500` problem document naming the missing wiring,
+/// never a blank `200`.
 pub struct Page<T>(pub T);
 
+/// Without the `inertia` feature there is no page protocol to speak, so a
+/// page degrades to its props as JSON. This is the API-only build; nothing
+/// in it can reach a browser through Inertia.
+#[cfg(not(feature = "inertia"))]
 impl<T> IntoResponse for Page<T>
 where
     T: serde::Serialize,
 {
     fn into_response(self) -> Response {
-        // Render page data as JSON. The pages module connects this to the
-        // Inertia PageContract / ClientData system for proper browser
-        // rendering.
         Json(self.0).into_response()
+    }
+}
+
+#[cfg(feature = "inertia")]
+impl<T> IntoResponse for Page<T>
+where
+    T: crate::inertia::PageType,
+{
+    fn into_response(self) -> Response {
+        let component = <T as crate::inertia::PageType>::CONTRACT.name();
+        match serde_json::to_value(&self.0) {
+            Ok(props) => crate::inertia::PendingPage::new(component, props).into_response(),
+            // Props that will not serialize are a bug in the page type, not
+            // a client error -- and the detail names the page so the bug is
+            // findable without a debugger.
+            Err(error) => crate::api::Problem::of(crate::api::ProblemKind::Internal)
+                .with_detail(format!(
+                    "The page `{component}` could not be serialized: {error}"
+                ))
+                .into_response(),
+        }
     }
 }
 
@@ -136,8 +172,9 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "inertia"))]
     #[test]
-    fn page_serializes_as_json() {
+    fn page_serializes_as_json_without_the_inertia_feature() {
         #[derive(serde::Serialize)]
         struct TestData {
             value: u32,
@@ -152,5 +189,34 @@ mod tests {
                 .map(|v| v.to_str().unwrap_or("")),
             Some("application/json")
         );
+    }
+
+    #[cfg(feature = "inertia")]
+    #[test]
+    fn a_page_defers_its_render_to_the_middleware() {
+        use crate::inertia::{ClientData, ContractType, PageContract, PageType, PropsSchema};
+
+        #[derive(serde::Serialize)]
+        struct TestPage {
+            value: u32,
+        }
+
+        impl ClientData for TestPage {
+            fn exposure_schema() -> PropsSchema {
+                PropsSchema::new().required("value", ContractType::number())
+            }
+        }
+
+        impl PageType for TestPage {
+            const CONTRACT: PageContract<Self> = PageContract::new("Test");
+        }
+
+        let response = Page(TestPage { value: 42 }).into_response();
+        let pending = response
+            .extensions()
+            .get::<crate::inertia::PendingPage>()
+            .expect("the render is recorded for the middleware");
+        assert_eq!(pending.component(), "Test");
+        assert_eq!(pending.props(), &serde_json::json!({"value": 42}));
     }
 }
