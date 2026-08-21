@@ -87,10 +87,12 @@ jobs:
           set -euo pipefail
           ua="arcature-release (github.com/ArcatureLabs/Arcature)"
           status=0
-          slugs=$(cargo metadata --no-deps --format-version 1             | jq -r '.packages[] | .name as $p | .categories[] | "\($p) \(.)"')
+          slugs=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | .name as $p | .categories[] | "\($p) \(.)"')
           while read -r pkg slug; do
             [ -n "$slug" ] || continue
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $ua"               "https://crates.io/api/v1/categories/$slug")
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "User-Agent: $ua" \
+              "https://crates.io/api/v1/categories/$slug")
             if [ "$code" = "200" ]; then
               echo "ok    $pkg: $slug"
             else
