@@ -1,37 +1,48 @@
 # Arcature
 
+[![CI](https://github.com/ArcatureLabs/Arcature/actions/workflows/ci.yml/badge.svg)](https://github.com/ArcatureLabs/Arcature/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Rust 1.97.1+](https://img.shields.io/badge/rust-1.97.1%2B-orange.svg)](rust-toolchain.toml)
+
 An opinionated full-stack Rust web framework. One package, batteries included.
 
-`cargo add arcature` is enough for the canonical generated application: HTTP
-routing, native Inertia.js, database, auth, validation, cache, storage, mail,
-jobs, events, realtime, observability, and the `arc` CLI.
+Arcature integrates proven wheels -- Axum, Tower, Tokio, SeaORM, SQLx,
+Inertia.js, OpenDAL, lettre, tracing -- and owns what sits between them: the
+application lifecycle, the request pipeline order, the conventions, and a
+coherent vocabulary. The raw Axum, Tower, SeaORM and SQLx escape hatches stay
+available for when the framework's opinions run out.
+
+**Status: pre-release.** Nothing has been published to crates.io yet. `main`
+is the only version and it breaks without notice. Where a subsystem is
+narrower than its name suggests, that is said in
+[the guide](docs/src/SUMMARY.md) and summarised under
+[What is not built yet](#what-is-not-built-yet).
+
+## Install
+
+```toml
+[dependencies]
+arcature = { git = "https://github.com/ArcatureLabs/Arcature" }
+```
+
+Pin a revision -- a branch reference will move under you. Once Arcature is
+published, `cargo add arcature` will be the whole install.
+
+Requirements: Rust **1.97.1** or newer (edition 2024). Anything that uses the
+database or the job queue needs one of PostgreSQL 17, MySQL 8 or SQLite --
+picked at build time, one per build.
 
 ## Quick start
 
-Generate a new application:
-
-```sh
-cargo install arcature --features cli
-arc new my-app
-cd my-app
-cargo run
-```
-
-Or add Arcature to an existing project:
-
-```sh
-cargo add arcature
-```
-
-Then write your first route:
-
 ```rust
+use arcature::application::EngineResult;
 use arcature::prelude::*;
 
 #[arcature::main]
-async fn main() -> Result<()> {
+async fn main() -> EngineResult<()> {
     Application::new()
         .routes(Routes::new([Route::get("/", index).name("home")]))
+        .build()
         .run()
         .await
 }
