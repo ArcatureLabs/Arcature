@@ -1,6 +1,6 @@
 //! `#[page("name")]` -- declares a browser-safe Inertia page prop struct.
 //!
-//! Emits four things from the annotated struct:
+//! Emits five things from the annotated struct:
 //!
 //! 1. The struct unchanged, with a `#[derive(::arcature::Serialize)]` that
 //!    satisfies the `ClientData: Serialize` supertrait.
@@ -9,7 +9,10 @@
 //!    [`crate::schema`] type-to-schema mapping.
 //! 3. An associated `PAGE_CONTRACT` const -- the typed registry path,
 //!    registered with `PageContracts::register`.
-//! 4. An associated `PAGE_CONTRACT_ENTRY` const -- the non-generic
+//! 4. `impl ::arcature::inertia::PageType`, the same identity reachable
+//!    from generic code -- `Page<T>` in a handler return type needs a
+//!    bound, and an inherent const cannot be named through one.
+//! 5. An associated `PAGE_CONTRACT_ENTRY` const -- the non-generic
 //!    aggregation path. `module!`'s `pages:` section collects these into a
 //!    `&'static [PageContractEntry]` slice so `application!` can build the
 //!    `PageContracts` registry from the graph with no hand-written
@@ -89,6 +92,13 @@ pub fn page(attr: TokenStream, item: TokenStream) -> MacroResult {
                 ::arcature::inertia::PropsSchema::new()
                     #( #field_chains )*
             }
+        }
+
+        impl #impl_generics ::arcature::inertia::PageType for #struct_name #ty_generics
+        #where_clause
+        {
+            const CONTRACT: ::arcature::inertia::PageContract<Self> =
+                ::arcature::inertia::PageContract::new(#page_name);
         }
 
         impl #impl_generics #struct_name #ty_generics #where_clause {
