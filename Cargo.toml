@@ -277,7 +277,7 @@ axum = { version = "0.8.9", default-features = false, features = ["tokio", "http
 tower = { version = "0.5.3", default-features = false }
 tokio = { version = "1.53.1", default-features = false, features = ["net", "macros", "rt-multi-thread", "sync", "time", "io-util", "signal", "fs"], optional = true }
 tokio-util = { version = "0.7.19", default-features = false, optional = true }
-tower-http = { version = "0.6.11", default-features = false, features = [
+tower-http = { version = "0.7.0", default-features = false, features = [
     "timeout",
     "limit",
     # `fs` serves `public/` -- without it the one-port story has no
