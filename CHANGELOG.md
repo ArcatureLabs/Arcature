@@ -183,6 +183,15 @@ therefore its first.
     framework `Result` -- but `AuthzError` has no `From` into `Error`, so
     that `?` never compiled either. The corrected example maps it through
     `forbidden(..)` and says in a comment that the choice is the handler's.
+  - **`routing` -- the module example and the `Middleware` contract.** The
+    `Middleware` example was written as `async fn handle(..) -> Result<Response>`.
+    The trait method is not async: it returns
+    `Pin<Box<dyn Future<Output = Result<Response>> + Send>>`, because the
+    trait is object-safe by hand. The example also returned
+    `next.run(request).await` directly, but `Next::run` yields a `Response`,
+    not a `Result<Response>` -- a continuation cannot fail. Both are fixed,
+    with the reason for each stated above the block, and the missing
+    `#[derive(Clone)]` that `Middleware: Clone` requires is now there.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

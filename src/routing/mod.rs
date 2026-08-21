@@ -5,13 +5,32 @@
 //! the `routes!` macro is a shorthand that expands to exactly these calls, so
 //! a route table stays debuggable whichever spelling it was written in.
 //!
-//! ```ignore
+//! ```
+//! use arcature::prelude::*;
+//!
+//! struct HomeController;
+//!
+//! impl HomeController {
+//!     async fn index() -> Result<Response> {
+//!         Ok(text(StatusCode::OK, "hello"))
+//!     }
+//! }
+//!
+//! struct UserController;
+//!
+//! impl UserController {
+//!     async fn store() -> Result<Response> {
+//!         Ok(no_content())
+//!     }
+//! }
+//!
 //! pub fn routes() -> Routes {
 //!     Routes::new([
 //!         Route::get("/", HomeController::index).name("home"),
 //!         Route::post("/users", UserController::store).name("users.store"),
 //!     ])
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! Named routes support URL generation (for redirects and links) via
@@ -543,15 +562,35 @@ impl<S: RouterState> Default for Routes<S> {
 /// The Arcature middleware contract. Compose on Tower/Axum, not a separate
 /// engine: a [`Middleware`] is adapted to an Axum `from_fn` layer.
 ///
-/// ```ignore
+/// `handle` is not an `async fn`: the trait is object-safe by hand, so it
+/// returns a boxed future and the body is a `Box::pin(async move { .. })`.
+/// `Next::run` yields a `Response`, not a `Result<Response>` -- the
+/// continuation cannot fail, only a middleware can -- so continuing means
+/// `Ok(next.run(request).await)`.
+///
+/// ```
+/// use std::future::Future;
+/// use std::pin::Pin;
+///
+/// use arcature::prelude::*;
+/// use arcature::routing::Request;
+///
+/// #[derive(Clone)]
 /// pub struct AuthMiddleware;
 ///
 /// impl Middleware for AuthMiddleware {
-///     async fn handle(&self, request: Request, next: Next) -> Result<Response> {
-///         // ...
-///         next.run(request).await
+///     fn handle(
+///         &self,
+///         request: Request,
+///         next: Next,
+///     ) -> Pin<Box<dyn Future<Output = Result<Response>> + Send>> {
+///         Box::pin(async move {
+///             // Short-circuit with `Err(..)`, or hand the request on:
+///             Ok(next.run(request).await)
+///         })
 ///     }
 /// }
+/// # fn main() {}
 /// ```
 pub trait Middleware: Clone + Send + Sync + 'static {
     /// Inspect the request, optionally short-circuit, or call `next.run(...)`
