@@ -35,3 +35,5 @@
 ---
 
 [Decisions](decisions.md)
+
+[The project](project.md)
