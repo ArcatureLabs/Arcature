@@ -20,13 +20,39 @@ lint:
     cargo fmt --all -- --check
     cargo clippy --all-targets -- -D warnings
 
-# No test needs a live database today, but CI provides a postgres:17 service
-# and a DATABASE_URL so that the ones that will do not have to be
-# special-cased when they arrive.
-
 # Run the test suite.
 test:
     cargo test
+
+# The database tests read `ARCATURE_TEST_DB_URL`, never `DATABASE_URL`: a
+# developer's working `DATABASE_URL` is exactly the value that must not reach
+# a suite which writes to what it finds. Unset, they skip, so `just test`
+# stays green with no server running; set, they run. CI additionally sets
+# `ARCATURE_REQUIRE_TEST_DB=1`, which turns the skip back into a failure, so a
+# leg whose database never started cannot skip its way to green.
+#
+# The driver is a build-wide choice, so this is one build per dialect rather
+# than one build with three. Point each URL at a database whose name starts
+# with `arcature_test_`; the harness refuses anything else, because these
+# tests write to what they are given.
+
+# Run the suite against whichever databases are configured, one build per driver.
+db-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for pair in "db-postgres:${ARCATURE_TEST_DB_URL_POSTGRES:-}" \
+                "db-mysql:${ARCATURE_TEST_DB_URL_MYSQL:-}" \
+                "db-sqlite:${ARCATURE_TEST_DB_URL_SQLITE:-}"; do
+        driver="${pair%%:*}"
+        url="${pair#*:}"
+        if [ -z "$url" ]; then
+            echo "== $driver: skipped (set ARCATURE_TEST_DB_URL_$(echo "${driver#db-}" | tr a-z A-Z))"
+            continue
+        fi
+        echo "== $driver =="
+        ARCATURE_TEST_DB_URL="$url" ARCATURE_REQUIRE_TEST_DB=1 \
+            cargo test --no-default-features --features "jobs,test-kit,$driver" --lib --test test_kit
+    done
 
 # The feature matrix. `--each-feature` fails fast and names the culprit;
 # the powerset is thorough, slow, and --keep-going, so read its tail.

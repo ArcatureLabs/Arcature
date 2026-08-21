@@ -656,20 +656,35 @@ mod database {
     use arcature::database::sqlx;
     use arcature::test_kit::{TestDatabase, assert_database_has};
 
-    // These need a live PostgreSQL named by `ARCATURE_TEST_DB_URL`, so they
-    // are ignored by default. They are not `skip`ped at runtime: an ignored
-    // test is visibly ignored in the output, while a test that returns early
-    // because a variable is unset reports a pass for work it never did.
-    // Run them with:
+    // These need a live database named by `ARCATURE_TEST_DB_URL`. They used
+    // to be `#[ignore]`d, on the argument that an ignored test is visibly
+    // ignored while a runtime skip reports a pass for work it never did.
+    // The argument is right about the risk and wrong about the remedy: an
+    // ignored test is not run by anyone, including CI, so the database tests
+    // were not skipped quietly -- they were not run at all, by anybody, ever.
+    //
+    // `TestDatabase::optional` splits the two cases the `#[ignore]` was
+    // conflating. No database configured is a skip, which is what keeps a
+    // laptop with no server green. No database configured *while
+    // `ARCATURE_REQUIRE_TEST_DB` is set* is a panic, and CI sets it -- so the
+    // day CI stops provisioning a database, CI says so.
+    //
+    // Locally:
     //   ARCATURE_TEST_DB_URL=postgres://.../arcature_test_kit \
-    //     cargo test --features test-kit,db-postgres --test test_kit -- --ignored
+    //     cargo test --features test-kit,db-postgres --test test_kit
 
+    // PostgreSQL only: `pg_tables` is where this asks whether the temporary
+    // table survived, and there is no portable spelling of that question.
+    // The rollback itself is not PostgreSQL-specific, but what a rolled-back
+    // `CREATE TEMPORARY TABLE` leaves behind is: MySQL's temporary tables are
+    // not transactional at all, so the same assertion would be false there
+    // for a reason that has nothing to do with the harness.
+    #[cfg(feature = "db-postgres")]
     #[tokio::test]
-    #[ignore = "needs a live postgres named by ARCATURE_TEST_DB_URL"]
     async fn a_transaction_rolls_back_when_it_is_dropped() {
-        let database = TestDatabase::connect()
-            .await
-            .expect("ARCATURE_TEST_DB_URL must name a test database");
+        let Some(database) = TestDatabase::optional().await else {
+            return;
+        };
         {
             let mut transaction = database.begin().await.expect("begin");
             sqlx::query("CREATE TEMPORARY TABLE probe (name text)")
@@ -692,9 +707,35 @@ mod database {
     }
 
     // Drives its own runtime, so not a `#[tokio::test]`.
+    //
+    // Unlike the one above this is dialect-neutral: all three accept
+    // `CREATE TEMPORARY TABLE ... (text)`, and `assert_database_has` renders
+    // its own cast per dialect.
     #[test]
-    #[ignore = "needs a live postgres named by ARCATURE_TEST_DB_URL"]
     fn a_row_that_does_not_match_fails_the_assertion() {
+        // The skip has to happen outside `failure_message`, which exists to
+        // catch a panic: a panic raised inside it would be swallowed and
+        // reported as the assertion failure this test is looking for.
+        //
+        // Only `NotConfigured` skips. A URL that is present but refused --
+        // an unsafe database name -- must reach the panic below, exactly as
+        // it would in `TestDatabase::optional`.
+        use arcature::test_kit::database::{
+            TestDatabaseError, test_database_required, test_database_url,
+        };
+        match test_database_url() {
+            Ok(_) => {}
+            Err(error @ TestDatabaseError::NotConfigured) => {
+                assert!(
+                    !test_database_required(),
+                    "ARCATURE_REQUIRE_TEST_DB is set, so ARCATURE_TEST_DB_URL has to be too: {error}"
+                );
+                return;
+            }
+            // Present but refused -- an unsafe database name -- is never a
+            // reason to skip.
+            Err(error) => panic!("{error}"),
+        }
         let message = super::failure_message(|| {
             arcature::test_kit::block_on(async {
                 let database = TestDatabase::connect()

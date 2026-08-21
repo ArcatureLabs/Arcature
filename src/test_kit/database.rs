@@ -35,6 +35,17 @@ pub const TEST_DB_URL_VAR: &str = "ARCATURE_TEST_DB_URL";
 /// The required prefix of the test database name.
 pub const TEST_DB_PREFIX: &str = "arcature_test_";
 
+/// The environment variable that turns a missing test database from a skip
+/// into a failure.
+///
+/// [`TestDatabase::optional`] returns `None` when no database is configured,
+/// which is what keeps a laptop with no server green. That is also exactly
+/// how a suite comes to report success while testing nothing, so CI sets this
+/// variable and the skip becomes a panic. Both halves are needed: without the
+/// skip nobody can run the suite locally, and without the switch nobody would
+/// notice the day CI stopped provisioning a database.
+pub const REQUIRE_TEST_DB_VAR: &str = "ARCATURE_REQUIRE_TEST_DB";
+
 /// Why a test database could not be used.
 #[derive(Debug)]
 pub enum TestDatabaseError {
@@ -183,6 +194,17 @@ pub fn test_database_url() -> Result<String, TestDatabaseError> {
     Ok(url)
 }
 
+/// Whether a missing test database must fail rather than skip.
+///
+/// True when [`REQUIRE_TEST_DB_VAR`] is set to anything other than the empty
+/// string or `0`. `0` is spelled out because a workflow that computes the
+/// value will write `0` for false long before it thinks to unset the
+/// variable.
+#[must_use]
+pub fn test_database_required() -> bool {
+    std::env::var(REQUIRE_TEST_DB_VAR).is_ok_and(|value| !value.is_empty() && value != "0")
+}
+
 /// A pool onto the test database, opened only after the safety check.
 #[derive(Debug, Clone)]
 pub struct TestDatabase {
@@ -202,6 +224,52 @@ impl TestDatabase {
             .await
             .map_err(|error| TestDatabaseError::Connect(error.to_string()))?;
         Ok(Self { pool })
+    }
+
+    /// Connect if a test database is configured, or report that none is.
+    ///
+    /// [`connect`](Self::connect) treats a missing `ARCATURE_TEST_DB_URL` as
+    /// a failure, which is the right answer for a suite that must never
+    /// report success for work it did not do. It is the wrong answer for a
+    /// developer with no server running, who would then be unable to run the
+    /// suite at all. This is the other answer: unconfigured means
+    /// unconfigured, and the test returns without asserting anything.
+    ///
+    /// The dangerous half of that is a test suite quietly testing nothing, so
+    /// the skip is switchable: with [`REQUIRE_TEST_DB_VAR`] set -- as CI sets
+    /// it -- an unconfigured database panics instead. Every other failure
+    /// (an unsafe database name, a refused connection) panics either way; a
+    /// database that is present but wrong is never a reason to skip.
+    ///
+    /// ```
+    /// # use arcature::test_kit::TestDatabase;
+    /// # async fn example() {
+    /// let Some(database) = TestDatabase::optional().await else {
+    ///     // No test database here. Assert nothing rather than assert
+    ///     // against nothing.
+    ///     return;
+    /// };
+    /// let mut transaction = database.begin().await.expect("begin");
+    /// # let _ = transaction.connection();
+    /// # }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics when the database is misconfigured or unreachable, and when it
+    /// is unconfigured while [`test_database_required`] holds.
+    pub async fn optional() -> Option<Self> {
+        match Self::connect().await {
+            Ok(database) => Some(database),
+            Err(error @ TestDatabaseError::NotConfigured) => {
+                assert!(
+                    !test_database_required(),
+                    "{REQUIRE_TEST_DB_VAR} is set, so {TEST_DB_URL_VAR} has to be too: {error}"
+                );
+                None
+            }
+            Err(error) => panic!("{error}"),
+        }
     }
 
     /// Wrap a pool that the caller opened.

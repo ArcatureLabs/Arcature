@@ -66,6 +66,11 @@ jobs:
       # only `DATABASE_URL` therefore left every database test unconfigured
       # while looking wired up.
       ARCATURE_TEST_DB_URL: postgres://postgres:postgres@localhost:5432/arcature_test_ci
+      # A database test skips when no database is configured, so a laptop
+      # with no server stays green. That is also how a suite comes to report
+      # success while testing nothing, so CI turns the skip back into a
+      # failure.
+      ARCATURE_REQUIRE_TEST_DB: "1"
       RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
 
     steps:
@@ -158,12 +163,19 @@ jobs:
 
     env:
       ARCATURE_TEST_DB_URL: ${{ matrix.url }}
+      # See the `test` job: this is what stops a leg whose database failed
+      # to start from skipping its way to green.
+      ARCATURE_REQUIRE_TEST_DB: "1"
 
     # A lean feature set on purpose. The `drivers` job already proves the
     # full breadth *compiles* against each driver; what is missing, and what
     # this job supplies, is proof that the SQL *runs*. Three dialects times
     # the whole feature list would be three of the slowest builds in the file
     # to re-prove something already proven.
+    #
+    # `--lib --test test_kit` for the same reason: those two targets hold
+    # every test that talks to a database. The rest of `tests/` is written
+    # against the default feature set and does not compile without it.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -172,7 +184,7 @@ jobs:
           toolchain: stable
 
       - name: Test against ${{ matrix.driver }}
-        run: cargo test --no-default-features --features "jobs,test-kit,${{ matrix.feature }}"
+        run: cargo test --no-default-features --features "jobs,test-kit,${{ matrix.feature }}" --lib --test test_kit
 
   drivers:
     name: Full features, per driver

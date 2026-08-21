@@ -22,3 +22,10 @@ dist/
 
 # the built guide -- `mdbook build docs` writes it, CI rebuilds it
 /docs/book/
+
+# SQLite test databases. `just db-test` and the CI database job point
+# ARCATURE_TEST_DB_URL at a file in the working directory; the driver also
+# writes `-wal` and `-shm` alongside it.
+/arcature_test_*.db
+/arcature_test_*.db-wal
+/arcature_test_*.db-shm

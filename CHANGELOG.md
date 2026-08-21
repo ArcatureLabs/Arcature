@@ -39,6 +39,15 @@ therefore its first.
   Until now the only database CI ever started was PostgreSQL, so the
   MySQL and SQLite statement text was proven to compile and never proven
   to parse. The job is required by the `CI success` gate.
+- **The database tests run instead of being skipped by default.** The two
+  tests that need a live server carried `#[ignore]`, which meant no
+  ordinary `cargo test` anywhere -- laptop or CI -- ever ran them. They now
+  ask `TestDatabase::optional()` for a database and return early when none
+  is configured, so a machine with no server stays green, while
+  `ARCATURE_REQUIRE_TEST_DB=1` turns that skip into a failure. CI sets it
+  on every leg that starts a database, so a leg whose service failed to
+  come up can no longer skip its way to a pass. `just db-test` runs the
+  same thing locally, one build per driver.
 
 ### Deprecated
 

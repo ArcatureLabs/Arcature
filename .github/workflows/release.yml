@@ -136,6 +136,7 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test_release
       ARCATURE_TEST_DB_URL: postgres://postgres:postgres@localhost:5432/arcature_test_release
+      ARCATURE_REQUIRE_TEST_DB: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
