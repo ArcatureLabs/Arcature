@@ -211,14 +211,34 @@ jobs:
       - name: Scaffold
         run: ./target/debug/arc new app --stack ${{ matrix.stack }} --db ${{ matrix.db }}
 
-      # `arc new` writes a normal `arcature = "<version>"` dependency, which is
-      # correct and will resolve the moment the crate is published. It is not
-      # published yet, so
-      # until then CI has to point the generated project at the working tree it
-      # was generated from -- otherwise this job would only ever test the last
-      # release, which is the one thing it is not here to test.
+      # The patch below makes the pinned version irrelevant to this job, which
+      # means a pin that resolves nowhere would still go green here and then
+      # fail on the first `arc new` a stranger runs. A warning rather than an
+      # error: between bumping the manifest and tagging the release the pin is
+      # supposed to be unpublished.
+      - name: Check the pinned version exists on crates.io
+        if: matrix.stack == 'react' && matrix.db == 'sqlite'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^arcature = { version = "\([^"]*\)".*/\1/p' app/Cargo.toml | head -1)
+          echo "arc new pinned arcature = $version"
+          if curl -sSf "https://index.crates.io/ar/ca/arcature" \
+               | jq -e --arg v "$version" 'select(.vers == $v)' > /dev/null; then
+            echo "ok    crates.io serves arcature $version"
+          else
+            echo "::warning::arc new writes arcature $version, which crates.io does not serve. Expected while a release is being prepared; a problem if it outlives the next tag."
+          fi
+
+      # `arc new` writes a normal `arcature = "<version>"` dependency, and that
+      # is what a real user gets. CI cannot build against it, though: resolving
+      # the registry copy would test the last release, which is the one thing
+      # this job is not here to test. So the generated project is pointed at
+      # the working tree it was generated from, and that is permanent -- this
+      # step is not a bootstrap waiting on the first `cargo publish`.
       #
-      # Delete this step after the first `cargo publish`.
+      # What the patch does hide is a pin that resolves nowhere, so the step
+      # above checks for that separately.
       - name: Point the generated project at this checkout
         run: |
           {
