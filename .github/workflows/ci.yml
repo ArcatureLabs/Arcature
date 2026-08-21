@@ -42,7 +42,14 @@ jobs:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: arcature_test
+          # `arcature_test_ci`, not `arcature_test`. The harness refuses any
+          # database whose name does not start with `arcature_test_`
+          # (`TEST_DB_PREFIX` in `src/test_kit/database.rs`), and
+          # `arcature_test` has no trailing segment, so it fails that gate by
+          # one underscore. The suffix is what the prefix is for: it names the
+          # environment, so a URL pasted out of a CI log cannot be mistaken for
+          # anyone's local database.
+          POSTGRES_DB: arcature_test_ci
         ports:
           - 5432:5432
         options: >-
@@ -52,7 +59,13 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test_ci
+      # The test harness reads `ARCATURE_TEST_DB_URL`, never `DATABASE_URL`
+      # -- deliberately, so a developer's working `DATABASE_URL` cannot point
+      # a suite that truncates tables at a database that matters. CI setting
+      # only `DATABASE_URL` therefore left every database test unconfigured
+      # while looking wired up.
+      ARCATURE_TEST_DB_URL: postgres://postgres:postgres@localhost:5432/arcature_test_ci
       RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
 
     steps:

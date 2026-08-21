@@ -79,6 +79,15 @@ therefore its first.
   requires the text to travel with the distributed work, so the omission
   was a licensing defect rather than an inconvenience. `macros/LICENSE` is
   now a copy of the root file and appears in `cargo package --list`.
+- **CI's test database name now clears the harness's own safety gate.**
+  `src/test_kit/database.rs` refuses any database whose name does not start
+  with `arcature_test_`, and it reads the URL from `ARCATURE_TEST_DB_URL`.
+  CI provisioned `arcature_test` -- one underscore short of the prefix --
+  and exported it only as `DATABASE_URL`, so the database service looked
+  wired up while every test that asked for it would have been refused
+  twice over. The service is now `arcature_test_ci`
+  (`arcature_test_release` in the release workflow) and both variables are
+  set.
 
 ### Documentation
 

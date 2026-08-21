@@ -123,7 +123,9 @@ jobs:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: arcature_test
+          # See the same block in `ci.yml`: the name needs a trailing segment
+          # to clear the `arcature_test_` gate the harness enforces.
+          POSTGRES_DB: arcature_test_release
         ports:
           - 5432:5432
         options: >-
@@ -132,7 +134,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test_release
+      ARCATURE_TEST_DB_URL: postgres://postgres:postgres@localhost:5432/arcature_test_release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
