@@ -10,6 +10,7 @@
 //! startup failure tears down whatever was already started.
 
 pub mod builder;
+pub mod health;
 // Spawning and stopping the worker is part of the serve path, so this module
 // follows `macros`: without the certified runtime nothing ever starts a job
 // runtime, and the module would compile only to sit unused.
@@ -18,10 +19,22 @@ pub mod jobs_runtime;
 pub mod lifecycle;
 pub mod pipeline;
 pub mod resources;
+// Where the process listens is part of the serve path, which the certified
+// runtime owns: without `macros` nothing in this crate ever binds anything.
+#[cfg(feature = "macros")]
+pub mod serve_ipc;
+// The dev-only application-graph endpoint. Gated on `uag` so that a binary
+// built without that feature contains neither the route nor the artifact --
+// the first of the three gates described in the module documentation.
+#[cfg(feature = "uag")]
+pub mod uag_endpoint;
 
 pub use builder::{Application, ApplicationBuilder};
+pub use health::{Health, HealthReport};
 pub use lifecycle::{Lifecycle, LifecycleState};
 pub use resources::Resources;
+#[cfg(feature = "uag")]
+pub use uag_endpoint::UagEndpoint;
 
 // The framework error type for engine-level failures (binding a listener,
 // startup/shutdown). Distinct from [`crate::Error`] which is for
