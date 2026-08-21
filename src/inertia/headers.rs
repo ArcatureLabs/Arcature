@@ -32,6 +32,17 @@ impl Headers {
     /// `X-Inertia-Error-Bag` — names the error bag to scope validation errors.
     pub const ERROR_BAG: HeaderName = HeaderName::from_static("x-inertia-error-bag");
 
+    /// `X-Inertia-Except-Once-Props` — comma-separated *once keys* the client
+    /// already holds. The server withholds those values and still emits their
+    /// `onceProps` entries; the client fills them back in from its own copy.
+    pub const EXCEPT_ONCE_PROPS: HeaderName =
+        HeaderName::from_static("x-inertia-except-once-props");
+
+    /// `X-Inertia-Infinite-Scroll-Merge-Intent` — `prepend` when the client is
+    /// loading the previous page of an infinite scroll, `append` for the next.
+    pub const MERGE_INTENT: HeaderName =
+        HeaderName::from_static("x-inertia-infinite-scroll-merge-intent");
+
     /// `X-Inertia-Location` — on a `409`, the destination for a full
     /// `window.location` visit (external redirect or version mismatch).
     pub const LOCATION: HeaderName = HeaderName::from_static("x-inertia-location");
@@ -56,4 +67,10 @@ impl Values {
 
     /// `Purpose: prefetch` — sent on prefetch visits.
     pub const PURPOSE_PREFETCH: &str = "prefetch";
+
+    /// Merge intent for the *previous* side of an infinite scroll.
+    pub const MERGE_INTENT_PREPEND: &str = "prepend";
+
+    /// Merge intent for the *next* side of an infinite scroll.
+    pub const MERGE_INTENT_APPEND: &str = "append";
 }
