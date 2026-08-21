@@ -215,6 +215,16 @@ therefore its first.
     `ScriptBody` in reach -- a downstream crate cannot construct one, so it
     is now shown the way it is actually met, inside a root-document
     function.
+  - **`mail`, `cache` and `storage` -- the three resource facades.** All
+    four examples were fragments referring to bindings that were never
+    introduced. `Mailable` is now a whole impl; the `Mail` example builds
+    on `Mailer::capture_ok`, the transport that accepts everything and
+    sends nothing, so the documented send actually runs during
+    `cargo test --doc`. `Cache::remember` and the `Storage` builder need a
+    Valkey server and a filesystem root, so they are `no_run`: compiled
+    against the real signatures, not executed. The storage example also
+    dropped its second disk, which called `StorageConfig::s3` -- a method
+    that does not exist unless the non-default `storage-s3` feature is on.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

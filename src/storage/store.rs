@@ -33,17 +33,26 @@ use crate::storage::path::StoragePath;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
+/// use arcature::storage::{Storage, StorageConfig, StoragePath};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // A second S3 disk would be `.disk("s3", StorageConfig::s3(..))`, which
+/// // needs the non-default `storage-s3` feature.
 /// let storage = Storage::builder()
 ///     .disk("local", StorageConfig::fs("/var/lib/myapp/storage")?)
-///     .disk("s3", StorageConfig::s3(S3Config::new("my-bucket")?))
 ///     .default_disk("local")
 ///     .connect()
 ///     .await?;
 ///
+/// // Every path is validated before it reaches a backend.
 /// let path = StoragePath::new("photos/img.jpg")?;
 /// storage.disk("local").put(&path, b"hello").await?;
 /// let bytes = storage.disk("local").get(&path).await?;
+/// # let _ = bytes;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct Storage {

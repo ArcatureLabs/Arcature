@@ -295,10 +295,26 @@ impl Cache {
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// let user = cache.remember("user:42", Duration::from_secs(300), || async {
-    ///     User::find(42).await
-    /// }).await?;
+    /// ```no_run
+    /// use std::time::Duration;
+    ///
+    /// use arcature::cache::{Cache, CacheError};
+    ///
+    /// #[derive(serde::Serialize, serde::Deserialize)]
+    /// struct User {
+    ///     id: u64,
+    /// }
+    ///
+    /// async fn find(id: u64) -> Result<User, CacheError> {
+    ///     Ok(User { id })
+    /// }
+    ///
+    /// async fn cached_user(cache: &Cache) -> Result<User, CacheError> {
+    ///     // The loader runs only on a miss -- and never on a backend error.
+    ///     cache
+    ///         .remember("user:42", Duration::from_secs(300), || async { find(42).await })
+    ///         .await
+    /// }
     /// ```
     pub async fn remember<T, F, Fut, E>(
         &self,

@@ -155,16 +155,23 @@ impl Mailer {
 ///
 /// # Example
 ///
-/// ```ignore
-/// pub struct WelcomeEmail { pub name: String }
+/// ```
+/// use arcature::mail::lettre::Message;
+/// use arcature::mail::{Email, EmailError, Mailable};
+///
+/// pub struct WelcomeEmail {
+///     pub name: String,
+/// }
 ///
 /// impl Mailable for WelcomeEmail {
 ///     fn build(&self, email: Email) -> Result<Message, EmailError> {
+///         // `From` and `To` are already set; the mailable owns the rest.
 ///         email
 ///             .subject(format!("Welcome, {}!", self.name))
 ///             .plain(format!("Welcome, {}!", self.name))
 ///     }
 /// }
+/// # fn main() {}
 /// ```
 pub trait Mailable: Send + Sync {
     /// Build the message, starting from the given [`Email`] builder (which
@@ -184,9 +191,29 @@ pub trait Mailable: Send + Sync {
 ///
 /// # Example
 ///
-/// ```ignore
-/// let mail = Mail::new(mailer, "noreply@example.com".parse()?);
-/// mail.to(user.email).send(&WelcomeEmail { name: user.name }).await?;
+/// ```
+/// use arcature::mail::lettre::Message;
+/// use arcature::mail::{Email, EmailError, Mail, Mailable, Mailer};
+///
+/// # struct WelcomeEmail {
+/// #     name: String,
+/// # }
+/// # impl Mailable for WelcomeEmail {
+/// #     fn build(&self, email: Email) -> Result<Message, EmailError> {
+/// #         email.subject("Welcome").plain(format!("Welcome, {}!", self.name))
+/// #     }
+/// # }
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // `Mailer::capture_ok()` accepts every message and sends nothing, which
+/// // is what a test wants; `Mailer::smtp(SmtpConfig..)` is the real one.
+/// let mail = Mail::new(Mailer::capture_ok(), "noreply@example.com".parse()?);
+///
+/// mail.to("ada@example.com")
+///     .send(&WelcomeEmail { name: "Ada".into() })
+///     .await?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct Mail {
