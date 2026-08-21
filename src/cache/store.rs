@@ -523,4 +523,74 @@ mod tests {
     fn zero_size_passes() {
         assert!(check_payload_size(0, Some(1024)).is_ok());
     }
+
+    /// A live-backend test for the one property `remember` exists to have:
+    /// a loader that fails leaves the key absent.
+    ///
+    /// Ignored because it needs a Valkey or Redis on
+    /// `redis://127.0.0.1:6379`. Run it with
+    /// `cargo test --lib -- --ignored` against one.
+    #[tokio::test]
+    #[ignore = "needs a live Redis on 127.0.0.1:6379"]
+    async fn a_failing_loader_does_not_poison_the_cache() {
+        use crate::cache::Namespace;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let namespace =
+            Namespace::new(&format!("remember-test-{}", std::process::id())).expect("a namespace");
+        let cache = Cache::connect(
+            CacheConfig::new("redis://127.0.0.1:6379")
+                .expect("a cache config")
+                .namespace(namespace),
+        )
+        .await
+        .expect("a live Redis");
+
+        let ttl = Duration::from_secs(60);
+        let calls = AtomicUsize::new(0);
+
+        // A loader that fails must propagate the failure and store nothing.
+        let failed: Result<String, CacheError> = cache
+            .remember("greeting", ttl, || {
+                calls.fetch_add(1, Ordering::Relaxed);
+                async { Err(CacheError::ZeroTtl) }
+            })
+            .await;
+        assert!(failed.is_err());
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            cache.get::<String>("greeting").await.expect("a get"),
+            None,
+            "a failed load must not leave anything behind"
+        );
+
+        // A loader that succeeds stores its value.
+        let loaded: String = cache
+            .remember("greeting", ttl, || {
+                calls.fetch_add(1, Ordering::Relaxed);
+                async { Ok::<_, CacheError>("hello".to_string()) }
+            })
+            .await
+            .expect("a successful load");
+        assert_eq!(loaded, "hello");
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
+
+        // And a hit does not run the loader at all -- which is why a later
+        // failure cannot evict what is already there.
+        let cached: String = cache
+            .remember("greeting", ttl, || {
+                calls.fetch_add(1, Ordering::Relaxed);
+                async { Err(CacheError::ZeroTtl) }
+            })
+            .await
+            .expect("a cache hit");
+        assert_eq!(cached, "hello");
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            2,
+            "the loader must not run on a hit"
+        );
+
+        cache.forget("greeting").await.expect("cleanup");
+    }
 }
