@@ -1,0 +1,32 @@
+# The Arcature guide, built with mdBook.
+#
+#   cargo install mdbook
+#   mdbook serve docs      # http://localhost:3000, reloads on save
+#   mdbook build docs      # writes docs/book/
+#
+# `just book` and `just book-serve` wrap those.
+
+[book]
+title = "The Arcature Guide"
+description = "Building web applications with Arcature: an opinionated full-stack Rust framework."
+authors = ["Arcature Labs"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+# A broken cross-reference in a guide is a reader sent nowhere. Fail on it.
+create-missing = false
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/ArcatureLabs/Arcature"
+edit-url-template = "https://github.com/ArcatureLabs/Arcature/edit/main/docs/{path}"
+# Code samples in this guide are illustrative Rust that needs a database, a
+# mail server, or an application around it. Nothing here is a doctest, so the
+# play button would offer to run what cannot run.
+playground = { runnable = false }
+
+[output.html.search]
+limit-results = 20
