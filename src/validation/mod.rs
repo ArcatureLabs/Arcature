@@ -53,22 +53,29 @@ pub use rejection::{
 ///
 /// # Example
 ///
-/// ```ignore
-/// use arcature::{Deserialize, Validated, Validate};
+/// ```
+/// use arcature::prelude::*;
 ///
+/// // `#[request]` adds `#[derive(Validate)]`; the `Deserialize` derive stays
+/// // explicit so the extractor can deserialize and validate in one step.
 /// #[request]
+/// #[derive(Deserialize)]
 /// pub struct StoreLinkRequest {
-///     #[validate(required, url)]
+///     #[validate(url)]
 ///     pub url: String,
-///     #[validate(required, length(min = 1, max = 120))]
+///     #[validate(length(min = 1, max = 120))]
 ///     pub title: String,
 /// }
 ///
-/// async fn store(input: Validated<StoreLinkRequest>) -> Result<Redirect> {
+/// // A field that may legitimately be absent is an `Option<T>`; `required`
+/// // is `validator`'s rule for those, not for a `String` serde already
+/// // refused to deserialize without.
+/// async fn store(input: Validated<StoreLinkRequest>) -> Result<RedirectResponse> {
 ///     let data = input.into_inner();
-///     // ... create link from `data` ...
-///     redirect!(route::links::index())
+///     // ... create the link from `data`, which is valid by construction ...
+///     Ok(redirect().to("/links"))
 /// }
+/// # fn main() {}
 /// ```
 pub struct Validated<T>(pub T);
 

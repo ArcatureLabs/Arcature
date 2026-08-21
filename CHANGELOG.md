@@ -236,6 +236,16 @@ therefore its first.
     `arcature::events`, which is the *trait*: `#[derive(Event)]` needs the
     derive macro of the same name from the crate root. Both are fixed and
     the dispatch now runs.
+  - **`validation` -- the `Validated<T>` extractor.** The example was
+    wrong in four places at once: it forgot the `#[derive(Deserialize)]`
+    that `#[request]` deliberately does not add, put `required` on two
+    `String` fields (`validator`'s `required` is for `Option<T>`; a
+    `String` serde could not fill is already a deserialization failure),
+    returned a bare `Redirect` type that is not the framework's
+    `RedirectResponse`, and finished with `redirect!(route::links::index())`
+    -- a macro this crate does not define, over a module the example never
+    declared. It compiles now, and `redirect()` is shown as what it is, a
+    builder.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no
