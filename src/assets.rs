@@ -188,6 +188,33 @@ pub struct Assets {
     inner: Arc<AssetsInner>,
 }
 
+/// Say, once, that assets will not load.
+///
+/// Split out of [`Assets::detect`] for one reason: `tracing` is behind the
+/// `observe` feature and `assets` is always-on kernel, so the log line cannot
+/// simply be written inline. The fallback is `eprintln!` rather than silence
+/// because of what this particular message is -- without it, a developer whose
+/// frontend is not running sees a blank page with a 200 next to it and no
+/// stated cause. Everything else the kernel might want to say can wait for a
+/// subscriber; this cannot.
+fn warn_no_manifest(path: &Path) {
+    #[cfg(feature = "observe")]
+    tracing::warn!(
+        manifest = %path.display(),
+        "no Vite manifest; serving asset URLs as source paths. This is a debug \
+         build, so it starts anyway -- but nothing answers those paths until \
+         `arc dev` is running or `npx vite build` has been run."
+    );
+    #[cfg(not(feature = "observe"))]
+    eprintln!(
+        "warning: no Vite manifest at {}; serving asset URLs as source paths. \
+         This is a debug build, so it starts anyway -- but nothing answers \
+         those paths until `arc dev` is running or `npx vite build` has been \
+         run.",
+        path.display()
+    );
+}
+
 impl Assets {
     /// Development mode: no manifest, entries resolve to their own source
     /// paths for Vite to serve over the dev proxy.
@@ -228,25 +255,58 @@ impl Assets {
         })
     }
 
-    /// Pick the mode from the environment: development when `arc dev` set
-    /// [`VITE_IPC_ENV`](crate::config::VITE_IPC_ENV), production otherwise.
+    /// Pick the mode, in three steps, from strongest signal to weakest.
     ///
-    /// This reads the environment once, at startup, like every other resolved
-    /// configuration in the framework. An application that already knows which
-    /// mode it is in should call [`dev`](Self::dev) or
-    /// [`from_manifest`](Self::from_manifest) directly.
+    /// 1. `arc dev` set [`VITE_IPC_ENV`](crate::config::VITE_IPC_ENV). Vite is
+    ///    live behind the one port and is serving the source tree, so source
+    ///    paths are not a guess -- they are the right answer, and a manifest
+    ///    sitting next to them from an earlier `arc build` would be stale.
+    /// 2. A manifest exists. Somebody ran a frontend build; use what it says,
+    ///    whether or not this binary was compiled in debug. Running
+    ///    `npx vite build && cargo run` is a normal thing to do when checking
+    ///    that production asset resolution works, and it should work.
+    /// 3. Neither. Now the build profile decides, on the same reasoning as
+    ///    [`ErrorMapping`](crate::http::error_mapping::ErrorMapping) and the
+    ///    UAG endpoint: `cfg!(debug_assertions)` is fixed when the binary is
+    ///    compiled, so it cannot be flipped by whoever can reach the process
+    ///    environment. A debug build falls back to development and logs why;
+    ///    a release build refuses to start.
+    ///
+    /// Step 3 is what makes `arc new demo && cd demo && cargo run` serve a
+    /// page. A fresh scaffold has no `node_modules` and no build output, and a
+    /// framework whose first command after scaffolding is "now go run a
+    /// frontend build" has put a wall in front of the first five minutes.
+    /// The page it serves does reference source paths that nothing answers
+    /// until Vite is up, so the fallback warns rather than passing silently.
+    ///
+    /// Deliberately **not** keyed off `APP_ENV`: that is an operator-settable
+    /// string, and `AppConfig` documents why nothing with teeth may depend on
+    /// one. Here the teeth are the release-mode refusal in step 3 -- serving
+    /// source paths from a production binary would 404 every asset on the
+    /// page, which is worse than not starting.
+    ///
+    /// An application that already knows its mode should call
+    /// [`dev`](Self::dev) or [`from_manifest`](Self::from_manifest) directly.
     ///
     /// # Errors
     ///
-    /// [`AssetsError`] when production mode cannot load the manifest. There is
-    /// deliberately no fallback to development mode: silently serving source
-    /// paths in production would 404 every asset on the page.
+    /// [`AssetsError`] when a release build has no usable manifest.
     pub fn detect(config: &AssetsConfig) -> Result<Self, AssetsError> {
-        let dev = std::env::var(crate::config::VITE_IPC_ENV).is_ok_and(|value| !value.is_empty());
-        if dev {
-            Ok(Self::dev(config))
-        } else {
-            Self::from_manifest(config)
+        let ipc = std::env::var(crate::config::VITE_IPC_ENV).is_ok_and(|value| !value.is_empty());
+        if ipc {
+            return Ok(Self::dev(config));
+        }
+        match Self::from_manifest(config) {
+            Ok(assets) => Ok(assets),
+            Err(AssetsError::ManifestMissing { path }) if cfg!(debug_assertions) => {
+                warn_no_manifest(&path);
+                Ok(Self::dev(config))
+            }
+            // An unreadable or malformed manifest is a different thing from a
+            // missing one: the file is there, so somebody built the frontend,
+            // and quietly ignoring it would hide a broken build behind a page
+            // that half works. That fails in debug too.
+            Err(other) => Err(other),
         }
     }
 
@@ -319,15 +379,22 @@ impl Assets {
     /// development.
     #[must_use]
     pub fn head_tags(&self, entry: &str) -> String {
+        self.head_tags_with_nonce(entry, None)
+    }
+
+    /// [`head_tags`](Self::head_tags), with every `<link>` carrying a
+    /// Content-Security-Policy nonce.
+    ///
+    /// A nonce on a `<link rel="stylesheet">` is what satisfies a `style-src
+    /// 'nonce-...'` directive: the elements CSP looks for a nonce on are not
+    /// only `<script>`s. Pass `None` and the markup is byte-for-byte what
+    /// [`head_tags`](Self::head_tags) returns.
+    #[must_use]
+    pub fn head_tags_with_nonce(&self, entry: &str, nonce: Option<&str>) -> String {
         let Some(resolved) = self.resolve(entry) else {
             return String::new();
         };
-        resolved
-            .css
-            .iter()
-            .map(|href| format!("<link rel=\"stylesheet\" href=\"{href}\" />"))
-            .collect::<Vec<_>>()
-            .join("\n  ")
+        style_tags(&resolved.css, nonce)
     }
 
     /// The end-of-`<body>` markup for an entry: the module script, preceded in
@@ -337,17 +404,67 @@ impl Assets {
     /// empty page is a clearer failure than a `<script>` pointing at a 404.
     #[must_use]
     pub fn body_tags(&self, entry: &str) -> String {
+        self.body_tags_with_nonce(entry, None)
+    }
+
+    /// [`body_tags`](Self::body_tags), with every `<script>` carrying a
+    /// Content-Security-Policy nonce.
+    ///
+    /// The nonce is per request -- it comes from
+    /// [`CspNonce`](crate::http::security::CspNonce) -- so a root document
+    /// that calls this has to call it per request too. That is cheaper than
+    /// it sounds and cheaper still if the entry is resolved once at startup;
+    /// [`vite_root_document`](crate::inertia::vite_root_document) does the
+    /// latter. Pass `None` and the markup is byte-for-byte what
+    /// [`body_tags`](Self::body_tags) returns.
+    #[must_use]
+    pub fn body_tags_with_nonce(&self, entry: &str, nonce: Option<&str>) -> String {
         let Some(resolved) = self.resolve(entry) else {
             return String::new();
         };
-        let script = format!("<script type=\"module\" src=\"{}\"></script>", resolved.js);
-        if self.is_dev() {
-            // `/@vite/client` is what the dev proxy recognises and forwards;
-            // without it there is no HMR socket and no style injection.
-            format!("<script type=\"module\" src=\"/@vite/client\"></script>\n  {script}")
-        } else {
-            script
-        }
+        script_tags(Some(&resolved.js), self.is_dev(), nonce)
+    }
+}
+
+/// The `nonce="..."` attribute with its leading space, or nothing.
+fn nonce_attribute(nonce: Option<&str>) -> String {
+    // Base64 out of the framework's own RNG: no character in that alphabet
+    // needs escaping inside a double-quoted attribute.
+    nonce.map(|n| format!(" nonce=\"{n}\"")).unwrap_or_default()
+}
+
+/// One `<link rel="stylesheet">` per href, joined the way a `<head>` wants.
+///
+/// Split out of [`Assets::head_tags_with_nonce`] so a root document can
+/// resolve the entry once at startup and still stamp a per-request nonce onto
+/// the result.
+pub(crate) fn style_tags(css: &[String], nonce: Option<&str>) -> String {
+    let attribute = nonce_attribute(nonce);
+    css.iter()
+        .map(|href| format!("<link{attribute} rel=\"stylesheet\" href=\"{href}\" />"))
+        .collect::<Vec<_>>()
+        .join("\n  ")
+}
+
+/// The end-of-`<body>` scripts for an already-resolved entry.
+///
+/// `js` is `None` for an entry the manifest does not know, which yields no
+/// markup at all -- an empty page is a clearer failure than a `<script>`
+/// pointing at a 404, and in that state there is no HMR client worth loading
+/// either.
+pub(crate) fn script_tags(js: Option<&str>, dev: bool, nonce: Option<&str>) -> String {
+    let Some(js) = js else {
+        return String::new();
+    };
+    let attribute = nonce_attribute(nonce);
+    let script = format!("<script{attribute} type=\"module\" src=\"{js}\"></script>");
+    if dev {
+        // `/@vite/client` is what the dev proxy recognises and forwards;
+        // without it there is no HMR socket and no style injection. It is a
+        // script like any other, so it needs the nonce too.
+        format!("<script{attribute} type=\"module\" src=\"/@vite/client\"></script>\n  {script}")
+    } else {
+        script
     }
 }
 
@@ -570,10 +687,96 @@ mod tests {
     }
 
     #[test]
+    fn the_nonce_lands_on_every_tag_a_manifest_entry_produces() {
+        // A `script-src 'nonce-X'` policy blocks a bundle whose tag does not
+        // carry X, which is a blank page rather than a hardened one.
+        let assets = manifest(
+            r#"{"resources/js/app.tsx":{"file":"assets/app-C7xk91Qa.js","css":["assets/app-Z9y8X7w6.css"]}}"#,
+        );
+        assert_eq!(
+            assets.head_tags_with_nonce("resources/js/app.tsx", Some("r4nd0m")),
+            "<link nonce=\"r4nd0m\" rel=\"stylesheet\" href=\"/build/assets/app-Z9y8X7w6.css\" />"
+        );
+        assert_eq!(
+            assets.body_tags_with_nonce("resources/js/app.tsx", Some("r4nd0m")),
+            "<script nonce=\"r4nd0m\" type=\"module\" src=\"/build/assets/app-C7xk91Qa.js\"></script>"
+        );
+    }
+
+    #[test]
+    fn the_hmr_client_carries_the_nonce_too() {
+        // It is a script like any other; missing it costs the dev server its
+        // HMR socket under a policy that is supposed to match production.
+        let assets = Assets::dev(&AssetsConfig::new());
+        let body = assets.body_tags_with_nonce("resources/js/app.tsx", Some("r4nd0m"));
+        assert_eq!(body.matches("nonce=\"r4nd0m\"").count(), 2, "{body}");
+    }
+
+    #[test]
+    fn tags_without_a_nonce_are_byte_for_byte_what_they_always_were() {
+        let assets = manifest(
+            r#"{"resources/js/app.tsx":{"file":"assets/app-C7xk91Qa.js","css":["assets/app-Z9y8X7w6.css"]}}"#,
+        );
+        assert_eq!(
+            assets.head_tags("resources/js/app.tsx"),
+            assets.head_tags_with_nonce("resources/js/app.tsx", None)
+        );
+        assert!(!assets.body_tags("resources/js/app.tsx").contains("nonce"));
+    }
+
+    #[test]
     fn a_missing_manifest_is_a_startup_error_not_a_silent_dev_fallback() {
         let config = AssetsConfig::new().public_dir("this-directory-does-not-exist");
         let error = Assets::from_manifest(&config).expect_err("no manifest");
         assert!(matches!(error, AssetsError::ManifestMissing { .. }));
+    }
+
+    // The three `detect` tests below deliberately do not touch
+    // `ARCATURE_VITE_IPC`. The crate is `unsafe_code = "forbid"` and
+    // `std::env::set_var` is unsafe in edition 2024, so the first branch of
+    // `detect` is not reachable from a unit test at all -- and even if it
+    // were, mutating process environment from one of several test threads is
+    // a race. What is testable is the part that decides the outcome when
+    // nobody set the variable, which is also the part that regressed: the
+    // scaffolded application refused to boot.
+
+    #[test]
+    fn detect_falls_back_to_dev_when_a_debug_build_has_no_manifest() {
+        let config = AssetsConfig::new().public_dir("this-directory-does-not-exist");
+        let assets = Assets::detect(&config).expect("a debug build starts without a manifest");
+        assert!(assets.is_dev());
+    }
+
+    #[test]
+    fn detect_prefers_a_manifest_that_exists_over_the_debug_fallback() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let vite = dir.path().join("build").join(".vite");
+        std::fs::create_dir_all(&vite).expect("mkdir");
+        std::fs::write(
+            vite.join("manifest.json"),
+            r#"{"resources/js/app.tsx":{"file":"assets/app-C7xk91Qa.js"}}"#,
+        )
+        .expect("write manifest");
+
+        let config = AssetsConfig::new().public_dir(dir.path());
+        let assets = Assets::detect(&config).expect("the manifest is readable");
+        assert!(!assets.is_dev(), "a present manifest wins over the profile");
+        assert_eq!(
+            assets.resolve("resources/js/app.tsx").expect("entry").js,
+            "/build/assets/app-C7xk91Qa.js"
+        );
+    }
+
+    #[test]
+    fn detect_refuses_a_manifest_it_cannot_parse_even_in_a_debug_build() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let vite = dir.path().join("build").join(".vite");
+        std::fs::create_dir_all(&vite).expect("mkdir");
+        std::fs::write(vite.join("manifest.json"), "{ not json").expect("write manifest");
+
+        let config = AssetsConfig::new().public_dir(dir.path());
+        let error = Assets::detect(&config).expect_err("a broken build is not a dev build");
+        assert!(matches!(error, AssetsError::ManifestMalformed { .. }));
     }
 
     #[test]
