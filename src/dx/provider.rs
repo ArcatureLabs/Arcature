@@ -8,7 +8,7 @@
 //! extractor.
 //!
 //! The `#[provider]` macro generates `impl DxComponent` (for the static
-//! name used by `arc services`). The developer writes `impl Provider` by
+//! `NAME`). The developer writes `impl Provider` by
 //! hand -- the `Error` type and `DEPS` are specific to the provider and
 //! cannot be inferred from the struct definition alone.
 //!
@@ -41,7 +41,7 @@
 //! ```
 //!
 //! The `Provider` trait carries `Error` (the typed init failure) and
-//! `DEPS` (for `arc check` graph validation). It does NOT carry the init
+//! `DEPS` (the dependency type names). It does NOT carry the init
 //! method -- init is business behavior, not mechanical plumbing, and the
 //! macro must not hide business behavior.
 
@@ -60,7 +60,7 @@ pub trait Provider: crate::DxComponent + Send + Sync + 'static {
     /// typed startup failure -- never a silent panic.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// The dependency type names, for `arc check` graph validation.
+    /// The dependency type names this provider is constructed from.
     /// Empty for providers with no typed dependencies.
     const DEPS: &'static [&'static str] = &[];
 }

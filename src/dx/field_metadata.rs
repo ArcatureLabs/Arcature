@@ -7,16 +7,18 @@
 //! resolves `<T as RequestMetadata>::FIELDS` / `<T as ResourceMetadata>::FIELDS`
 //! at compile time when a route declares `action: T` / `query: T`, baking
 //! the full field shape into the [`super::route_metadata::RouteDescriptor`]
-//! const. The UAG then carries the field shapes so `arcature-build` codegen
-//! can emit the typed `@arcature/actions` / `@arcature/queries` virtual
-//! modules.
+//! const. The UAG then carries the field shapes so `arc typegen` can emit
+//! `forms.ts` (an action's field names, types and `#[validate(...)]` rules)
+//! and `routes.ts` into `resources/js/generated/`. Files on disk, not
+//! virtual modules: emitting a virtual module would need a Vite plugin, and
+//! a Vite plugin would need an npm package. See `docs/decisions/`.
 //!
 //! # Layering
 //!
 //! The macro captures the Rust type of each field *faithfully* as a
 //! `&'static str` (e.g. `"String"`, `"Option<String>"`, `"Vec<i64>"`).
-//! The Rust->TypeScript type mapping lives in `arcature-build` codegen --
-//! the single code generator. `FieldShape` carries no pre-rendered
+//! The Rust->TypeScript type mapping lives in `crate::uag::codegen::type_map`
+//! -- the single code generator. `FieldShape` carries no pre-rendered
 //! TypeScript: deriving the TS type (and the `optional` flag) from the Rust
 //! type string is the codegen's responsibility, so one source of truth owns
 //! the cross-stack type mapping.
@@ -32,8 +34,8 @@
 ///
 /// Every field is `&'static str` or `&'static [&'static str]` -- no `Vec`,
 /// no `String`, no allocation. A `const` slice of `FieldShape` is the
-/// inspection artifact consumed by the application graph, the UAG, and
-/// `arcature-build` codegen.
+/// inspection artifact consumed by the application graph, the UAG, and the
+/// `arc typegen` codegen.
 ///
 /// `ty` is the field's Rust type rendered as a clean string (e.g.
 /// `"String"`, `"Option<String>"`, `"Vec<i64>"`). The codegen derives the
@@ -67,7 +69,7 @@ pub struct FieldShape {
 /// state, or `TypeId`/`Any` container.
 ///
 /// This is the join point the action codegen uses: a route's `action_fields`
-/// -> the typed `@arcature/actions` input interface.
+/// -> the entry for that route in the generated `forms.ts`.
 pub trait RequestMetadata {
     /// The input's field descriptors, as a `&'static` slice. Every entry is
     /// plain `&'static` data -- no allocation, no `TypeId`, no runtime
@@ -84,7 +86,7 @@ pub trait RequestMetadata {
 /// runtime type registry.
 ///
 /// This is the join point the query codegen uses: a route's `query_fields`
-/// -> the typed `@arcature/queries` response interface.
+/// -> the response type the generated TypeScript gives that route.
 ///
 /// `#[resource]` continues to emit `Serialize` + `ClientData` (the
 /// browser-exposure firewall); `ResourceMetadata` is an *additive* static

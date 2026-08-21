@@ -15,7 +15,7 @@
 /// Every field is `&'static str`, `&'static [&'static str]`, or
 /// `Option<&'static str>` -- no `Vec`, no `String`, no allocation. A `const`
 /// slice of `ControllerMethod` is the inspection artifact consumed by the
-/// application graph and `arc check` validation.
+/// application graph and `arc build` validation.
 ///
 /// The `page` field is the page-response metadata derived from the method's
 /// **return type** (not its body): when the signature is `Result<Page<T>, E>`

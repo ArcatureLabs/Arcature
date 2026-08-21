@@ -26,7 +26,7 @@
 //! - [`RouteMethod`] / [`RouteDescriptor`] -- route metadata for the
 //!   `routes!` macro. Const-constructible, `&'static`-based.
 //! - [`ControllerMethod`] -- controller method metadata for `#[controller]`.
-//!   Const-constructible for `arc controllers` / `arc check` inspection.
+//!   Const-constructible: inspectable without running the application.
 //! - [`Empty`] -- 204 No Content response (always available with `dx`).
 //! - [`Json`] / [`Page`] -- high-level response types. Implement
 //!   `IntoResponse` so controllers return `Result<Json<T>>`,
@@ -44,7 +44,7 @@
 //!   `#[service]` generates `impl Resolve<S>`; Arcature provides impls
 //!   for built-in resources (`Db`).
 //! - [`Service`] -- a marker for service types. Extends `DxComponent`
-//!   with `DEPS` metadata for `arc check` graph validation. Service
+//!   with `DEPS` metadata -- the dependency type names. Service
 //!   dependency cycles are impossible by construction (value composition).
 //! - [`Inject`] -- an Axum extractor that constructs any `T: Resolve<S>`
 //!   from application state. Axum remains the handler runtime.
@@ -87,7 +87,7 @@ pub use field_metadata::{FieldShape, RequestMetadata, ResourceMetadata};
 // re-exported `ListenerBinding` / `ScheduleBinding` / `ScheduleCadence`)
 // are pure compile-time metadata defined in `graph` (behind `dx` only),
 // exactly like `ListenerBinding`. They are re-exported UNGATED (under `dx`)
-// so the UAG / `arcature-build` can serialize them WITHOUT pulling the
+// so the UAG can serialize them WITHOUT pulling the
 // `jobs` runtime subsystem -- which drags in `database`/`chrono`/`tokio-util`
 // (small apps remain small). The runtime types (`Scheduler`, `Worker`, ...)
 // stay behind `jobs` in their own submodules.

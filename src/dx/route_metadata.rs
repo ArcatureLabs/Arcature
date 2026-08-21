@@ -2,7 +2,7 @@
 //!
 //! The `routes!` macro generates [`RouteDescriptor`] values as `const` items
 //! -- plain data with `&'static` slices, no allocation, no runtime reflection.
-//! These descriptors feed `arc routes` inspection, `arc check` validation, and
+//! These descriptors feed `arc routes` inspection, `arc build` validation, and
 //! the `ApplicationGraph` route metadata.
 //!
 //! All types are const-constructible (unit enum variants, `&'static str`
@@ -73,7 +73,7 @@ impl std::fmt::Display for RouteMethod {
 ///
 /// Every field is `&'static str` or a unit enum -- no `Vec`, no `String`, no
 /// allocation. A `const` array of `RouteDescriptor` is the inspection
-/// artifact consumed by `arc routes` and `arc check`.
+/// artifact consumed by `arc routes` and `arc build`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
 pub struct RouteDescriptor {
     /// The HTTP method.
@@ -159,7 +159,7 @@ pub enum ResourceAction {
     Destroy,
 }
 
-#[allow(dead_code)] // Consumed by `arc routes` / `arc check` in later phases.
+#[allow(dead_code)] // Consumed by `arc routes` / `arc build` in later phases.
 impl ResourceAction {
     /// Returns the action name as a lowercase string (e.g. `"index"`,
     /// `"store"`).
@@ -212,7 +212,7 @@ impl std::fmt::Display for ResourceAction {
 /// Returns `None` for unknown action names. Used by `only`/`except`
 /// validation in the `routes!` macro.
 #[must_use]
-#[allow(dead_code)] // Consumed by `arc routes` / `arc check` in later phases.
+#[allow(dead_code)] // Consumed by `arc routes` / `arc build` in later phases.
 pub fn parse_resource_action(name: &str) -> Option<ResourceAction> {
     match name {
         "index" => Some(ResourceAction::Index),

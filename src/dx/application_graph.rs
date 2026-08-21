@@ -5,7 +5,7 @@
 //! detection, unknown-import detection, and circular-dependency detection.
 //! The graph is a plain data structure -- no runtime connection, no trait
 //! objects, no `TypeId` -- suitable for side-effect-free inspection
-//! (`arc modules`, `arc check`).
+//! (`arc typegen`, `arc build`).
 
 use std::collections::BTreeSet;
 

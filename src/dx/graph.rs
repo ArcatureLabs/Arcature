@@ -2,8 +2,8 @@
 //!
 //! A module descriptor is the compile-time metadata that the `module!` macro
 //! generates. It is a plain data struct -- no behavior, no runtime
-//! connection -- suitable for side-effect-free inspection (`arc modules`,
-//! `arc check`). The `application!` macro collects descriptors into an
+//! connection -- suitable for side-effect-free inspection (`arc typegen`,
+//! `arc build`). The `application!` macro collects descriptors into an
 //! [`ApplicationGraph`](super::application_graph::ApplicationGraph).
 //!
 //! All fields use `&'static [&'static str]` (not `Vec`) so a descriptor can
@@ -24,9 +24,9 @@
 
 /// A compile-time job handler binding.
 ///
-/// Records that a handler function is bound to a job kind+version, for
-/// `arc check` inspection and `arc modules` display. The `module!` macro
-/// generates `&'static [JobBinding]` from the `jobs:` section.
+/// Records that a handler function is bound to a job kind+version, for the
+/// Unified Application Graph artifact. The `module!` macro generates
+/// `&'static [JobBinding]` from the `jobs:` section.
 ///
 /// This is metadata only -- it does NOT register the handler at runtime.
 /// The application registers handlers explicitly via
@@ -43,8 +43,8 @@ pub struct JobBinding {
 
 /// A compile-time application command binding.
 ///
-/// Records that a function is bound to a command name, for `arc check`
-/// inspection and `arc modules` display. The `module!` macro generates
+/// Records that a function is bound to a command name, for the Unified
+/// Application Graph artifact. The `module!` macro generates
 /// `&'static [CommandBinding]` from the `commands:` section.
 ///
 /// This is metadata only -- it does NOT register the command at runtime.
