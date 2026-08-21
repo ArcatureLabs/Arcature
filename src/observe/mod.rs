@@ -1,17 +1,60 @@
-//! Observability: request IDs, HTTP access logging, and tracing integration.
+//! Observability: request IDs, access logging, JSON logs, metrics, trace
+//! context, and the OpenTelemetry pipeline.
 //!
-//! Built on the certified `tracing` ecosystem. Arcature never installs a
-//! global default subscriber on the production path; operators wire their own.
-//! The framework re-exports `tracing` so downstream code targets the pinned
-//! version through Arcature.
+//! Built on the certified `tracing` ecosystem. Arcature installs no global
+//! subscriber of its own accord: [`install_logging`] is a function the
+//! application calls from `main`, and a process that never calls it stays
+//! silent -- deliberately, because a library that grabs the global subscriber
+//! on import takes a decision that belongs to the binary. What the function
+//! removes is the twenty lines of boilerplate that decision used to cost, and
+//! the chance of getting the release format wrong.
+//! The framework re-exports `tracing` so downstream code targets the
+//! pinned version through Arcature. Nothing in this module is a global: a
+//! [`Metrics`] registry, a [`JsonLog`] sink and a `Telemetry` pipeline are
+//! all values the application holds and clones.
 //!
 //! The [`RequestId`] type is a validated, low-cardinality identifier echoed
 //! on every application response via the `x-request-id` header (wire-
-//! compatible, no `X-Arcature-*` prefix). The [`RequestIdLayer`] Tower
-//! layer resolves the id from the upstream header or generates one. The
-//! [`AccessLogLayer`] emits one structured access log line per request.
+//! compatible, no `X-Arcature-*` prefix). The [`RequestIdLayer`] Tower layer
+//! resolves the id from the upstream header or generates one. The
+//! [`AccessLogLayer`] emits one structured access log line per request, and
+//! [`TraceContextLayer`] joins the request to a W3C distributed trace.
+//!
+//! # What is never logged
+//!
+//! Telemetry is the most common way a secret leaves a process, so the list
+//! is written down here and enforced by [`redact::is_sensitive`], which the
+//! JSON layer consults for every field it is about to serialise. None of the
+//! following ever reaches a log line, a metric label, or a span attribute:
+//!
+//! - **Request and response bodies.** The access log records method, path,
+//!   status and duration; never the payload.
+//! - **SQL bind values.** A query's text may be recorded; the parameters
+//!   bound into it may not, because that is where the row data lives.
+//! - **Cache values.** Keys are loggable and are logged; values are not.
+//! - **Credentials of every kind** -- passwords, password hashes, API keys,
+//!   bearer tokens, OAuth access and refresh tokens, PKCE verifiers, CSRF
+//!   state, session identifiers, cookies, and `Authorization` headers.
+//! - **Email bodies and recipients' message content.** A send is recorded as
+//!   an event with a message id; the letter is not.
+//! - **Job payloads.** A job is recorded by name, queue and attempt count.
+//!
+//! Two mechanisms keep that honest. First, the framework's own layers record
+//! structured fields and never format a secret into a message string.
+//! Second, [`JsonLog`] redacts by field name on the way out, so a field an
+//! application adds is covered by the same rule without the application
+//! having to remember it. What no formatter can undo is a secret a caller
+//! has already interpolated into a message; the deny-list catches the field,
+//! not the sentence.
 
 mod access_log;
+pub mod init;
+pub mod json_log;
+pub mod metrics;
+#[cfg(feature = "otel")]
+pub mod otel;
+pub mod redact;
+pub mod trace_context;
 
 use std::fmt;
 use std::str::FromStr;
@@ -19,6 +62,16 @@ use std::str::FromStr;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 
 pub use access_log::{AccessLogLayer, AccessLogService};
+pub use init::{FILTER_ENV, install_logging};
+pub use json_log::{CaptureSink, JsonLog, LogSink, StderrSink};
+pub use metrics::{Metrics, MetricsLayer, MetricsService};
+#[cfg(feature = "otel")]
+pub use otel::{Telemetry, TelemetryBuilder};
+pub use redact::{REDACTED, is_sensitive};
+pub use trace_context::{
+    TRACEPARENT, TRACESTATE, TraceContext, TraceContextLayer, TraceContextService, TraceParent,
+    TraceState,
+};
 pub use tracing;
 
 // ---------------------------------------------------------------------------
@@ -149,12 +202,20 @@ impl std::error::Error for RequestIdError {}
 pub enum ObserveError {
     /// A response header could not be constructed.
     RequestHeader { reason: &'static str },
+    /// The log subscriber could not be installed.
+    Logging { reason: &'static str },
+    /// The OpenTelemetry pipeline could not be built or shut down.
+    #[cfg(feature = "otel")]
+    Telemetry { reason: &'static str },
 }
 
 impl fmt::Display for ObserveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RequestHeader { reason } => write!(f, "observe header error: {reason}"),
+            Self::Logging { reason } => write!(f, "observe logging error: {reason}"),
+            #[cfg(feature = "otel")]
+            Self::Telemetry { reason } => write!(f, "observe telemetry error: {reason}"),
         }
     }
 }
