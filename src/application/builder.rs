@@ -179,6 +179,8 @@ impl<S: RouterState> Application<S> {
             // Unset (production) leaves the layer a pass-through.
             #[cfg(feature = "dev-proxy")]
             dev_proxy_endpoint: crate::dev_proxy::config::endpoint_from_env(),
+            #[cfg(feature = "uag")]
+            uag_graph: None,
             pipeline: Pipeline::new(),
             _state: std::marker::PhantomData,
         }
@@ -260,6 +262,12 @@ pub struct ApplicationBuilder<S: RouterState = ()> {
     proxy: Option<crate::proxy::ProxyFn>,
     #[cfg(feature = "dev-proxy")]
     dev_proxy_endpoint: Option<crate::dev_proxy::endpoint::IpcEndpoint>,
+    // The application graph the dev-only UAG endpoint serves, if one was
+    // handed over. Kept as the graph rather than as a finished artifact
+    // because the artifact also needs the page contracts, and `.uag_endpoint`
+    // and `.page_contracts` can be called in either order.
+    #[cfg(feature = "uag")]
+    uag_graph: Option<crate::dx::application_graph::ApplicationGraph>,
     // The router-level layers, held in slots so their order is the documented
     // one rather than the order the builder methods were called in. See
     // [`crate::application::pipeline`].
