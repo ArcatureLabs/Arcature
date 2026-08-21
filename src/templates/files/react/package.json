@@ -1,0 +1,23 @@
+{
+  "name": "__PROJECT_NAME__",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "tsc --noEmit",
+    "dev": "node -e \"console.error('Use `arc dev`. Vite runs in middlewareMode over an IPC endpoint so this project has exactly one TCP port; `vite dev` would open a second one.'); process.exit(1)\""
+  },
+  "dependencies": {
+    "@inertiajs/react": "^3.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}
