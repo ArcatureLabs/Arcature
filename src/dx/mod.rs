@@ -111,6 +111,8 @@ pub use crate::events::ListenerBinding;
 pub use provider::Provider;
 #[cfg(feature = "dx")]
 pub use request_cache::RequestCacheDescriptor;
+#[cfg(feature = "dx")]
+pub use request_cache_store::{RequestCache, RequestCacheKey};
 pub use resolve::Resolve;
 pub use response::{Empty, Json, Page, page};
 pub use route_metadata::{RouteDescriptor, RouteMethod};
