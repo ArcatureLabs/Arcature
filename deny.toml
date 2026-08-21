@@ -1,0 +1,132 @@
+# cargo-deny configuration.
+#
+# Run with `cargo deny check` (or `just deny`). Written against the cargo-deny
+# 0.16+ schema: no `version = 2` keys, no `vulnerability`/`unmaintained`
+# severity strings, no `copyleft` bucket. Those were removed and a config that
+# still carries them is rejected.
+#
+# The policy is deliberately mild where a stricter setting would fail on the
+# day it lands and teach everyone to pass `--allow`. Duplicate versions warn,
+# they do not deny: a 500-crate graph that pulls one `windows-sys` twice is
+# not a defect worth blocking a pull request over. Everything that is actually
+# a decision -- which licences may enter the tree, whether a yanked crate may
+# be depended on, which registries and git hosts are reachable -- is denied.
+
+[graph]
+# Arcature targets the platforms CI builds and the release workflow ships.
+# Restricting the graph keeps a Windows-only or Android-only dependency out of
+# the licence and advisory report, where it would be noise.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+#
+# `all-features` is correct here and nowhere else. Everywhere that compiles,
+# `--all-features` is three SQL drivers at once and `src/database/mod.rs`
+# refuses it -- see `just drivers`. cargo-deny only reads `cargo metadata`, so
+# it never builds anything, and the widest possible graph is exactly what a
+# licence and advisory audit wants. Leave this true.
+all-features = true
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# A yanked crate is a crate its author withdrew. Depending on one is a defect
+# even when no advisory has been filed.
+yanked = "deny"
+# Advisories consciously accepted. Each entry needs the RUSTSEC id, one line
+# saying why it does not reach us, and the condition that would let us drop it.
+ignore = []
+
+[licenses]
+# Arcature is Apache-2.0. The allow-list is what an Apache-2.0 crate can carry
+# without changing the obligations of anyone who vendors it: the permissive
+# licences, plus the two data licences the TLS root store and the Unicode
+# tables arrive under.
+#
+# Adding a licence here is a real decision. If a new dependency needs one,
+# say in the pull request why the obligation is acceptable rather than
+# appending the identifier quietly.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    # `quoted_printable`, via `lettre`. Public-domain-equivalent: 0BSD is the
+    # ISC text with the attribution clause deleted, so it carries strictly
+    # fewer obligations than MIT, which is already allowed above.
+    "0BSD",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "BSL-1.0",
+    "CC0-1.0",
+    "Unlicense",
+    # ICU4X and `unicode-ident`. Data, not code, and the terms are permissive.
+    "Unicode-3.0",
+    # `webpki-roots` -- the Mozilla CA root store.
+    "CDLA-Permissive-2.0",
+]
+
+# Two entries used to sit above that nothing in the graph carries:
+# `Unicode-DFS-2016` (what `unicode-ident` shipped before it moved to
+# Unicode-3.0) and `MPL-2.0` (`webpki-roots` before 0.27, kept "in case a
+# transitive dependency pulls the old one"). cargo-deny reports each as
+# `license-not-encountered`, and it is right to: this list is meant to be the
+# set of obligations Arcature actually carries, and a pre-emptive allowance is
+# a decision with no subject that nobody will revisit. If either licence ever
+# does enter the tree, the check fails, someone reads the terms, and the entry
+# comes back with a reason attached. That is the whole point of the list.
+# A crate is only as clear as its licence text. Below this score, cargo-deny
+# treats a detected licence as undetermined and the check fails, which is the
+# behaviour we want: an ambiguous licence should be read by a person.
+confidence-threshold = 0.9
+
+# Per-crate exceptions go here rather than in `allow`, so a licence granted to
+# one dependency does not silently apply to the next one that wants it.
+exceptions = []
+
+# `ring` declares "Apache-2.0 AND ISC" and both halves are allowed above, so it
+# needs no clarification. If a future dependency ships a licence cargo-deny
+# cannot read, add a `[[licenses.clarify]]` block here with the file hash --
+# and read the file first. A clarify entry is an assertion about text nobody
+# else will re-check.
+
+[bans]
+# Duplicate versions warn. Ninety per cent of them are a transitive `windows-sys`
+# or `syn` that nobody in this repository chose, and denying them turns the
+# check into something contributors route around.
+multiple-versions = "warn"
+# A wildcard version is a decision not to have a policy. Deny it.
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+
+# Crates that must never enter the tree, with the reason stated. This list is
+# the enforcement half of `docs/decisions/0005-no-hidden-registry.md`: the
+# framework has no global registry, and the way that stops being true is
+# somebody adding a distributed-slice crate for convenience.
+deny = [
+    { crate = "inventory", reason = "no hidden registry: metadata is const wiring emitted by macros, not link-time collection. See docs/decisions/0005-no-hidden-registry.md." },
+    { crate = "linkme", reason = "same as `inventory`: distributed slices are a registry by another name." },
+    { crate = "ctor", reason = "life-before-main. Startup order becomes link order, and nothing in the framework is allowed to depend on that." },
+    { crate = "openssl-sys", reason = "the TLS story is rustls. A second TLS stack doubles the attack surface and the build requirements." },
+    { crate = "openssl", reason = "the TLS story is rustls." },
+]
+
+# Dependencies allowed to appear more than once, when the duplication is known
+# and the alternative is worse.
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# No git dependencies. A published crate cannot have one, and Arcature is
+# meant to be publishable from `main` at any commit.
+allow-git = []
