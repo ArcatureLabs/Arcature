@@ -22,7 +22,7 @@ use crate::application::resources::Resources;
 // certified runtime and so are gated on `macros`.
 #[cfg(feature = "macros")]
 use crate::application::{EngineError, EngineResult};
-use crate::routing::{RouterLayer, RouterState, Routes};
+use crate::routing::{RouteTable, RouterLayer, RouterState, Routes};
 use axum::Router;
 #[cfg(feature = "macros")]
 use std::net::SocketAddr;
@@ -681,17 +681,226 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
+    /// Turn the health endpoints on or off. On by default.
+    ///
+    /// They are `GET {prefix}`, `GET {prefix}/live` and `GET {prefix}/ready`
+    /// under [`health::DEFAULT_PREFIX`](crate::application::health::DEFAULT_PREFIX),
+    /// and they are merged *beside* the router rather than layered over it --
+    /// no session load, no maintenance `503`, no access-log line on a request
+    /// an orchestrator makes every few seconds.
+    ///
+    /// Turn them off only when something in front of the application already
+    /// owns those paths. An application with no probe endpoint is one an
+    /// orchestrator can only judge by whether the port accepts a connection,
+    /// which a wedged process does perfectly well.
+    #[must_use]
+    pub fn health(mut self, enabled: bool) -> Self {
+        self.health = enabled;
+        self
+    }
+
+    /// Mount the health endpoints somewhere other than `/up`.
+    ///
+    /// Implies `.health(true)`: asking for a prefix and getting no endpoints
+    /// would be the wrong reading of this call.
+    #[must_use]
+    pub fn health_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.health_prefix = prefix.into();
+        self.health = true;
+        self
+    }
+
+    /// Turn the named-route redirect resolver on or off. On by default.
+    ///
+    /// [`RedirectResponse`](crate::http::response::RedirectResponse) cannot
+    /// resolve `redirect().route("users.show", id)` on its own, because
+    /// `IntoResponse` sees neither the route table nor the session. It leaves
+    /// the unresolved builder in the response extensions and
+    /// [`RedirectMapper`](crate::routing::RedirectMapper) finishes it. Turning
+    /// this off is therefore not a way to make redirects cheaper; it is a way
+    /// to get a `400` for every named-route redirect and to drop every flash
+    /// message. It exists so an application that installs its own mapper --
+    /// against a table this builder does not know about -- can avoid running
+    /// two.
+    #[must_use]
+    pub fn redirect_mapper(mut self, enabled: bool) -> Self {
+        self.redirect_mapper = enabled;
+        self
+    }
+
+    /// Install the maintenance switch.
+    ///
+    /// Keep the [`Maintenance`](crate::http::Maintenance) handle: it is what
+    /// engages and disengages the window. The health prefix is exempted
+    /// automatically.
+    ///
+    /// ```no_run
+    /// use arcature::{Application, http::Maintenance};
+    ///
+    /// let maintenance = Maintenance::new();
+    /// let app = Application::<()>::new()
+    ///     .maintenance(maintenance.clone())
+    ///     .build();
+    /// // ... later, from an admin route or a signal handler:
+    /// maintenance.engage();
+    /// ```
+    #[must_use]
+    pub fn maintenance(mut self, maintenance: crate::http::Maintenance) -> Self {
+        self.pipeline.maintenance = Some(maintenance);
+        self
+    }
+
+    /// Install a rate limit across the whole application.
+    ///
+    /// Keep the handle if the same limit is also installed on a route or a
+    /// group: cloning a [`RateLimit`](crate::routing::RateLimit) shares the
+    /// buckets, so one value used in two places is one quota, not two.
+    ///
+    /// The limit sits inside the maintenance switch and outside the session,
+    /// which is to say a request answered by a maintenance `503` costs no
+    /// quota and a refused request never loads a session. The health
+    /// endpoints are merged outside every layer here, so a probe is never
+    /// throttled -- a rate-limited readiness check is a self-inflicted
+    /// outage.
+    ///
+    /// ```no_run
+    /// use arcature::{Application, routing::RateLimit};
+    ///
+    /// let app = Application::<()>::new()
+    ///     .rate_limit(RateLimit::per_minute(60))
+    ///     .build();
+    /// ```
+    #[must_use]
+    pub fn rate_limit(mut self, limit: crate::routing::RateLimit) -> Self {
+        self.pipeline.rate_limit = Some(limit);
+        self
+    }
+
+    /// Install error-response mapping.
+    ///
+    /// Gives an RFC 9457 [`Problem`](crate::api::Problem) body to the bodiless
+    /// errors axum and `tower-http` produce -- the bare `404`, `405`, `408`
+    /// and `413` that never reach a handler -- and redacts `text/plain` 5xx
+    /// bodies in release builds. See [`crate::http::ErrorMapping`] for the
+    /// exact rules and for `with(..)`, which replaces a response outright.
+    #[must_use]
+    pub fn error_mapping(mut self, mapping: crate::http::ErrorMapping) -> Self {
+        self.pipeline.error_mapping = Some(mapping);
+        self
+    }
+
+    /// Publish the page-contract artifact as a request extension.
+    ///
+    /// This is what the dev-only UAG endpoint and `arc typegen` read to learn
+    /// which props each page component receives. It is data, not behaviour:
+    /// installing it changes no response.
+    #[cfg(feature = "inertia")]
+    #[must_use]
+    pub fn page_contracts(
+        mut self,
+        artifact: impl Into<Arc<crate::inertia::contracts::ContractArtifact>>,
+    ) -> Self {
+        self.pipeline.page_contracts = Some(artifact.into());
+        self
+    }
+
+    /// Serve the application graph from `GET /_arcature/uag.json`.
+    ///
+    /// `arc dev` fetches this after every restart and rewrites
+    /// `resources/js/generated/`, which is how typed routes, page props and
+    /// form helpers stay in step with the Rust source without a `build.rs` or
+    /// a second binary on the edit path.
+    ///
+    /// The graph is combined with whatever
+    /// [`page_contracts`](Self::page_contracts) supplied -- an empty registry
+    /// if nothing did -- and serialized once, here.
+    ///
+    /// This is a development affordance and the registration is refused in a
+    /// build with `debug_assertions` off, with one line on stderr saying so.
+    /// [`crate::application::uag_endpoint`] documents the full gate and why it
+    /// has three independent parts.
+    ///
+    /// ```no_run
+    /// # use arcature::Application;
+    /// # use arcature::dx::application_graph::ApplicationGraph;
+    /// # fn graph() -> ApplicationGraph { ApplicationGraph::new_unchecked(Vec::new()) }
+    /// #[cfg(feature = "dev")]
+    /// let app = Application::<()>::new().uag_endpoint(graph()).build();
+    /// ```
+    #[cfg(feature = "uag")]
+    #[must_use]
+    pub fn uag_endpoint(mut self, graph: crate::dx::application_graph::ApplicationGraph) -> Self {
+        self.uag_graph = Some(graph);
+        self
+    }
+
     /// Build the application. For the stateless app (`S = ()`) this is the
     /// final step before `run()`. For a stateful app, the state is produced
     /// at run time from the started resources.
     #[must_use]
-    pub fn build(self) -> Application<S> {
+    pub fn build(mut self) -> Application<S> {
+        let health = self.health.then(|| {
+            crate::application::health::Health::new(&self.health_prefix, self.lifecycle.clone())
+        });
+        if let Some(health) = &health {
+            // Belt and braces. The health endpoints are already merged
+            // outside the maintenance layer, so this exemption changes
+            // nothing for them -- but an application that installs its own
+            // `Maintenance` through `.layer()` puts it somewhere this
+            // builder does not control, and the exemption is what keeps the
+            // probes answering there too.
+            if let Some(maintenance) = self.pipeline.maintenance.take() {
+                self.pipeline.maintenance = Some(maintenance.allow(health.prefix()));
+            }
+            self.pipeline.health = Some(health.clone());
+        }
+
+        // The UAG endpoint, if one was asked for and this build is allowed to
+        // serve it. Composed here rather than in `.uag_endpoint` so the page
+        // contracts are already known whichever order the two were called in.
+        #[cfg(feature = "uag")]
+        if let Some(graph) = self.uag_graph.take() {
+            if crate::application::uag_endpoint::UagEndpoint::allowed() {
+                let contracts = match &self.pipeline.page_contracts {
+                    Some(artifact) => crate::uag::build(&graph, artifact),
+                    None => crate::uag::build(
+                        &graph,
+                        &crate::inertia::contracts::PageContracts::new().artifact(),
+                    ),
+                };
+                self.pipeline.uag = Some(crate::application::uag_endpoint::UagEndpoint::new(
+                    &contracts,
+                ));
+            } else {
+                // Loud once, at boot, rather than silent: someone wired the
+                // endpoint and will otherwise spend the afternoon wondering
+                // why `arc typegen` cannot reach it.
+                eprintln!(
+                    "arcature: not serving {} -- the application graph is a                      development endpoint and this build has debug assertions off",
+                    crate::application::uag_endpoint::PATH
+                );
+            }
+        }
+
+        // The redirect mapper, from the table `.routes()` snapshotted. Built
+        // here rather than in `.routes()` so that a later `.merge_routes()`
+        // is included: the mapper holds a snapshot, and the snapshot has to
+        // be the final one.
+        if self.redirect_mapper {
+            self.pipeline.redirect_mapper = Some(crate::routing::RedirectMapper::new(
+                self.route_table.clone(),
+            ));
+        }
+
         Application {
             // The router-level pipeline is composed here, once, so that
             // `serve` and `run_with_state` cannot disagree about it.
             router: self.pipeline.apply(self.router),
             bind_addr: self.bind_addr,
             port: self.port,
+            app_config: self.app_config,
+            lifecycle: self.lifecycle,
+            health,
             #[cfg(feature = "database")]
             database_config: self.database_config,
             #[cfg(feature = "jobs")]
