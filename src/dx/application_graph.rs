@@ -64,9 +64,16 @@ impl std::error::Error for GraphError {}
 ///
 /// The graph is side-effect-free: constructing it does not bind HTTP,
 /// connect to PostgreSQL/Valkey/SMTP/S3, start workers, or run migrations.
-/// It is the foundation for `arc modules`, `arc check`, and `arc services`
-/// inspection.
-#[derive(Debug, Clone)]
+/// It is the foundation for the Unified Application Graph artifact and the
+/// validation `arc build` runs over it.
+///
+/// The graph serializes to `{"modules": [...]}` in declaration order, which
+/// is what `UagArtifact` carries and `arc typegen` reads back. Every
+/// descriptor field is a `&'static` slice, so the serialized form is a
+/// function of the source alone -- two builds of unchanged code produce
+/// byte-identical output, and a diff of the UAG is a diff of the
+/// application.
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ApplicationGraph {
     modules: Vec<ModuleDescriptor>,
 }
@@ -215,6 +222,28 @@ mod tests {
             schedules: &[],
             pages: &[],
         }
+    }
+
+    #[test]
+    fn a_graph_serializes_its_modules_in_declaration_order() {
+        let graph =
+            ApplicationGraph::new(vec![mod_desc("Zeta", &[]), mod_desc("Alpha", &["Zeta"])])
+                .unwrap();
+        let json = serde_json::to_string(&graph).expect("the graph is plain data");
+        assert!(
+            json.starts_with("{\"modules\":[{\"name\":\"Zeta\""),
+            "got: {json}"
+        );
+        assert!(json.contains("\"pages\":[]"), "got: {json}");
+    }
+
+    #[test]
+    fn serializing_the_same_graph_twice_yields_the_same_bytes() {
+        let graph = ApplicationGraph::new(vec![mod_desc("Accounts", &[])]).unwrap();
+        assert_eq!(
+            serde_json::to_string(&graph).unwrap(),
+            serde_json::to_string(&graph).unwrap()
+        );
     }
 
     #[test]
