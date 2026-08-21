@@ -327,12 +327,18 @@ percent-encoding = { version = "2.3", default-features = false, optional = true 
 
 # Observability.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"], optional = true }
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry"], optional = true }
+# `fmt` costs no extra crate -- it resolves to `registry` + `std`, both of
+# which were already on. `ansi` is left off (it would pull `nu-ansi-term`)
+# and `env-filter` too: the filter is `Targets`, which reads the same
+# `target=level` syntax without a regex engine. See `observe::init`.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "fmt"], optional = true }
 
-# OAuth (feature `oauth`). `oauth2` owns the protocol; `reqwest` is the
-# HTTP client it drives for the token exchange.
+# OAuth (feature `oauth`). `oauth2` owns the protocol and vendors the HTTP
+# client it drives for the token exchange, reachable as `oauth2::reqwest` --
+# so there is deliberately no direct `reqwest` dependency here. Adding one
+# would put a second major version of the same client in the graph that
+# nothing in `src/oauth/` ever reaches.
 oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest", "rustls-tls", "timing-resistant-secret-traits"], optional = true }
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "json"], optional = true }
 
 # OpenTelemetry (feature `otel`).
 opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"], optional = true }
