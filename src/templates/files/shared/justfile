@@ -1,0 +1,48 @@
+# `just` recipes for __PROJECT_NAME__. Run `just` with no arguments to list.
+
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
+default:
+    @just --list
+
+# Install everything a fresh checkout needs.
+setup:
+    npm install
+    arc key:generate
+    arc migrate
+
+# The one-port dev server: Vite over IPC, the app behind it, a single URL.
+dev:
+    arc dev
+
+# Type-check the Rust side without producing a binary. The fast inner loop.
+check:
+    cargo check --all-targets
+
+# Type-check the TypeScript side against the generated bindings.
+check-ts:
+    arc typegen
+    npx tsc --noEmit
+
+test:
+    cargo test
+
+lint:
+    cargo fmt --all -- --check
+    cargo clippy --all-targets -- -D warnings
+
+# A production build: hashed assets into public/build, then the binary.
+build:
+    npm run build
+    cargo build --release
+
+# Database.
+migrate:
+    arc migrate
+
+seed:
+    arc db:seed
+
+# Drops every table. The flag is the confirmation.
+fresh:
+    arc db:fresh --force

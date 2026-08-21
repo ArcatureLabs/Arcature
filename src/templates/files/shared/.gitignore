@@ -1,0 +1,30 @@
+# Rust build output.
+/target
+
+# Node.
+/node_modules
+
+# Built assets. Vite writes hashed output here; the manifest is rebuilt by
+# `just build`, so nothing under it belongs in the repository.
+/public/build
+
+# Generated TypeScript. `arc typegen` (and `arc dev`, after every restart)
+# rewrites this directory from the application graph. It is derived from the
+# Rust source, so committing it means two sources of truth for the same names.
+/resources/js/generated/
+
+# The dev harness's scratch directory: the Vite IPC bootstrap script, the
+# restart sentinel, the IPC endpoints themselves.
+/.arcature/
+
+# Secrets. `.env.example` is the committed one; `.env` holds the real values
+# and the APP_KEY that `arc key:generate` mints.
+.env
+
+# Runtime artefacts.
+/storage/uploads/*
+!/storage/uploads/.gitkeep
+/storage/logs/*
+!/storage/logs/.gitkeep
+/storage/framework/*
+!/storage/framework/.gitkeep
