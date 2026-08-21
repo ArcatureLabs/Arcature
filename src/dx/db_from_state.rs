@@ -23,16 +23,24 @@ use crate::database::Db;
 ///
 /// # Example
 ///
-/// ```ignore
-/// // The state IS Db (provided by Arcature):
+/// ```
+/// use arcature::{Db, DbFromState};
+///
+/// // The state IS `Db`: Arcature provides that impl, shown here for contrast.
 /// // impl DbFromState<Db> for Db { fn db_from_state(state: &Db) -> Db { state.clone() } }
 ///
-/// // The state wraps Db (application provides):
+/// // The state wraps `Db`: the application writes this.
 /// #[derive(Clone)]
-/// struct AppState { db: Db, cache: Cache }
-/// impl DbFromState<AppState> for Db {
-///     fn db_from_state(state: &AppState) -> Db { state.db.clone() }
+/// struct AppState {
+///     db: Db,
 /// }
+///
+/// impl DbFromState<AppState> for Db {
+///     fn db_from_state(state: &AppState) -> Db {
+///         state.db.clone()
+///     }
+/// }
+/// # fn main() {}
 /// ```
 pub trait DbFromState<S>: Send + Sync + 'static {
     /// Extract a `Db` handle from the state.

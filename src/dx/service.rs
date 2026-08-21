@@ -61,12 +61,30 @@ pub trait Service: DxComponent + Send + Sync + 'static {
 ///
 /// # Example
 ///
-/// ```ignore
-/// async fn show(link: Bound<Link>, svc: Inject<LinkService>) -> Result<Json<Link>> {
-///     let link = link.into_inner();
-///     let report = svc.recent_for(link.id);
-///     // ...
+/// ```
+/// use arcature::{Bound, Inject, Json, Result};
+///
+/// # #[allow(dead_code)]
+/// struct Link {
+///     id: i64,
 /// }
+///
+/// struct LinkService;
+///
+/// impl LinkService {
+///     fn recent_for(&self, _id: i64) -> Vec<String> {
+///         Vec::new()
+///     }
+/// }
+///
+/// async fn show(link: Bound<Link>, svc: Inject<LinkService>) -> Result<Json<Vec<String>>> {
+///     let link = link.into_inner();
+///     // `Inject<T>` is a newtype, not a smart pointer: it has no `Deref`, so
+///     // reach through `.0` (or `into_inner()`) to get at the service.
+///     let report = svc.0.recent_for(link.id);
+///     Ok(Json(report))
+/// }
+/// # fn main() {}
 /// ```
 ///
 /// `Inject<T>` works for any `T: Resolve<S>`, including built-in resources

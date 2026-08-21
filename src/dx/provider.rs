@@ -32,12 +32,25 @@
 //! method) -- the signature is provider-specific and may take `&Resources`,
 //! `&Db`, configuration values, or any other startup input:
 //!
-//! ```ignore
+//! ```
+//! use arcature::Db;
+//!
+//! struct StripeClient;
+//! struct StripeConfig;
+//!
+//! // The error type is the provider's own: `Provider::Error` is an associated
+//! // type precisely so that Arcature does not supply one.
+//! #[derive(Debug)]
+//! struct StripeError;
+//!
 //! impl StripeClient {
-//!     pub async fn init(db: &Db, config: &StripeConfig) -> Result<Self, ProviderError> {
-//!         // ...
+//!     pub async fn init(db: &Db, config: &StripeConfig) -> Result<Self, StripeError> {
+//!         // ... build the HTTP client, verify the key, warm what needs warming ...
+//! #         let _ = (db, config);
+//!         Ok(StripeClient)
 //!     }
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! The `Provider` trait carries `Error` (the typed init failure) and

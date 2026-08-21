@@ -18,11 +18,26 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```
+//! use arcature::{Bound, Json, Result};
+//!
+//! # #[allow(dead_code)]
+//! struct Link {
+//!     id: i64,
+//!     owner_id: i64,
+//! }
+//!
+//! #[derive(serde::Serialize)]
+//! struct LinkResource {
+//!     id: i64,
+//! }
+//!
 //! async fn show(link: Bound<Link>) -> Result<Json<LinkResource>> {
 //!     let link = link.into_inner();
-//!     // ... authorize access to link, then render ...
+//!     // ... authorize access to `link` here -- binding did not ...
+//!     Ok(Json(LinkResource { id: link.id }))
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! ## State extraction

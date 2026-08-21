@@ -33,17 +33,24 @@
 ///
 /// # Example
 ///
-/// ```ignore
-/// // Arcature provides this for Db (behind `dx` + `database`):
-/// impl<S> Resolve<S> for Db
-/// where Db: DbFromState<S>, S: Send + Sync
-/// {
-///     fn resolve(state: &S) -> Self { Db::db_from_state(state) }
+/// This is what `#[service]` generates for a
+/// `LinkService { db: Db, cache: Cache }`: one impl, generic over the state,
+/// bounded by nothing more than what its own fields need.
+///
+/// ```
+/// use arcature::{Cache, Db, Resolve};
+///
+/// # #[allow(dead_code)]
+/// struct LinkService {
+///     db: Db,
+///     cache: Cache,
 /// }
 ///
-/// // #[service] generates this for LinkService:
 /// impl<S> Resolve<S> for LinkService
-/// where Db: Resolve<S>, Cache: Resolve<S>, S: Send + Sync
+/// where
+///     Db: Resolve<S>,
+///     Cache: Resolve<S>,
+///     S: Send + Sync,
 /// {
 ///     fn resolve(state: &S) -> Self {
 ///         LinkService {
@@ -52,7 +59,13 @@
 ///         }
 ///     }
 /// }
+/// # fn main() {}
 /// ```
+///
+/// The impl for `Db` itself is not shown here because it cannot be written
+/// here: both `Resolve` and `Db` are foreign to every downstream crate, so the
+/// orphan rule reserves it for Arcature. It lives further down this module and
+/// delegates to [`DbFromState`](super::db_from_state::DbFromState).
 pub trait Resolve<S>: Send + Sync + 'static {
     /// Construct `Self` from application state `S`.
     fn resolve(state: &S) -> Self;

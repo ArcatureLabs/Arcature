@@ -25,12 +25,31 @@
 //! Registration stays explicit -- nothing scans the binary for commands --
 //! but it is one line per command, by type:
 //!
-//! ```ignore
-//! let commands = CommandRegistry::<AppState>::new()
-//!     .register_command::<PruneUsersCommand>()
-//!     .register_command::<ReindexCommand>();
+//! ```
+//! use arcature::{Command, CommandError, CommandFuture, CommandRegistry};
+//!
+//! struct AppState;
+//!
+//! // What `#[command("users:prune")]` generates: a zero-sized type whose
+//! // `run` resolves the function's parameters from state and calls it.
+//! struct PruneUsersCommand;
+//!
+//! impl Command<AppState> for PruneUsersCommand {
+//!     const NAME: &'static str = "users:prune";
+//!
+//!     fn run(_state: &AppState) -> CommandFuture {
+//!         Box::pin(async { Ok(()) })
+//!     }
+//! }
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), CommandError> {
+//! let state = AppState;
+//! let commands = CommandRegistry::<AppState>::new().register_command::<PruneUsersCommand>();
 //!
 //! commands.run("users:prune", &state).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! [`CommandRegistry::register`] remains for handlers that are not

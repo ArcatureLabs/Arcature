@@ -24,13 +24,23 @@
 //!
 //! For the common composite state, one line per resource it wants injected:
 //!
-//! ```ignore
+//! ```
+//! use arcature::dx::CacheFromState;
+//! use arcature::{Cache, Db};
+//!
+//! # #[allow(dead_code)]
 //! #[derive(Clone)]
-//! struct AppState { db: Db, cache: Cache }
+//! struct AppState {
+//!     db: Db,
+//!     cache: Cache,
+//! }
 //!
 //! impl CacheFromState<AppState> for Cache {
-//!     fn cache_from_state(state: &AppState) -> Cache { state.cache.clone() }
+//!     fn cache_from_state(state: &AppState) -> Cache {
+//!         state.cache.clone()
+//!     }
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! When the state *is* the handle (a single-resource application, or a

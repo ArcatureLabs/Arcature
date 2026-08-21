@@ -151,6 +151,22 @@ therefore its first.
 
 ### Fixed
 
+- **The examples in the documentation are compiled again.** 36 of the
+  crate's 49 doctests were tagged ```` ```ignore ````. That tag does not
+  mean "this example is illustrative"; it means rustdoc never compiles it,
+  so the example is free to drift away from the API it documents -- and
+  several had drifted far enough to be wrong. They are being un-ignored a
+  cluster at a time, and the ones that turned out not to compile are
+  corrected rather than re-tagged:
+  - **`src/dx/` -- the eight extension-point contracts.** All eight now
+    compile. Two were wrong: `Inject<T>` is a newtype with no `Deref`, so
+    the `Inject` example's `svc.recent_for(..)` never could have resolved
+    and now reaches through `.0`; and the `Resolve` example opened with an
+    `impl<S> Resolve<S> for Db` that no reader could have written, because
+    both halves are foreign and the orphan rule reserves it for Arcature --
+    the prose now says so and the example shows the `#[service]`-generated
+    impl, which a reader *can* write.
+
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no
   `LICENSE` file, because Cargo only picks one up from the package
