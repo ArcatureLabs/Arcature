@@ -75,9 +75,19 @@ impl ScriptBody {
     /// Written to be interpolated straight into a tag, which is what makes a
     /// nonce-aware root document readable:
     ///
-    /// ```ignore
-    /// let nonce = body.nonce_attribute();
-    /// format!("<body>{body}<script{nonce} src=\"/js/app.js\"></script></body>")
+    /// ```
+    /// use arcature::inertia::{RootDocument, ScriptBody};
+    ///
+    /// // A root document is any `Fn(ScriptBody) -> String`, so this function
+    /// // is one: the framework builds the body and hands it over, nonce and
+    /// // all, and the document decides what surrounds it.
+    /// fn document(body: ScriptBody) -> String {
+    ///     let nonce = body.nonce_attribute();
+    ///     format!("<body>{body}<script{nonce} src=\"/js/app.js\"></script></body>")
+    /// }
+    ///
+    /// # fn takes_root_document(_: impl RootDocument) {}
+    /// # takes_root_document(document as fn(ScriptBody) -> String);
     /// ```
     #[must_use]
     pub fn nonce_attribute(&self) -> String {
@@ -257,12 +267,16 @@ pub fn default_root_document(title: &str) -> impl RootDocument + use<> {
 /// they carry that request's Content-Security-Policy nonce -- the URLs inside
 /// them were settled at startup.
 ///
-/// ```ignore
+/// ```no_run
+/// use arcature::assets::{Assets, AssetsConfig};
+/// use arcature::inertia::{InertiaConfig, vite_root_document};
+///
 /// let assets = Assets::detect(&AssetsConfig::new())?;
 /// let config = InertiaConfig::new(
 ///     env!("CARGO_PKG_VERSION"),
 ///     vite_root_document("Acme", &assets, "resources/js/app.tsx"),
 /// )?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 ///
 /// [`Assets`]: crate::assets::Assets

@@ -200,6 +200,21 @@ therefore its first.
     `Inertia::render` rather than the `inertia!()` shorthand, which does not
     compile from any call site (see the `inertia` bullet). `Model`'s example
     filtered on `UserColumn::Role` over a struct that has no `role` field.
+  - **`inertia` -- the module example, the root document and the props
+    schema.** Four of the six now compile. The two that do not are the
+    `inertia!()` examples, and they stay `ignore` because the macro they
+    show does not compile from *any* call site: its expansion names
+    `inertia` without taking it as a macro argument, so `macro_rules`
+    mixed-site hygiene resolves that identifier at the definition site,
+    finds the `arcature::inertia` module, and every call fails with
+    `error[E0423]: expected value, found module 'inertia'`. Both blocks now
+    say so inline, and the macro has a "Known limitation" section pointing
+    at `Inertia::render`, which is the call the expansion was reaching for.
+    Of the rest: the module example dropped its `?`, and the
+    `ScriptBody::nonce_attribute` example was a floating `format!` with no
+    `ScriptBody` in reach -- a downstream crate cannot construct one, so it
+    is now shown the way it is actually met, inside a root-document
+    function.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

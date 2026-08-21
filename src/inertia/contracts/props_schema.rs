@@ -13,11 +13,31 @@ use super::prop_schema::PropSchema;
 /// Built with a chain of `required`/`optional`/`nested*` calls, normally
 /// inside a `#[page]` or `#[resource]` macro expansion:
 ///
-/// ```ignore
-/// PropsSchema::new()
+/// ```
+/// use arcature::inertia::{ClientData, ContractType, PropsSchema};
+///
+/// #[derive(serde::Serialize)]
+/// struct TagResource {
+///     label: String,
+/// }
+///
+/// // Nesting demands `ClientData`, not merely `Serialize`: that bound is the
+/// // compile-time edge of the Client Exposure Firewall, and `#[resource]`
+/// // writes this impl for you.
+/// impl ClientData for TagResource {
+///     fn exposure_schema() -> PropsSchema {
+///         PropsSchema::new().required("label", ContractType::string())
+///     }
+/// }
+///
+/// let schema = PropsSchema::new()
 ///     .required("title", ContractType::string())
 ///     .optional("description", ContractType::string())
-///     .nested_array::<TagResource>("tags")
+///     .nested_array::<TagResource>("tags");
+///
+/// // Ordered by name, not by declaration order.
+/// let names: Vec<&str> = schema.fields().keys().map(String::as_str).collect();
+/// assert_eq!(names, ["description", "tags", "title"]);
 /// ```
 ///
 /// Props are stored in a `BTreeMap`, so the schema and every artifact

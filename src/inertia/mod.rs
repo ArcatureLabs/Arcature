@@ -9,21 +9,29 @@
 //! initial HTML page (with the embedded page object) on the first visit and
 //! the Inertia JSON page object on subsequent visits.
 //!
-//! ```ignore
+//! ```
 //! use arcature::prelude::*;
 //!
 //! pub async fn index(inertia: Inertia) -> Result<Response> {
-//!     inertia.render("users/index", serde_json::json!({ "users": [] })).await
+//!     Ok(inertia
+//!         .render("users/index", arcature::serde_json::json!({ "users": [] }))
+//!         .await?)
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! Or with the `inertia!()` macro for the directive's target syntax:
 //!
 //! ```ignore
+//! // Ignored on purpose: this shorthand does not compile from any call site
+//! // today. See the "Known limitation" on `inertia!()` for why.
 //! pub async fn index(inertia: Inertia) -> Result<Response> {
 //!     inertia!("users/index", { users })
 //! }
 //! ```
+//!
+//! Until that is fixed, call [`Inertia::render`](Inertia::render) directly, as
+//! the first example does.
 
 pub mod config;
 pub mod contracts;
@@ -69,11 +77,26 @@ pub use request::{InertiaRequest, MergeIntent, PartialSelection};
 /// object.
 ///
 /// ```ignore
+/// // Ignored on purpose: see the known limitation below.
 /// pub async fn index(inertia: Inertia, db: Db) -> Result<Response> {
-///     let users = User::all(&db).await?;
+///     let users = User::query(&db).all().await?;
 ///     inertia!("users/index", { users })
 /// }
 /// ```
+///
+/// # Known limitation
+///
+/// The example above is tagged `ignore` because it does not compile, and
+/// neither does any other call of this macro. The expansion names `inertia`
+/// without ever receiving it as a macro argument, so `macro_rules`
+/// mixed-site hygiene resolves that identifier at the macro's *definition*
+/// site rather than at the call site. What it finds there is the
+/// [`crate::inertia`] module, not the caller's handler parameter, and every
+/// call fails with `error[E0423]: expected value, found module 'inertia'`.
+///
+/// Until the macro takes the extractor explicitly, call
+/// [`Inertia::render`](crate::inertia::Inertia::render) directly; it is the
+/// same call the expansion was reaching for.
 #[macro_export]
 macro_rules! inertia {
     ($component:expr, { $($name:ident),* $(,)? }) => {
