@@ -78,6 +78,17 @@ name = "uag"
 path = "src/bin/uag.rs"
 required-features = ["uag"]
 
+# This project is its own workspace root, even when it is generated inside
+# somebody else's.
+#
+# Without this table, cargo walks up the directory tree, finds the nearest
+# manifest carrying a `[workspace]`, and refuses to build unless that
+# workspace lists this package as a member. It also means the profiles below
+# would be ignored: cargo reads `[profile.*]` from the workspace root only, so
+# an app that ends up as a non-root member silently loses its dev-loop
+# settings and nothing says so.
+[workspace]
+
 # --- The dev loop ----------------------------------------------------------
 #
 # Time from Ctrl+S to a result in the browser is what these settings buy. Full
