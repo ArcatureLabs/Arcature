@@ -52,209 +52,422 @@ async fn index() -> Result<Response> {
 }
 ```
 
-## What Arcature is
+`.build()` turns the `ApplicationBuilder` into an `Application`; `run()` lives
+on the latter. `run()` returns `EngineResult<()>` -- engine failures (a bound
+port, a database that will not connect) are a different kind of failure from a
+handler's, and deliberately do not share an error type with `Result<Response>`.
 
-Arcature integrates proven wheels (Axum, Tower, Tokio, SeaORM, SQLx, Inertia.js,
-OpenDAL, lettre, tracing) and owns the developer experience: the application
-lifecycle, conventions, integration, and a coherent vocabulary. The raw Axum,
-Tower, SeaORM, and SQLx escape hatches stay available for when the framework's
-opinions run out.
+To scaffold a whole Laravel-shaped project instead:
+
+```sh
+cargo install --git https://github.com/ArcatureLabs/Arcature arcature --features cli
+arc new my-app
+cd my-app
+cargo run
+```
+
+## What Arcature is
 
 One package. One release unit. One version. Features exist only to reduce
 compile surface, never to turn the framework into a self-assembly kit. The
-default feature set is batteries-included: it compiles the canonical generated
-application with no extra flags.
+default feature set compiles the generated application with no extra flags.
+
+`#![forbid(unsafe_code)]` applies to the whole crate.
+
+Two decisions shape everything else:
+
+**No hidden registry.** No `inventory`, no `linkme`, no `TypeId` map, no
+thread-locals. All framework metadata is `&'static` const data emitted by
+macros and named by code you wrote, so `cargo expand` and "go to definition"
+are enough to find out what is wired up.
+
+**No npm package.** Arcature publishes no JavaScript. Applications use the
+official `@inertiajs/*` adapters, and everything the Rust side hands the
+browser travels as generated `.ts` files in the application's own tree rather
+than through a framework runtime behind a virtual module.
+
+## The request pipeline
+
+Layer order is a contract, written down in `src/application/pipeline.rs` and
+asserted by the test suite. `.inertia()` before `.csrf()` and `.csrf()` before
+`.inertia()` produce the same pipeline. Outermost first:
+
+```text
+ 1 DevProxy      7 CORS          13 Timeout       19 PageContracts
+ 2 Proxy         8 RequestId     14 Maintenance   20 RedirectMapper
+ 3 Health        9 AccessLog     15 RateLimit     21 user .layer()s
+ 4 UagEndpoint  10 CatchPanic    16 Session       22 Router
+ 5 Compression  11 ErrorMapping  17 CSRF          23 StaticFiles
+ 6 SecurityHdrs 12 BodyLimit     18 Inertia
+```
+
+Stages 5 through 21 are off unless asked for, with one exception: stage 20 is
+on unless refused, because `redirect().route(..)` silently doing nothing is a
+worse default than one extension lookup per response. The reasoning for each
+position is in the module documentation and in
+[ADR 0004](docs/decisions/0004-layer-order-contract.md).
 
 ## Architecture
 
-| Subsystem | Dependency | Feature |
+| Subsystem | Built on | Feature |
 |---|---|---|
-| HTTP routing | Axum 0.8, Tower 0.5 | always-on |
-| Async runtime | Tokio 1.53 | `macros` |
-| Native Inertia.js v3 | Inertia.js protocol | `inertia` |
-| Database | SeaORM 2.0, SQLx 0.9 (one PgPool) | `database` |
-| Auth | argon2, tower-sessions, secrecy | `auth` |
+| HTTP routing | Axum 0.8, Tower 0.5, tower-http 0.6 | always on |
+| Async runtime, `#[arcature::main]` | Tokio 1.53 | `macros` |
+| The DSL and its runtime contracts | -- | `dx` |
+| Native Inertia.js v3 (server half) | the protocol, implemented directly | `inertia` |
+| Database | SeaORM 2.0 + SQLx 0.9 over one pool | `database` + one `db-*` |
+| Auth, sessions, CSRF, policies | argon2, tower-sessions, secrecy | `auth` |
 | Validation | validator 0.21 | `validation` |
 | Cache | Redis/Valkey (redis 1.5) | `cache` |
-| Storage | OpenDAL 0.58 (fs, S3) | `storage-fs`, `storage-s3` |
+| Storage | OpenDAL 0.58 | `storage-fs`, `storage-s3` |
 | Mail | lettre 0.11 (rustls) | `mail` |
-| Jobs | PostgreSQL SKIP LOCKED queue | `jobs` |
-| Events | In-process typed dispatch | `events` |
+| Jobs | Database-backed queue, one claim strategy per dialect | `jobs` |
+| Events | in-process dispatch | `events` |
 | Realtime | WebSocket + SSE over axum | `realtime` |
-| Observability | tracing, request IDs | `observe` |
-| Static pages | Static file serving | `pages` |
-| CLI | `arc new`, `arc version` | `cli` |
+| Problem Details (RFC 9457), OpenAPI | -- | `api` |
+| Observability | tracing, request ids, JSON logs, Prometheus text, W3C trace context | `observe` |
+| Static pages and assets | tower-http `fs` | `pages` |
+| The `arc` CLI and templates | clap 4 | `cli`, `templates` |
+
+Operator opt-ins stay off by default: `otel` (OpenTelemetry over OTLP),
+`api-docs` (an interactive API reference is a map of the attack surface),
+`oauth`, `storage-s3`, `dev-proxy`, `uag`, `test-kit`.
+
+Database drivers are separate features so a SQLite user does not compile the
+PostgreSQL protocol. `database` on its own brings the crates but no driver;
+exactly one of `db-postgres` / `db-sqlite` / `db-mysql` belongs in a build.
+`default` picks `db-postgres`.
 
 ### Versioning
 
-Arcature uses YBF (Year.Breaking.Fix): `YEAR.BREAKING.FIX`.
+Arcature follows semantic versioning. Current version `0.1.0`, readable as
+`arcature::FRAMEWORK_VERSION`.
 
-- The `YEAR` increments with the calendar year.
-- The `BREAKING` generation increments on a breaking change.
-- The `FIX` increments on a compatible fix.
+Being in `0.x` shifts SemVer one field left, and Cargo agrees: the breaking
+bump is the minor (`0.1` -> `0.2`), the compatible one is the patch. So
+`arcature = "0.1"` takes patches and stops at `0.2`, and no exact pin is
+needed to stay safe. The public API is not frozen -- that is what `0.x` is
+for -- so read the changelog before a minor bump.
 
-Current version: `2026.3.0`. MSRV: `1.97.1`. License: `Apache-2.0`.
+## A tour
 
-## Developer experience
-
-### Models
+### Routes
 
 ```rust
 use arcature::prelude::*;
 
-#[model(table = "users")]
-pub struct User {
-    #[sea_orm(primary_key)]
-    pub id: i32,
-    pub email: String,
-    pub name: String,
+pub fn routes() -> Routes<AppState> {
+    Routes::new([
+        Route::get("/", index).name("home"),
+        Route::get("/links/{id}", show).name("links.show"),
+        Route::post("/links", store).name("links.store"),
+    ])
 }
-
-// Query facade: User::query(&db).where_eq(...).latest().paginate(20)
-let users = User::query(&db).all().await?;
 ```
+
+Named routes generate URLs through `Routes::url_for("links.show", &["7"])`,
+which returns `Err(Error::NotFound(..))` for a name that is not in the table.
+Paths use Axum 0.8 syntax (`{id}`, not `:id`).
 
 ### Requests with validation
 
 ```rust
-#[request]
-pub struct StoreUserRequest {
-    #[validate(required, email)]
-    pub email: String,
+use arcature::prelude::*;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[arcature::request]
+pub struct StoreLinkRequest {
+    #[validate(url)]
+    pub url: String,
     #[validate(length(min = 1, max = 120))]
-    pub name: String,
+    pub title: String,
 }
 
-pub async fn store(input: Validated<StoreUserRequest>) -> Result<Response> {
-    let req = input.into_inner();
-    // ...
+pub async fn store(input: Validated<StoreLinkRequest>) -> Result<Response> {
+    let request = input.into_inner();
+    Ok(json(&request.title))
 }
 ```
+
+You write the `Deserialize` derive yourself; `#[arcature::request]` adds the
+`Validate` derive and the marker trait, and must come after the derives. The
+attribute on each field is `#[validate(...)]` -- validator's, not a
+framework-specific one. A failure is a `422` with an RFC 9457 problem document
+carrying an `errors` extension.
 
 ### Controllers
 
 ```rust
-#[controller]
-impl UsersController {
-    pub async fn index(db: Db) -> Result<Response> {
-        let users = User::query(&db).all().await?;
-        Ok(json(StatusCode::OK, &users))
-    }
+use arcature::database::QueryModel;
+use arcature::prelude::*;
 
-    pub async fn show(id: ValidatedPath<i32>, db: Db) -> Result<Response> {
-        let user = User::find_by_pk(&db, *id).await?;
-        Ok(json(StatusCode::OK, &user))
+pub struct LinksController;
+
+#[arcature::controller]
+impl LinksController {
+    pub async fn index(State(state): State<AppState>) -> Result<Response> {
+        let db = state.db.as_ref().ok_or_else(|| not_found("no database"))?;
+        let links = link::Entity::query(db).latest().limit(20).all().await?;
+        Ok(json(&links))
     }
 }
 ```
+
+Every method must be `pub`, `async`, take no `self`, and declare a return
+type; the macro rejects anything else with `error[ARC-M004]`. `json` takes one
+argument -- the value -- and always answers `200`. Use `text(status, body)`
+when the status matters.
+
+`Db` is not an Axum extractor. It comes out of your state, which is why the
+example above reaches through `State<AppState>`.
 
 ### Inertia pages
 
 ```rust
-pub async fn index(db: Db) -> Result<Response> {
-    let users = User::query(&db).all().await?;
-    inertia!("users/index", { users })
+pub async fn index(inertia: Inertia) -> Result<Response> {
+    let links: Vec<LinkResource> = Vec::new();
+    inertia!("links/index", { links })
 }
 ```
+
+The `inertia!` macro requires a binding literally named `inertia` in scope.
+The Client Exposure Firewall makes browser exposure opt-in: a type reaches the
+browser only by being a `ClientData`, which `#[page]` and `#[resource]`
+generate. Nesting a non-`ClientData` type inside one fails to compile.
 
 ### Auth
 
 ```rust
+use arcature::prelude::*;
+
 pub async fn login(
     auth: AuthManager<User>,
     input: Validated<LoginRequest>,
 ) -> Result<Response> {
-    let req = input.into_inner();
-    let user = User::find_by_email(&auth.db(), &req.email).await?;
-    auth.login(user).await?;
-    Ok(redirect("/dashboard"))
+    let request = input.into_inner();
+    let user = find_user(&request.email).await?;
+    auth.login(&user).await?;
+    Ok(redirect().to("/dashboard").into_response())
 }
 
-pub async fn dashboard(current: Current<User>) -> Result<Response> {
-    inertia!("dashboard", { current })
+pub async fn dashboard(Auth(user): Auth<User>) -> Result<Response> {
+    Ok(json(&user.email))
 }
 ```
+
+`login` takes the user by reference and rotates the session id before binding
+it -- session-fixation defence that is mandatory rather than opt-in. `Auth<U>`
+is the extractor for the current user (`OptionalAuth<U>` when absent is fine);
+loading the user from its id is your `UserLoader` impl, so the framework never
+guesses how your users are stored.
+
+Authorization is a separate step: `auth.authorize::<Link, LinkPolicy>("update", &link)?`.
+Both type parameters are required.
 
 ### Jobs
 
 ```rust
-#[derive(Job, Serialize, Deserialize)]
+use arcature::Job;
+use arcature::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Job)]
 #[job(attempts = 5)]
 pub struct SendWelcomeEmail {
     pub user_id: i64,
 }
 
-// Enqueue:
+// Enqueue.
 jobs.enqueue(&JobRequest::new(&SendWelcomeEmail::JOB, &payload)?).await?;
 
-// Register the handler:
+// Register the handler. `add` takes `&mut self`.
+let mut registry = Registry::new();
 registry.add(&SendWelcomeEmail::JOB, |job: SendWelcomeEmail| async move {
-    // send the email...
     Ok(())
 })?;
 ```
 
+The derive is `arcature::Job`, imported explicitly: the prelude cannot glob it
+in, because the derive and the `Job` trait share a name in the type namespace.
+
+The queue runs over the pool the application already has -- no broker to run.
+Delivery is at-least-once, and each claim carries a UUID fencing token so a
+worker whose lease expired cannot complete a job another worker has since
+taken.
+
+Claiming a job without two workers taking the same one is the part no dialect
+does the same way, so `src/jobs/dialect/` has one module each. PostgreSQL
+claims with `UPDATE .. RETURNING` over `FOR UPDATE SKIP LOCKED`; MySQL 8 has
+`SKIP LOCKED` but no `RETURNING`, so it picks then marks; SQLite has neither
+and serialises on `BEGIN IMMEDIATE`. The three are not pretending to be the
+same implementation, and SQLite's is a single-writer design by construction --
+fine for one process, not a fleet.
+
 ### Events
 
 ```rust
-#[derive(Event, Serialize, Deserialize)]
+use arcature::Event;
+use arcature::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Event)]
 pub struct UserRegistered {
     pub user_id: i64,
     pub email: String,
 }
 
 let dispatcher = Dispatcher::new()
-    .register(|event: UserRegistered| async move {
-        // send welcome email...
-        Ok(())
-    });
+    .register(|event: UserRegistered| async move { Ok(()) });
 
-dispatcher.dispatch(&UserRegistered { user_id: 1, email: "a@b.com".into() }).await?;
+dispatcher
+    .dispatch(&UserRegistered { user_id: 1, email: "a@b.com".into() })
+    .await?;
 ```
+
+In-process and not durable. Events cross the listener boundary as
+`serde_json::Value` rather than through a `TypeId` map, which is what keeps
+the no-hidden-registry rule intact; the cost is a serialise/deserialise round
+trip per listener.
 
 ### Cache
 
+`Cache` is a value you hold, not a namespace of static functions:
+
 ```rust
-let users = Cache::remember(&cache, "users:all", Duration::from_secs(300), || async {
-    User::query(&db).all().await
-}).await?;
+use std::time::Duration;
+
+let users = cache
+    .remember("users:all", Duration::from_secs(300), || async {
+        load_users().await
+    })
+    .await?;
 ```
+
+A miss is not an error, but a backend failure is -- and it does not run the
+loader. There is no silent fail-open. The loader's error type only has to be
+`Into<CacheError>`.
 
 ### Storage
 
+`disk` is an instance method on a connected `Storage`, and every data-path
+method takes a validated `StoragePath`:
+
 ```rust
-Storage::disk("s3").put("avatars/1.png", &bytes).await?;
-let data = Storage::disk("local").get("avatars/1.png").await?;
+use arcature::prelude::*;
+
+let storage = Storage::connect(StorageConfig::fs("storage/app")?).await?;
+let path = StoragePath::new("avatars/1.png")?;
+
+storage.disk("default").put(&path, b"...").await?;
+let data = storage.disk("default").get(&path).await?;
 ```
+
+`StoragePath::new` rejects traversal, absolute paths and empty segments, so a
+user-supplied filename cannot escape the disk root. `disk(name)` panics for a
+name that was never registered -- a typo is a bug, not a runtime branch; use
+`try_disk` when the name is genuinely dynamic.
 
 ### Mail
 
+`Mail` is also a value: a `Mailer` plus a `From` address.
+
 ```rust
-let email = Email::new()
-    .from("noreply@example.com")?
-    .to("user@example.com")?
-    .subject("Welcome")?
-    .html("<h1>Welcome!</h1>")?;
+use arcature::mail::lettre::message::Message;
+use arcature::mail::{Email, EmailError, Mailable};
+use arcature::prelude::*;
 
-Mail::to("user@example.com").send(&mailer, email).await?;
+pub struct WelcomeEmail;
+
+impl Mailable for WelcomeEmail {
+    fn build(&self, email: Email) -> Result<Message, EmailError> {
+        email.subject("Welcome").html("<h1>Welcome</h1>")
+    }
+}
+
+let mail = Mail::from_str(mailer, "noreply@example.com")?;
+mail.to("user@example.com").send(&WelcomeEmail).await?;
 ```
 
-## Features
+`Mail::send` hands your `Mailable` an `Email` builder with `From` and `To`
+already set. On the builder, only the body terminators -- `plain`, `html`,
+`alternative`, `plain_with_attachments` and `alternative_with_attachments` --
+return a `Result`; everything before them is infallible. SMTP credentials have a
+`Debug` that prints the type name and no `Display` at all, so they cannot be
+logged by accident.
 
-The default features are batteries-included:
+## The `arc` CLI
 
-```toml
-[dependencies]
-arcature = "2026.3.0"
+| Command | Does |
+|---|---|
+| `arc new <name>` | Scaffold an application (`--stack`, `--db`, `--dest`). |
+| `arc serve` | Run the application (`--bind`, `--port`). |
+| `arc migrate` | Run pending migrations. |
+| `arc schedule` | Run the scheduler. |
+| `arc make:<kind> <name>` | Generate one artifact. 16 kinds: controller, model, migration, request, resource, policy, service, job, event, listener, middleware, command, page, test, factory, seeder. |
+| `arc key:generate` | Generate the session key. |
+| `arc storage:link` | Link `public/storage` to the local disk. |
+| `arc db:seed`, `db:fresh`, `db:reset` | Database lifecycle. |
+| `arc queue work\|drain\|stats` | Drive the job queue. |
+| `arc doctor` | Check the environment. |
+| `arc version` | Print the version. |
+
+`arc dev`, `arc typegen` and `arc build` parse and report that they are not
+wired yet. They are declared rather than hidden so `arc --help` shows the real
+surface and a typo suggests the right name.
+
+## Documentation
+
+The guide lives in [`docs/`](docs/) and builds with mdBook:
+
+```sh
+cargo install mdbook
+mdbook serve docs
 ```
 
-To reduce compile surface, disable default features and opt in:
+Chapters: getting started, routing, controllers, validation, Inertia,
+database, cache, storage, auth, jobs, events, mail, testing, deployment,
+upgrading.
 
-```toml
-[dependencies]
-arcature = { version = "2026.3.0", default-features = false, features = ["macros", "inertia", "database"] }
+The decisions that are surprising enough to need a written record are in
+[`docs/decisions/`](docs/decisions/), each one page, each stating the decision,
+the context, and the cost paid:
+
+- [No npm package](docs/decisions/0001-no-npm-package.md)
+- [The CSRF cookie is `XSRF-TOKEN`, not `__Host-csrf`](docs/decisions/0002-xsrf-token-cookie.md)
+- [Exactly one TCP port, in development too](docs/decisions/0003-one-tcp-port.md)
+- [Layer order is a written contract](docs/decisions/0004-layer-order-contract.md)
+- [There is no hidden registry](docs/decisions/0005-no-hidden-registry.md)
+
+## What is not built yet
+
+Nothing on this list. Every surface the guide documents is wired to something
+that reads it; where a surface is narrower than its name suggests, the
+narrowing is written into its own documentation rather than tracked here.
+
+The nearest thing to an exception is `AppConfig`: `port` is consumed, and
+`name`, `url` and `env` are carried and readable but read by no framework
+code -- no framework surface builds an absolute URL yet, and `env` is barred
+by design from gating behaviour. That is stated on the type, and in
+[the deployment chapter](docs/src/deployment.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the build, test and lint gates, and
+[SECURITY.md](SECURITY.md) for reporting a vulnerability privately. Changes are
+recorded in [CHANGELOG.md](CHANGELOG.md).
+
+The gates in one line each:
+
+```sh
+just check    # cargo check --all-targets
+just fmt      # cargo fmt --all
+just lint     # fmt --check, then clippy --all-targets -D warnings
+just test     # cargo test
+just features # the cargo-hack feature matrix CI runs
+just docs     # cargo doc --no-deps --features fullstack
+just ci       # everything CI runs, in CI's order
 ```
 
 ## License
 
-Apache-2.0
+Apache-2.0. See [LICENSE](LICENSE).
