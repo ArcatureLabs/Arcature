@@ -2,67 +2,152 @@
 //!
 //! One responsibility: decide whether an incoming request should be forwarded
 //! to the Vite IPC server or handed to the application router. The decision is
-//! based on the request path and headers — never on runtime state (no env
-//! read, no global). The [`crate::dev_proxy::service`] calls
-//! [`is_vite_request`] to make the routing choice.
+//! a pure function of the request path, the request headers, and a
+//! [`ViteRoutes`] table resolved once at startup -- never of runtime state (no
+//! env read per request, no global). [`crate::dev_proxy::service`] calls
+//! [`ViteRoutes::matches_request`] to make the routing choice.
 //!
 //! # What is a "Vite request"?
 //!
-//! Vite's dev middleware serves three categories of requests that the
+//! Vite's dev middleware serves four categories of request that the
 //! application router has no route for:
 //!
-//! 1. **Internal endpoints** — `/@vite/client`, `/@react-refresh`, `/@fs/...`,
-//!    `/@id/...`. All begin with `/@`.
-//! 2. **Source modules** — `/src/app.tsx`, `/src/...`. Vite transforms these
-//!    on the fly.
-//! 3. **Optimized dependencies** — `/node_modules/.vite/...`.
-//! 4. **HMR WebSocket** — a `Connection: upgrade` request whose
+//! 1. **Internal endpoints** -- `/@vite/client`, `/@react-refresh`,
+//!    `/@fs/...`, `/@id/...`. All begin with `/@`.
+//! 2. **Optimized dependencies** -- `/node_modules/.vite/...`.
+//! 3. **Source modules** -- whatever lives under the application's asset
+//!    root. This one is *not* fixed, which is the whole reason
+//!    [`ViteRoutes`] exists (see below).
+//! 4. **HMR WebSocket** -- a `Connection: upgrade` request whose
 //!    `Sec-WebSocket-Protocol` is `vite-hmr` (or `vite-ping`). The HMR client
 //!    connects to the same origin as the page; the dev proxy tunnels the
 //!    upgrade to Vite over IPC.
 //!
 //! Everything else (`/`, `/api/...`, application routes) goes to the
-//! application router. This keeps the dev proxy transparent: the application
-//! never sees Vite requests, and Vite never sees application routes.
+//! application router.
+//!
+//! # Why the source-module prefix is configuration, not a constant
+//!
+//! An earlier version hard-coded `/src/`. Arcature's own templates put their
+//! entry points under `resources/js/`, so every `/resources/js/app.tsx`
+//! request missed the prefix and fell through to the application router,
+//! which 404s -- the first page of a fresh `arc new` app was blank. A
+//! constant cannot know where an application keeps its assets, so the roots
+//! come from configuration, defaulting to the two conventions that cover
+//! nearly everything ([`ViteRoutes::DEFAULT_ASSET_ROOTS`]).
+//!
+//! Configuration alone would still be a trap -- a project with an unusual
+//! layout would hit exactly the same blank page, just later. So the proxy
+//! also has a second chance: [`crate::dev_proxy::service`] retries a
+//! bodyless request through Vite when the application answers `404`. That is
+//! the AdonisJS arrangement, where Vite's middleware sits behind the router
+//! rather than in front of it. With the fallthrough in place a wrong prefix
+//! costs one extra round trip in development instead of breaking the app.
 //!
 //! # Security
 //!
-//! The detection is a pure function of the request path and headers — both
+//! The detection is a pure function of the request path and headers -- both
 //! attacker-controlled. A request that *looks* like a Vite request is
 //! forwarded to the IPC server; Vite's middleware handles it. The IPC server
 //! is Vite (trusted, dev-only, process-private); it is not an open redirect.
 //! See the AP2.1-3 security review.
 
+use std::sync::Arc;
+
 use crate::axum::body::Body;
 use crate::axum::extract::Request;
 
-/// Decide whether `req` should be forwarded to the Vite IPC server.
+/// The paths this dev proxy considers Vite's.
 ///
-/// Pure and allocation-free. Called once per request by the dev proxy
-/// service; the result determines whether the request is forwarded or
-/// delegated to the inner application pipeline.
-#[must_use]
-pub(crate) fn is_vite_request(req: &Request<Body>) -> bool {
-    let path = req.uri().path();
+/// Resolved once at pipeline-assembly time from
+/// [`prefixes_from_env`](crate::dev_proxy::config::prefixes_from_env) and
+/// stored in the [`DevProxyLayer`](crate::dev_proxy::DevProxyLayer). Cheap to
+/// clone: the prefix list is behind an `Arc`, and the common case is two or
+/// three short strings.
+#[derive(Clone, Debug)]
+pub(crate) struct ViteRoutes {
+    /// Application asset roots, in addition to [`Self::BUILT_IN`]. Each is
+    /// normalised to begin and end with `/` so a prefix test cannot match a
+    /// sibling path (`/src/` must not match `/srcmap.json`).
+    asset_roots: Arc<[Box<str>]>,
+}
 
-    // Vite internal endpoints and source modules.
-    if path.starts_with("/@")
-        || path.starts_with("/src/")
-        || path.starts_with("/node_modules/.vite/")
+impl ViteRoutes {
+    /// Prefixes Vite always owns, whatever the application's layout is.
+    ///
+    /// `/@` covers every Vite internal endpoint; `/node_modules/.vite/` is
+    /// the optimized-dependency cache. Neither is configurable, because
+    /// neither is the application's to move.
+    pub(crate) const BUILT_IN: &'static [&'static str] = &["/@", "/node_modules/.vite/"];
+
+    /// The asset roots assumed when nothing is configured.
+    ///
+    /// `resources/` is the Arcature (and Laravel) convention the templates
+    /// use; `src/` is the plain-Vite convention. Covering both by default
+    /// means the overwhelming majority of projects configure nothing, and
+    /// the rest are caught by the 404 fallthrough.
+    pub(crate) const DEFAULT_ASSET_ROOTS: &'static [&'static str] = &["/resources/", "/src/"];
+
+    /// Build a routing table from a list of application asset roots.
+    ///
+    /// Each root is normalised to a leading and trailing `/`; empty and
+    /// `/`-only entries are dropped, because a root of `/` would forward
+    /// every request to Vite and take the application off the air.
+    pub(crate) fn new<I, S>(asset_roots: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
     {
-        return true;
+        let asset_roots: Vec<Box<str>> = asset_roots
+            .into_iter()
+            .filter_map(|root| normalise_root(root.as_ref()))
+            .collect();
+        Self {
+            asset_roots: asset_roots.into(),
+        }
     }
 
-    // HMR WebSocket upgrade — the Vite client opens a WebSocket with the
-    // `vite-hmr` (or `vite-ping`) subprotocol. The path is the page origin's
-    // root (`/` by default), so we detect by protocol, not path — the
-    // application's own WebSocket routes (different subprotocol or path)
-    // are not intercepted.
-    if is_vite_ws_upgrade(req) {
-        return true;
+    /// The table used when the application configured nothing.
+    pub(crate) fn defaults() -> Self {
+        Self::new(Self::DEFAULT_ASSET_ROOTS)
     }
 
-    false
+    /// The configured asset roots, normalised. `arc dev` prints them, so a
+    /// mis-set prefix is visible without a debugger.
+    pub(crate) fn asset_roots(&self) -> &[Box<str>] {
+        &self.asset_roots
+    }
+
+    /// Does `path` belong to Vite?
+    pub(crate) fn matches_path(&self, path: &str) -> bool {
+        Self::BUILT_IN.iter().any(|p| path.starts_with(p))
+            || self
+                .asset_roots
+                .iter()
+                .any(|root| path.starts_with(root.as_ref()))
+    }
+
+    /// Decide whether `req` should be forwarded to the Vite IPC server.
+    ///
+    /// Pure and allocation-free. Called once per request by the dev proxy
+    /// service; the result decides whether the request is forwarded or
+    /// delegated to the inner application pipeline.
+    pub(crate) fn matches_request(&self, req: &Request<Body>) -> bool {
+        self.matches_path(req.uri().path()) || is_vite_ws_upgrade(req)
+    }
+}
+
+/// Normalise one asset root to a `/`-delimited prefix.
+///
+/// Returns `None` for anything that would match everything (`""`, `"/"`),
+/// because forwarding every request to Vite is never what a configuration
+/// value meant.
+fn normalise_root(raw: &str) -> Option<Box<str>> {
+    let trimmed = raw.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(format!("/{trimmed}/").into_boxed_str())
 }
 
 /// Detect a Vite HMR WebSocket upgrade request.
@@ -71,6 +156,10 @@ pub(crate) fn is_vite_request(req: &Request<Body>) -> bool {
 /// `Sec-WebSocket-Protocol` containing `vite-hmr` or `vite-ping`. All three
 /// must match; an application WebSocket with a different subprotocol is not
 /// forwarded.
+///
+/// The path is deliberately not consulted: the HMR client connects to the
+/// page origin's root, so the subprotocol is the only thing separating it
+/// from an application WebSocket on the same path.
 fn is_vite_ws_upgrade(req: &Request<Body>) -> bool {
     let headers = req.headers();
 
@@ -127,49 +216,98 @@ mod tests {
 
     #[test]
     fn vite_internal_paths_are_forwarded() {
-        assert!(is_vite_request(&request("/@vite/client")));
-        assert!(is_vite_request(&request("/@react-refresh")));
-        assert!(is_vite_request(&request("/@fs/src/app.tsx")));
-        assert!(is_vite_request(&request("/@id/react")));
-    }
-
-    #[test]
-    fn source_modules_are_forwarded() {
-        assert!(is_vite_request(&request("/src/app.tsx")));
-        assert!(is_vite_request(&request("/src/main.ts")));
-        assert!(is_vite_request(&request("/src/styles/app.css")));
+        let routes = ViteRoutes::defaults();
+        assert!(routes.matches_request(&request("/@vite/client")));
+        assert!(routes.matches_request(&request("/@react-refresh")));
+        assert!(routes.matches_request(&request("/@fs/src/app.tsx")));
+        assert!(routes.matches_request(&request("/@id/react")));
     }
 
     #[test]
     fn optimized_deps_are_forwarded() {
-        assert!(is_vite_request(&request(
-            "/node_modules/.vite/deps/react.js"
-        )));
+        let routes = ViteRoutes::defaults();
+        assert!(routes.matches_request(&request("/node_modules/.vite/deps/react.js")));
+    }
+
+    // The regression this whole type exists for: the templates put the entry
+    // point at `resources/js/app.tsx`, and the old hard-coded `/src/` prefix
+    // sent that straight to the application router.
+    #[test]
+    fn the_template_asset_root_is_forwarded_by_default() {
+        let routes = ViteRoutes::defaults();
+        assert!(routes.matches_request(&request("/resources/js/app.tsx")));
+        assert!(routes.matches_request(&request("/resources/js/pages/home.tsx")));
+        assert!(routes.matches_request(&request("/resources/css/app.css")));
+    }
+
+    #[test]
+    fn the_plain_vite_asset_root_is_still_forwarded_by_default() {
+        let routes = ViteRoutes::defaults();
+        assert!(routes.matches_request(&request("/src/app.tsx")));
+        assert!(routes.matches_request(&request("/src/main.ts")));
+    }
+
+    #[test]
+    fn a_configured_root_replaces_the_defaults() {
+        let routes = ViteRoutes::new(["assets"]);
+        assert!(routes.matches_request(&request("/assets/app.tsx")));
+        // Configuring a root is a statement about this application, so the
+        // conventional roots stop applying -- otherwise a project could not
+        // serve its own `/resources/...` route.
+        assert!(!routes.matches_request(&request("/resources/js/app.tsx")));
+        // The built-ins are not the application's to move.
+        assert!(routes.matches_request(&request("/@vite/client")));
+    }
+
+    #[test]
+    fn a_root_matches_only_whole_path_segments() {
+        let routes = ViteRoutes::new(["src"]);
+        assert!(routes.matches_request(&request("/src/app.tsx")));
+        assert!(!routes.matches_request(&request("/srcmap.json")));
+    }
+
+    #[test]
+    fn roots_are_normalised_however_they_are_written() {
+        for spelling in ["resources", "/resources", "resources/", "/resources/"] {
+            let routes = ViteRoutes::new([spelling]);
+            assert!(
+                routes.matches_request(&request("/resources/js/app.tsx")),
+                "spelling {spelling:?} should normalise"
+            );
+        }
+    }
+
+    // A root of `/` would forward every request to Vite and take the
+    // application off the air. Dropping it is safer than honouring it.
+    #[test]
+    fn a_root_that_would_swallow_everything_is_dropped() {
+        let routes = ViteRoutes::new(["/", "", "   "]);
+        assert!(routes.asset_roots().is_empty());
+        assert!(!routes.matches_request(&request("/")));
+        assert!(!routes.matches_request(&request("/api/users")));
+        assert!(routes.matches_request(&request("/@vite/client")));
     }
 
     #[test]
     fn application_paths_are_not_forwarded() {
-        assert!(!is_vite_request(&request("/")));
-        assert!(!is_vite_request(&request("/api/users")));
-        assert!(!is_vite_request(&request("/dashboard")));
-        assert!(!is_vite_request(&request("/favicon.ico")));
+        let routes = ViteRoutes::defaults();
+        assert!(!routes.matches_request(&request("/")));
+        assert!(!routes.matches_request(&request("/api/users")));
+        assert!(!routes.matches_request(&request("/dashboard")));
+        assert!(!routes.matches_request(&request("/favicon.ico")));
     }
 
     #[test]
     fn vite_hmr_websocket_is_forwarded() {
-        assert!(is_vite_request(&ws_request("vite-hmr")));
-        assert!(is_vite_request(&ws_request("vite-ping")));
+        let routes = ViteRoutes::defaults();
+        assert!(routes.matches_request(&ws_request("vite-hmr")));
+        assert!(routes.matches_request(&ws_request("vite-ping")));
     }
 
     #[test]
     fn non_vite_websocket_is_not_forwarded() {
-        let req = ws_request("custom-app-protocol");
-        assert!(!is_vite_request(&req));
-    }
-
-    #[test]
-    fn plain_get_to_root_is_not_forwarded() {
-        assert!(!is_vite_request(&request("/")));
+        let routes = ViteRoutes::defaults();
+        assert!(!routes.matches_request(&ws_request("custom-app-protocol")));
     }
 
     #[test]
@@ -186,6 +324,6 @@ mod tests {
                 req
             })
             .expect("request should build");
-        assert!(!is_vite_request(&req));
+        assert!(!ViteRoutes::defaults().matches_request(&req));
     }
 }

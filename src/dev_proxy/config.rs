@@ -26,6 +26,7 @@
 use std::path::PathBuf;
 
 use crate::dev_proxy::endpoint::IpcEndpoint;
+use crate::dev_proxy::vite::ViteRoutes;
 
 /// The environment variable consulted for the Vite IPC endpoint.
 ///
@@ -60,6 +61,48 @@ pub(crate) fn parse_endpoint(raw: Option<String>) -> Option<IpcEndpoint> {
         .map(IpcEndpoint::new)
 }
 
+/// The environment variable that names the application's asset roots.
+///
+/// A comma-separated list of path prefixes Vite owns, for example
+/// `resources,public/vendor`. Set by `arc dev` from the application's Vite
+/// configuration; unset means [`ViteRoutes::DEFAULT_ASSET_ROOTS`].
+///
+/// This exists because the roots are the application's choice, and the dev
+/// proxy previously hard-coded `/src/` -- which the Arcature templates do not
+/// use. See the module doc on [`crate::dev_proxy::vite`].
+pub(crate) const PREFIXES_ENV: &str = "ARCATURE_VITE_PREFIXES";
+
+/// Resolve the Vite asset roots from the environment.
+///
+/// Called once at pipeline-assembly time, next to [`endpoint_from_env`]; the
+/// result is stored in the [`DevProxyLayer`](crate::dev_proxy::DevProxyLayer)
+/// for the lifetime of the server.
+#[must_use]
+pub(crate) fn prefixes_from_env() -> ViteRoutes {
+    parse_prefixes(std::env::var(PREFIXES_ENV).ok())
+}
+
+/// Parse a raw env value into a [`ViteRoutes`] table.
+///
+/// Pure, so it is testable without mutating the process environment (which
+/// `#![forbid(unsafe_code)]` rules out anyway). An unset or blank value
+/// yields the defaults rather than an empty table: an empty table would send
+/// every source module to the application router, which is the bug this
+/// configuration was added to fix.
+#[must_use]
+pub(crate) fn parse_prefixes(raw: Option<String>) -> ViteRoutes {
+    let Some(raw) = raw.filter(|s| !s.trim().is_empty()) else {
+        return ViteRoutes::defaults();
+    };
+    let roots = ViteRoutes::new(raw.split(','));
+    if roots.asset_roots().is_empty() {
+        // Every entry normalised away (`","`, `"/"`). Treat that as "the
+        // value said nothing" rather than "serve no assets".
+        return ViteRoutes::defaults();
+    }
+    roots
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,6 +125,35 @@ mod tests {
             endpoint.path(),
             std::path::Path::new("/tmp/arcature-vite-test.sock")
         );
+    }
+
+    #[test]
+    fn unset_prefixes_yield_the_conventional_roots() {
+        let routes = parse_prefixes(None);
+        assert!(routes.matches_path("/resources/js/app.tsx"));
+        assert!(routes.matches_path("/src/app.tsx"));
+    }
+
+    #[test]
+    fn a_blank_prefix_value_yields_the_conventional_roots() {
+        let routes = parse_prefixes(Some(String::from("  ")));
+        assert!(routes.matches_path("/resources/js/app.tsx"));
+    }
+
+    #[test]
+    fn configured_prefixes_are_split_on_commas() {
+        let routes = parse_prefixes(Some(String::from("assets, public/vendor")));
+        assert!(routes.matches_path("/assets/app.tsx"));
+        assert!(routes.matches_path("/public/vendor/lib.js"));
+        assert!(!routes.matches_path("/resources/js/app.tsx"));
+    }
+
+    // A value of "/" would otherwise normalise to an empty table and take
+    // every source module off Vite -- fall back rather than serve nothing.
+    #[test]
+    fn a_prefix_value_that_normalises_away_falls_back_to_the_defaults() {
+        let routes = parse_prefixes(Some(String::from("/,,")));
+        assert!(routes.matches_path("/resources/js/app.tsx"));
     }
 
     #[test]
