@@ -9,11 +9,18 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
+  # `rust-toolchain.toml` pins `stable`, and a toolchain file beats the
+  # toolchain `dtolnay/rust-toolchain` installs. Without an override every leg
+  # of the matrix below would build with stable and the MSRV leg would prove
+  # nothing. `RUSTUP_TOOLCHAIN` outranks the file, so each job sets it.
+  RUSTUP_TOOLCHAIN: stable
+
 jobs:
   test:
-    name: Test (MSRV ${{ matrix.rust }})
+    name: Test (${{ matrix.rust }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         rust: ["1.97.1", "stable"]
 
@@ -33,6 +40,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/arcature_test
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
 
     steps:
       - uses: actions/checkout@v4
