@@ -227,6 +227,64 @@ argued where it is defined.
 | Rate limiting | absent | `ApplicationBuilder::rate_limit`. `KeySource::Ip` reads `ConnectInfo`, which the framework does not install, so without it every request shares one bucket. No forwarding header is trusted as a client address unless a `KeySource::Header` names it. |
 | Body limit, request timeout | unset | `ApplicationBuilder::body_limit`, `ApplicationBuilder::timeout` |
 
+## Unsafe code, here and below
+
+`arcature` sets `#![forbid(unsafe_code)]` in `src/lib.rs` and
+`unsafe_code = "forbid"` under `[lints.rust]` in `Cargo.toml`, so the lint
+covers every target of the package, tests included. That claim stops at the
+crate boundary, and the crate boundary is not where the memory-safety risk is:
+the framework's job is to integrate other people's code, and other people's
+code is where the `unsafe` lives.
+
+`unsafe-baseline.txt` at the repository root records the whole picture, one
+line per crate, as measured by [`cargo-geiger`]. `just geiger` recomputes it
+and diffs against the recorded file; `just geiger-accept` records a new
+answer. The diff is a review prompt, not a gate -- a pull request that moves
+these numbers is expected to say which dependency moved and why the change is
+acceptable.
+
+As recorded, over `--all-targets` with default features, the tree is 360
+crates. 153 of them contain `unsafe`; 49 declare `#![forbid(unsafe_code)]`;
+the remaining 158 happen to contain none but promise nothing. The counts,
+as *reached by this build* out of *present in those crates*:
+
+| | Reached | Present |
+|---|---|---|
+| `unsafe` functions | 342 | 1551 |
+| `unsafe` expressions | 31094 | 111017 |
+| `unsafe` impls | 823 | 1367 |
+| `unsafe` traits | 76 | 102 |
+| `unsafe` methods | 992 | 4251 |
+
+The bulk of it is where you would expect it, and where it is about as
+well-audited as Rust gets: `tokio`, `memchr`, `hashbrown`, `aho-corasick`,
+`windows-sys`, `parking_lot_core`, `aws-lc-rs`, `bytes` and `lock_api`
+account for roughly two-fifths of the reached expression count between them.
+Arcature has not audited any of it. What it claims is narrower: the number is
+written down, a change to it shows up in a diff, and nobody has to take "Rust
+is memory-safe" on trust for a tree this size.
+
+Three caveats on reading the file:
+
+- The reading is per host target. Near the leaves the graph is
+  platform-specific -- the recorded file contains `windows-sys` because it was
+  taken on `x86_64-pc-windows-msvc` -- so `just geiger` only compares like
+  with like on the target the file was recorded for. Re-record with
+  `just geiger-accept` when the target changes, and say in the pull request
+  which target the file now describes.
+
+- `cargo-geiger` reads the `#![forbid(unsafe_code)]` *attribute* out of each
+  crate root and does not read `[lints]` out of `Cargo.toml`. Under
+  `--all-targets` the integration tests in `tests/` are separate crate roots
+  that do not repeat the attribute, so the workspace crates are reported as
+  `?` (no `unsafe` found, no `forbid` declared) rather than `:)`. The lint is
+  still enforced on every one of those targets by the manifest.
+- `arcature-macros` declares neither the attribute nor the lint. It contains
+  no `unsafe`, and the counts confirm it, but nothing currently stops one
+  from being added.
+
+[`cargo-geiger`]: https://github.com/geiger-rs/cargo-geiger
+
 ## What Arcature does not claim
 
 Arcature writes no cryptography. Argon2id, HMAC, SHA-2 and TLS come from

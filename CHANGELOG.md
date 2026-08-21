@@ -285,6 +285,20 @@ therefore its first.
 
 ### Security
 
+- **The dependency tree's `unsafe` is counted and recorded.**
+  `#![forbid(unsafe_code)]` covered the crate and said nothing about the 359
+  crates under it, which is where the `unsafe` actually is.
+  `unsafe-baseline.txt` now records a `cargo-geiger` reading, one line per
+  crate: 153 of the 360 crates in the default `--all-targets` graph contain
+  `unsafe`, 49 forbid it, and the build reaches 342 `unsafe` functions,
+  31094 expressions, 823 impls, 76 traits and 992 methods. `just geiger`
+  recomputes the reading and diffs it against the file; `just geiger-accept`
+  records a new one. The diff is a review prompt rather than a gate, so a
+  pull request that changes a dependency has to account for what moved.
+  `SECURITY.md` explains how to read the file, including that the reading is
+  per host target -- the committed one is `x86_64-pc-windows-msvc` -- and
+  `CONTRIBUTING.md` explains when to re-record it.
+
 - **A scaffolded project's release build is pinned by a test.** The
   generated `Cargo.toml` already took `arcature` with
   `default-features = false` and an explicit list, so `cli`, `templates`

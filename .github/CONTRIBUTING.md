@@ -99,6 +99,18 @@ fixes something that failed quietly, the test is the point of the change.
 **`unsafe` is forbidden.** `#![forbid(unsafe_code)]` is set at the crate root
 and in `Cargo.toml`. There is no exception process.
 
+That covers this crate and not the several hundred beneath it, which is where
+the `unsafe` actually is. `unsafe-baseline.txt` records the count per crate;
+`just geiger` diffs the current graph against it, and `just geiger-accept`
+records a new answer. A pull request that changes a dependency is expected to
+say what moved and why it is acceptable -- the diff is a question, not a gate.
+`just geiger` checks the whole graph through its own `rustc` wrapper and into
+the ordinary `target/`, so it costs minutes and leaves the next `cargo check`
+rebuilding from cold. It is a before-you-open-the-pull-request command, not a
+before-every-commit one. The reading is also per host target -- the platform
+crates near the leaves differ by OS -- so a diff taken on a different machine
+than the one that recorded the file is noise, not a finding.
+
 ## The roadmap board
 
 Every issue opened here lands on the

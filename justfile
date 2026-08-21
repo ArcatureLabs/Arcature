@@ -128,6 +128,52 @@ book-serve:
 deny:
     cargo deny check
 
+# The unsafe-code inventory of the dependency tree.
+#
+# `#![forbid(unsafe_code)]` at the top of `src/lib.rs` is a claim about one
+# crate. It says nothing about the several hundred underneath it, and that is
+# where the `unsafe` actually is -- in the allocator, in tokio's reactor, in
+# the TLS stack. Refusing to write `unsafe` is not the same as not depending
+# on it, and a security policy that runs the two together is telling itself a
+# story.
+#
+# `cargo geiger` counts what is there: unsafe functions, expressions, impls,
+# traits and methods per crate, each as `used/total` -- what this build's
+# feature set actually reaches, over what the package contains.
+# `unsafe-baseline.txt` is the last accepted answer, and this recipe diffs a
+# fresh report against it.
+#
+# A difference is not a failure. It is a question for the pull request that
+# caused it: a dependency bump that brings a new `unsafe` block into the graph
+# should be seen by a person rather than averaged into a total. When the answer
+# is "yes, that is fine", `just geiger-accept` records the new number.
+#
+# Needs `cargo install cargo-geiger`. Note that geiger builds the whole graph
+# with its own compiler wrapper, so the first run is a cold build and does not
+# share `target/` with anything else here.
+
+# Diff the dependency tree's unsafe-code counts against the recorded baseline.
+geiger:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    report="$(mktemp)"
+    trap 'rm -f "$report"' EXIT
+    just _geiger-report > "$report"
+    diff -u unsafe-baseline.txt "$report" && echo "unsafe counts match the baseline"
+
+# Record the current unsafe-code counts as the accepted baseline.
+geiger-accept:
+    just _geiger-report > unsafe-baseline.txt
+
+# The report itself. One place, so the baseline and the diff cannot drift
+# apart by using different flags.
+#
+# `--forbid-only` is deliberately not used: it answers "does this crate write
+# `#![forbid(unsafe_code)]`", which most crates do not bother to, and that is
+# a different and much weaker question than "how much unsafe is in here".
+_geiger-report:
+    @cargo geiger --all-targets --output-format Ascii
+
 # Generate an application with `arc new` and compile it.
 #
 # This is the check that four empty packages under `examples/` used to stand in
