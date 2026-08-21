@@ -1,0 +1,42 @@
+# Review routing, not permission.
+#
+# A CODEOWNERS entry does one thing: it puts somebody on the reviewer list
+# automatically when a pull request touches a matching path. It grants nothing,
+# blocks nothing, and is not an access-control list -- who can merge is decided
+# by the repository's branch protection and collaborator roles, not by this
+# file. Read a line below as "this path is not reviewed by accident", nothing
+# more.
+#
+# The paths named here are the ones where a wrong change is expensive and the
+# damage is not obvious in the diff: macros that other people's code expands
+# into, CI that gates every pull request, decisions that are meant to be
+# settled, the security policy, and the dependency set.
+#
+# See GOVERNANCE.md for who the owners are and how that list is meant to grow.
+
+# Everything, unless a later rule wins. The last matching rule takes effect,
+# so this is the floor rather than the ceiling.
+*                               @dismonjames
+
+# Macro code is the hardest thing here to review after the fact: a defect in a
+# proc macro shows up as a compile error in somebody else's crate, with a span
+# pointing at code they wrote.
+/macros/                        @dismonjames
+
+# CI defines what "green" means. A change here can weaken every other check in
+# the repository without touching a line of Rust.
+/.github/workflows/             @dismonjames
+
+# Decision records are settled by construction. Amending one is a claim that
+# new evidence exists; that claim gets read.
+/docs/decisions/                @dismonjames
+
+# The security policy states what is in scope and what a reporter is promised.
+/SECURITY.md                    @dismonjames
+
+# Dependencies, feature flags and the published metadata. The certified stack
+# is re-exported through the crate root, so a version here is part of the
+# public API -- see .github/dependabot.yml.
+/Cargo.toml                     @dismonjames
+/macros/Cargo.toml              @dismonjames
+/rust-toolchain.toml            @dismonjames
