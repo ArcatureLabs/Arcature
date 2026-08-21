@@ -27,8 +27,26 @@ impl<U: AuthUser> Auth<U> {
     /// Both type parameters have to be named: `M` is the resource type and
     /// `P` the policy, and Rust allows no partial turbofish.
     ///
-    /// ```ignore
-    /// auth.authorize::<Link, LinkPolicy>("update", &link)?;
+    /// ```
+    /// use arcature::{Auth, AuthUser, AuthzError, Policy};
+    ///
+    /// # struct User { id: i64 }
+    /// # impl AuthUser for User {
+    /// #     type Id = i64;
+    /// #     fn id(&self) -> &i64 { &self.id }
+    /// # }
+    /// # struct Link { user_id: i64 }
+    /// # struct LinkPolicy;
+    /// # impl Policy<Link> for LinkPolicy {
+    /// #     type User = User;
+    /// #     fn check(user: &User, _action: &str, link: &Link) -> bool {
+    /// #         user.id == link.user_id
+    /// #     }
+    /// # }
+    /// fn may_update(auth: &Auth<User>, link: &Link) -> Result<(), AuthzError> {
+    ///     auth.authorize::<Link, LinkPolicy>("update", link)
+    /// }
+    /// # fn main() {}
     /// ```
     pub fn authorize<M, P: Policy<M, User = U>>(
         &self,
@@ -78,11 +96,31 @@ impl IntoResponse for AuthzError {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```
+/// use arcature::prelude::*;
+///
+/// struct User {
+///     id: i64,
+/// }
+///
+/// impl AuthUser for User {
+///     type Id = i64;
+///
+///     fn id(&self) -> &i64 {
+///         &self.id
+///     }
+/// }
+///
+/// struct Link {
+///     id: i64,
+///     user_id: i64,
+/// }
+///
 /// pub struct LinkPolicy;
 ///
-/// impl arcature::Policy<Link> for LinkPolicy {
+/// impl Policy<Link> for LinkPolicy {
 ///     type User = User;
+///
 ///     fn check(user: &User, action: &str, link: &Link) -> bool {
 ///         match action {
 ///             "view" => true,
@@ -92,10 +130,22 @@ impl IntoResponse for AuthzError {
 ///     }
 /// }
 ///
-/// async fn show(auth: Auth<User>, link: Bound<Link>) -> Result<Page> {
-///     auth.authorize::<LinkPolicy>("view", &link)?;
-///     // ...
+/// async fn show(auth: Auth<User>, link: Bound<Link>) -> Result<String> {
+///     let link = link.into_inner();
+///     // Both type parameters are named -- the resource first, then the
+///     // policy. Rust has no partial turbofish, so `authorize::<LinkPolicy>`
+///     // does not compile.
+///     //
+///     // `AuthzError` does not convert into the framework `Error`, so the
+///     // handler decides what a denial looks like. `forbidden` gives it an
+///     // RFC 9457 body; returning `Result<_, AuthzError>` instead gives a
+///     // bare 403.
+///     auth.authorize::<Link, LinkPolicy>("view", &link)
+///         .map_err(|_| forbidden("not your link"))?;
+///
+///     Ok(format!("link {}", link.id))
 /// }
+/// # fn main() {}
 /// ```
 ///
 /// # Binding does NOT imply authorization

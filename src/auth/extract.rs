@@ -176,8 +176,18 @@ impl<U: AuthUser> AuthManager<U> {
     /// [`OptionalAuth`]`<U>` enforce a hard cap on the authenticated lifetime
     /// measured from this stamp.
     ///
-    /// ```ignore
-    /// auth.login(&user).remember(true).await?;
+    /// ```
+    /// use arcature::{AuthError, AuthManager, AuthUser};
+    ///
+    /// # struct User { id: i64 }
+    /// # impl AuthUser for User {
+    /// #     type Id = i64;
+    /// #     fn id(&self) -> &i64 { &self.id }
+    /// # }
+    /// async fn sign_in(auth: &AuthManager<User>, user: &User) -> Result<(), AuthError> {
+    ///     auth.login(user).remember(true).await
+    /// }
+    /// # fn main() {}
     /// ```
     #[must_use]
     pub fn login(&self, user: &U) -> LoginBuilder<'_, U> {

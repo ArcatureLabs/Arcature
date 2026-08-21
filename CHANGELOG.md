@@ -174,6 +174,15 @@ therefore its first.
     that returns an `ApplicationBuilder<AppState>`. Both are corrected, and
     the `layer`, `security_headers` and `cors` examples are now `no_run`
     programs rather than floating expressions.
+  - **`auth` -- `AuthUser`, `Auth::authorize`, `AuthManager::login`,
+    `Policy`.** The `Policy` example called
+    `auth.authorize::<LinkPolicy>("view", &link)`, which cannot compile:
+    `authorize` takes the resource type *and* the policy type, and Rust has
+    no partial turbofish. It also passed a `&Bound<Link>` where a `&Link` was
+    wanted, and swallowed the result with `?` in a handler returning the
+    framework `Result` -- but `AuthzError` has no `From` into `Error`, so
+    that `?` never compiled either. The corrected example maps it through
+    `forbidden(..)` and says in a comment that the choice is the handler's.
 
 - **`arcature-macros` ships its licence text.** The crate declares
   `license = "Apache-2.0"` but the published `0.1.0` tarball contained no

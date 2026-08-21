@@ -113,16 +113,24 @@ use serde::de::DeserializeOwned;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```
 /// use arcature::AuthUser;
 ///
-/// pub struct User { pub id: uuid::Uuid, pub email: String }
+/// # #[allow(dead_code)]
+/// pub struct User {
+///     pub id: uuid::Uuid,
+///     pub email: String,
+/// }
 ///
 /// impl AuthUser for User {
 ///     type Id = uuid::Uuid;
 ///     const SESSION_KEY: &'static str = "user_id";
-///     fn id(&self) -> &uuid::Uuid { &self.id }
+///
+///     fn id(&self) -> &uuid::Uuid {
+///         &self.id
+///     }
 /// }
+/// # fn main() {}
 /// ```
 pub trait AuthUser: Send + Sync + 'static {
     /// The type stored in the session to identify the user. Must be
