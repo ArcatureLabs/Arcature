@@ -51,7 +51,7 @@ jobs:
     name: Review added dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The trailing comment names v5.0.0 rather than a floating major
       # because upstream publishes v1, v2 and v3 and stopped: `@v5` is not a
