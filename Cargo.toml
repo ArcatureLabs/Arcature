@@ -131,7 +131,6 @@ auth = [
     "dep:tower-sessions",
     "dep:secrecy",
     "dep:zeroize",
-    "dep:getrandom",
     "dep:time",
 ]
 
@@ -191,7 +190,7 @@ test-kit = ["macros", "dep:http-body-util", "dep:tower-sessions-memory-store"]
 
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.
-oauth = ["dep:oauth2", "dep:reqwest", "dep:url", "dep:getrandom"]
+oauth = ["dep:oauth2", "dep:url"]
 
 # OpenTelemetry traces over OTLP, plus the Prometheus text endpoint.
 # An operator opt-in: the exporter stack is large and most apps never
@@ -287,7 +286,10 @@ argon2 = { version = "0.5.3", default-features = false, features = ["std", "pass
 tower-sessions = { version = "0.15.0", default-features = false, features = ["axum-core", "signed"], optional = true }
 secrecy = { version = "0.10.3", default-features = false, optional = true }
 zeroize = { version = "1.9.0", default-features = false, features = ["alloc"], optional = true }
-getrandom = { version = "0.4.3", default-features = false, optional = true }
+# Not optional: `src/http/security.rs` compiles unconditionally and mints a
+# per-request CSP nonce, so the OS RNG has to be there in every build --
+# including the kernel-only one with no features at all.
+getrandom = { version = "0.4.3", default-features = false }
 time = { version = "0.3.55", default-features = false, optional = true }
 
 # Validation.
