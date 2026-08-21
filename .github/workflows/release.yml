@@ -124,11 +124,27 @@ jobs:
       # afterwards can it be switched over. Once it is, delete the
       # CARGO_REGISTRY_TOKEN secret from the `crates-io` environment and give
       # this step the same `steps.auth.outputs.token` the facade uses.
+      #
+      # Both publish steps skip a version that is already on crates.io, which
+      # is what makes this job safe to re-run. Publication is irreversible: if
+      # the macro crate goes up and a later step fails -- a trusted publisher
+      # registered against the wrong workflow or environment fails *below*
+      # this line -- then without the skip a re-run dies on "crate version
+      # already exists", and the only way out is bumping the version of a
+      # release that is already half-published.
       - name: Publish arcature-macros
         working-directory: macros
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.verify.outputs.version }}"
+          if curl -sSf "https://index.crates.io/ar/ca/arcature-macros"                | jq -e --arg v "$version" 'select(.vers == $v)' > /dev/null; then
+            echo "arcature-macros $version is already published; skipping"
+            exit 0
+          fi
+          cargo publish --locked
 
       # crates.io serves a new version to the index asynchronously. Without
       # this wait the next step fails resolving a crate that was accepted
@@ -160,7 +176,15 @@ jobs:
       - name: Publish arcature
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.verify.outputs.version }}"
+          if curl -sSf "https://index.crates.io/ar/ca/arcature"                | jq -e --arg v "$version" 'select(.vers == $v)' > /dev/null; then
+            echo "arcature $version is already published; skipping"
+            exit 0
+          fi
+          cargo publish --locked
 
   binaries:
     name: arc (${{ matrix.target }})
