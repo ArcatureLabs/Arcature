@@ -285,6 +285,20 @@ therefore its first.
 
 ### Security
 
+- **A scaffolded project's release build is pinned by a test.** The
+  generated `Cargo.toml` already took `arcature` with
+  `default-features = false` and an explicit list, so `cli`, `templates`
+  and `dev-proxy` stay out of a production binary -- but the only guard was
+  a test asserting those strings do not appear in the manifest, which would
+  pass unchanged if `default-features = false` were dropped and every one of
+  them came back on. The new test asserts the line itself, asserts the
+  application's own `default = []`, and asserts that `dev-proxy` is
+  reachable from the `dev` feature and from nowhere else in the file. It
+  also checks the dependency section specifically -- not the whole manifest
+  -- for `uag`, `otel`, `oauth`, `api-docs`, `storage-s3` and `test-kit`, so
+  the `dev` and `uag` feature definitions cannot mask a real entry. No
+  template content changed; what changed is that reverting it now fails.
+
 - **`cargo-deny` bans `native-tls`.** The `[bans]` list already refused
   `openssl` and `openssl-sys`, but `native-tls` is the facade that pulls
   them in: it is Schannel on Windows, Secure Transport on macOS, and

@@ -278,6 +278,68 @@ fn the_manifest_carries_the_driver_that_was_asked_for_and_no_cli_features() {
     }
 }
 
+/// The production build is the one nobody watches. `cargo build --release` in
+/// a generated project must carry neither the CLI nor the dev proxy, and both
+/// properties rest on a single line: `default-features = false`. Without it
+/// every framework default comes back, and the absence-of-string assertions
+/// in the test above pass while the features they name are enabled.
+#[test]
+fn a_release_build_of_a_generated_project_enables_no_cli_and_no_dev_proxy() {
+    let scratch = Scratch::new("release");
+    for database in Database::ALL {
+        let target = scratch.join(database.as_str());
+        generate(&target, Stack::default(), database).expect("generated");
+        let manifest = read(&target, "Cargo.toml");
+
+        assert!(
+            manifest.contains("default-features = false"),
+            "the arcature dependency must opt out of the framework defaults, \
+             or the explicit feature list under it means nothing: {manifest}"
+        );
+        // The application's own default feature set is empty, so a plain
+        // `cargo build --release` gets the dependency list and nothing more.
+        assert!(manifest.contains("default = []"), "{manifest}");
+
+        // `dev-proxy` forwards Vite requests over IPC and belongs to
+        // `arc dev`. It may be reachable through the `dev` feature and
+        // through no other line in the file.
+        for line in manifest.lines() {
+            let line = line.trim();
+            assert!(
+                !line.contains("dev-proxy") || line.starts_with("dev = ["),
+                "dev-proxy must be reachable only through the `dev` feature: {line}"
+            );
+        }
+
+        // Everything a release binary must not link, checked against the
+        // dependency section rather than the whole file, so the `dev` and
+        // `uag` feature definitions above cannot mask a real entry.
+        let dependencies = manifest
+            .split("[dependencies]")
+            .nth(1)
+            .expect("a [dependencies] section")
+            .split("\n[")
+            .next()
+            .expect("the section body");
+        for feature in [
+            "\"cli\"",
+            "\"templates\"",
+            "\"dev-proxy\"",
+            "\"uag\"",
+            "\"otel\"",
+            "\"oauth\"",
+            "\"api-docs\"",
+            "\"storage-s3\"",
+            "\"test-kit\"",
+        ] {
+            assert!(
+                !dependencies.contains(feature),
+                "{feature} must not be in the release dependency list: {dependencies}"
+            );
+        }
+    }
+}
+
 #[test]
 fn the_env_file_ships_an_empty_app_key_and_the_matching_database_url() {
     let scratch = Scratch::new("env");
