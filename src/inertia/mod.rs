@@ -30,6 +30,7 @@ pub mod contracts;
 pub mod error;
 pub mod headers;
 pub mod page;
+pub mod pending;
 pub mod props;
 pub mod redirect;
 pub mod render;
@@ -42,17 +43,19 @@ pub use config::{
 };
 pub use contracts::{
     ClientData, ContractArtifact, ContractError, ContractType, PageContract, PageContractEntry,
-    PageProps, PageSchema, PropSchema, PropsSchema,
+    PageContracts, PageProps, PageSchema, PageType, PropSchema, PropsSchema,
 };
 pub use error::InertiaError;
-pub use page::{Component, PageOptions};
+pub use page::{Component, PageIdentifier, PageOptions, ScrollProp};
+pub use pending::PendingPage;
 pub use props::{
-    MergeStrategy, Prop, Props, SharedProps, always, deep_merge, deferred, deferred_group, eager,
-    lazy, merge, optional, prepend,
+    MergeStrategy, OnceProp, Prop, Props, SharedProps, always, deep_merge, deferred,
+    deferred_group, eager, infinite_scroll, lazy, match_on, merge, merge_path, once, once_with,
+    optional, prepend, rescue,
 };
 pub use redirect::{Redirect, external, fragment, redirect};
 pub use render::{Inertia, InertiaLayer};
-pub use request::InertiaRequest;
+pub use request::{InertiaRequest, MergeIntent, PartialSelection};
 
 // The `inertia!()` macro is exported at the crate root via `#[macro_export]`.
 // See `lib.rs` for the re-export path `arcature::inertia!`.
