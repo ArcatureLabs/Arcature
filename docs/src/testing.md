@@ -149,7 +149,7 @@ Enable it under `[dev-dependencies]`:
 
 ```toml
 [dev-dependencies]
-arcature = { version = "2026.3", features = ["test-kit"] }
+arcature = { version = "0.1", features = ["test-kit"] }
 ```
 
 The feature belongs there and nowhere else: shipping a test harness inside a
