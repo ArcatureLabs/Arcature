@@ -430,3 +430,27 @@ required-features = ["inertia"]
 name = "uag"
 harness = false
 required-features = ["uag"]
+
+# ---------------------------------------------------------------------------
+# The proc-macro build path
+# ---------------------------------------------------------------------------
+#
+# `arcature-macros` and the `syn`/`quote`/`proc-macro2` stack beneath it are
+# compiler plugins: they are built for the host, loaded by rustc, and then
+# *executed* once per macro invocation in every crate that uses one. Their
+# compiled speed is a tax on every subsequent build in the workspace, not just
+# on the build that produced them.
+#
+# `build-override` covers exactly that set -- build scripts, proc-macro
+# crates, and their dependencies -- and leaves the profile of the code being
+# shipped untouched. Optimising it is a one-time cost paid into `target/`;
+# dropping its debug information costs nothing, because nobody steps through
+# `syn` in a debugger while debugging an application.
+#
+# Measured on a generated application: on a one-line handler change,
+# `arcature-macros` is already fresh and is not rebuilt. This section is not
+# about keeping the macro crate off the rebuild path -- Cargo does that
+# already -- but about the expansion cost it charges while it sits there.
+[profile.dev.build-override]
+opt-level = 2
+debug = false

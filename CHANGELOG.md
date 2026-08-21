@@ -339,6 +339,18 @@ therefore its first.
   `tokio-native-tls` and `hyper-tls` are now denied by name, so the check
   points at the crate that made the choice.
 
+### Performance
+
+- **Proc macros and build scripts compile optimised.** The workspace had no
+  `[profile.dev]` of any kind, so `arcature-macros` and the `syn` stack
+  beneath it were built at `opt-level = 0` with full debug information.
+  Those crates are not shipped code -- rustc loads and *runs* them, once per
+  macro invocation, in every crate of every dev build -- so their own
+  compiled speed is a tax on all later builds. `[profile.dev.build-override]`
+  now sets `opt-level = 2` and `debug = false` for build scripts, proc-macro
+  crates and their dependencies. Nothing about the profile of the code being
+  shipped changes.
+
 ### Documentation
 
 - **`arcature::dx` says what `dx` means, once.** The module now opens by
