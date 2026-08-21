@@ -17,7 +17,7 @@ deliberately. The `2026.x` versions on crates.io are from an abandoned
 predecessor repository, are yanked, and share nothing with this one but the
 name -- see [Versioning](#versioning). Where a subsystem is
 narrower than its name suggests, that is said in
-[the guide](docs/src/SUMMARY.md) and summarised under
+[the guide](https://arcaturelabs.github.io/Arcature/) and summarised under
 [What is not built yet](#what-is-not-built-yet).
 
 ## Install
@@ -426,7 +426,9 @@ surface and a typo suggests the right name.
 
 ## Documentation
 
-The guide lives in [`docs/`](docs/) and builds with mdBook:
+The guide is at **<https://arcaturelabs.github.io/Arcature/>**, republished
+from `main` whenever `docs/` changes. Its source is [`docs/`](docs/), and it
+builds locally with mdBook:
 
 ```sh
 cargo install mdbook

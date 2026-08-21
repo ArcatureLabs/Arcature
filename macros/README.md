@@ -97,7 +97,7 @@ speculatively.
 ## Documentation
 
 Per-macro reference lives in the [API docs](https://docs.rs/arcature-macros).
-How the macros fit together is [the guide](https://github.com/ArcatureLabs/Arcature/blob/main/docs/src/SUMMARY.md).
+How the macros fit together is [the guide](https://arcaturelabs.github.io/Arcature/).
 
 ## Status
 
