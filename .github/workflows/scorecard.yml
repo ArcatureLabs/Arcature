@@ -79,7 +79,7 @@ jobs:
       # The SARIF as a downloadable artifact. Code scanning keeps the alerts
       # but collapses them into its own model; the raw file is what you want
       # when a score drops and the question is which individual check moved.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: scorecard-sarif
           path: results.sarif
