@@ -4,15 +4,17 @@ use std::fmt;
 use std::str::FromStr;
 use std::time::Duration;
 
-use sqlx::postgres::{PgConnectOptions, PgSslMode};
+use super::ConnectOptions;
+#[cfg(feature = "db-postgres")]
+use sqlx::postgres::PgSslMode;
 
-/// Resolved database configuration for the one PostgreSQL pool.
+/// Resolved database configuration for the one connection pool.
 ///
 /// `Debug` and `Display` never expose the username, password, or the full
 /// connection URL.
 #[derive(Clone)]
 pub struct DatabaseConfig {
-    connect_options: PgConnectOptions,
+    connect_options: ConnectOptions,
     pool: PoolConfig,
     session: SessionConfig,
     application_name: Option<String>,
@@ -125,6 +127,7 @@ impl SessionConfig {
         self
     }
 
+    #[cfg_attr(not(feature = "db-postgres"), allow(dead_code))]
     pub(crate) fn set_statement(&self) -> Option<String> {
         let mut parts: Vec<String> = Vec::new();
         if let Some(t) = self.statement_timeout {
@@ -156,7 +159,7 @@ impl Default for SessionConfig {
 impl DatabaseConfig {
     /// Parse a PostgreSQL connection URL into resolved configuration.
     pub fn new(database_url: &str) -> Result<Self, crate::Error> {
-        let connect_options = PgConnectOptions::from_str(database_url)
+        let connect_options = ConnectOptions::from_str(database_url)
             .map_err(|e| crate::Error::Config(format!("invalid database URL: {e}")))?;
         Ok(Self {
             connect_options,
@@ -182,17 +185,24 @@ impl DatabaseConfig {
         self
     }
 
-    pub(crate) fn connect_options(&self) -> PgConnectOptions {
-        match &self.application_name {
-            Some(name) => self.connect_options.clone().application_name(name),
-            None => self.connect_options.clone(),
-        }
+    pub(crate) fn connect_options(&self) -> ConnectOptions {
+        // `application_name` is a PostgreSQL startup parameter; the other
+        // drivers have no equivalent knob, so it is simply carried and
+        // reported rather than applied.
+        let options = self.connect_options.clone();
+        #[cfg(feature = "db-postgres")]
+        let options = match &self.application_name {
+            Some(name) => options.application_name(name),
+            None => options,
+        };
+        options
     }
 
     pub(crate) fn pool_config(&self) -> &PoolConfig {
         &self.pool
     }
 
+    #[cfg_attr(not(feature = "db-postgres"), allow(dead_code))]
     pub(crate) fn session_config(&self) -> &SessionConfig {
         &self.session
     }
@@ -213,8 +223,13 @@ impl DatabaseConfig {
     }
 }
 
-/// Manual `Debug` — redacts credentials.
+/// Manual `Debug` -- redacts credentials.
+///
+/// The identifying fields differ per driver (a SQLite database is a file, not
+/// a host and port), so the field set is chosen per driver rather than
+/// flattened to a lowest common denominator that would print `""` for SQLite.
 impl fmt::Debug for DatabaseConfig {
+    #[cfg(feature = "db-postgres")]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DatabaseConfig")
             .field("host", &self.connect_options.get_host())
@@ -229,8 +244,31 @@ impl fmt::Debug for DatabaseConfig {
             .field("application_name", &self.application_name)
             .finish()
     }
+
+    #[cfg(feature = "db-sqlite")]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseConfig")
+            .field("filename", &self.connect_options.get_filename())
+            .field("pool", &self.pool)
+            .field("session", &self.session)
+            .field("application_name", &self.application_name)
+            .finish()
+    }
+
+    #[cfg(feature = "db-mysql")]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DatabaseConfig")
+            .field("host", &self.connect_options.get_host())
+            .field("port", &self.connect_options.get_port())
+            .field("database", &self.connect_options.get_database())
+            .field("pool", &self.pool)
+            .field("session", &self.session)
+            .field("application_name", &self.application_name)
+            .finish()
+    }
 }
 
+#[cfg(feature = "db-postgres")]
 fn ssl_mode_name(mode: PgSslMode) -> &'static str {
     match mode {
         PgSslMode::Disable => "disable",
@@ -242,7 +280,7 @@ fn ssl_mode_name(mode: PgSslMode) -> &'static str {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "db-postgres"))]
 mod tests {
     use super::*;
 

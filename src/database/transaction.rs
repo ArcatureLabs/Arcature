@@ -31,7 +31,7 @@ impl Transaction {
     pub async fn sqlx<F, T>(db: &Db, f: F) -> Result<T, crate::Error>
     where
         F: for<'c> FnOnce(
-            &'c mut sqlx::Transaction<'_, sqlx::Postgres>,
+            &'c mut sqlx::Transaction<'_, super::Driver>,
         ) -> std::pin::Pin<
             Box<dyn Future<Output = Result<T, sqlx::Error>> + Send + 'c>,
         >,
