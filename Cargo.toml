@@ -9,7 +9,12 @@ homepage = "https://github.com/ArcatureLabs/Arcature"
 documentation = "https://docs.rs/arcature"
 readme = "README.md"
 description = "Arcature: an opinionated full-stack Rust web framework. One package, batteries included."
-categories = ["web-programming", "asynchronous", "framework"]
+categories = [
+    "web-programming",
+    "web-programming::http-server",
+    "asynchronous",
+    "development-tools",
+]
 keywords = ["web", "framework", "axum", "inertia", "arcature"]
 
 # The `arc` CLI ships from the same package as a binary target. A normal
