@@ -53,9 +53,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::axum::body::Body;
-use crate::axum::http::{Response, StatusCode};
+use crate::axum::http::{Method, Response, StatusCode};
 use crate::dev_proxy::endpoint::{IpcEndpoint, IpcStream};
-use crate::dev_proxy::vite::is_vite_request;
+use crate::dev_proxy::vite::ViteRoutes;
 
 type Request = crate::axum::extract::Request<Body>;
 
@@ -79,16 +79,29 @@ type BoxFuture = Pin<Box<dyn Future<Output = Result<Response<Body>, Infallible>>
 #[derive(Clone)]
 pub struct DevProxyLayer {
     endpoint: Option<Arc<IpcEndpoint>>,
+    routes: ViteRoutes,
 }
 
 impl DevProxyLayer {
     /// Build a dev proxy layer. When `endpoint` is `None` the layer is a
-    /// pass-through — the `dev-proxy` feature is on but `arc dev` did not set
+    /// pass-through -- the `dev-proxy` feature is on but `arc dev` did not set
     /// `ARCATURE_VITE_IPC`, so no forwarding occurs.
+    ///
+    /// The asset roots come from `ARCATURE_VITE_PREFIXES`, read here (once,
+    /// at pipeline-assembly time) rather than per request.
     #[must_use]
     pub fn new(endpoint: Option<IpcEndpoint>) -> Self {
+        Self::with_routes(endpoint, crate::dev_proxy::config::prefixes_from_env())
+    }
+
+    /// Build a dev proxy layer with an explicit routing table, bypassing the
+    /// environment -- the seam the unit tests use, and the one `arc dev` will
+    /// use when it reads the roots out of the application's Vite config.
+    #[must_use]
+    pub(crate) fn with_routes(endpoint: Option<IpcEndpoint>, routes: ViteRoutes) -> Self {
         Self {
             endpoint: endpoint.map(Arc::new),
+            routes,
         }
     }
 }
@@ -100,6 +113,7 @@ impl<S> tower::Layer<S> for DevProxyLayer {
         DevProxyService {
             inner,
             endpoint: self.endpoint.clone(),
+            routes: self.routes.clone(),
         }
     }
 }
@@ -117,6 +131,7 @@ impl<S> tower::Layer<S> for DevProxyLayer {
 pub struct DevProxyService<Inner> {
     inner: Inner,
     endpoint: Option<Arc<IpcEndpoint>>,
+    routes: ViteRoutes,
 }
 
 impl<Inner> tower::Service<Request> for DevProxyService<Inner>
@@ -139,26 +154,100 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        // No endpoint → pass-through. The feature is compiled in but the env
+        // Swap in the clone and drive the original: only the original is
+        // known ready, and `poll_ready` readiness does not survive cloning.
+        let clone = self.inner.clone();
+        let inner = std::mem::replace(&mut self.inner, clone);
+
+        // No endpoint -> pass-through. The feature is compiled in but the env
         // var was not set; production builds pay only this one `Option` check.
         let Some(endpoint) = self.endpoint.clone() else {
-            let fut = self.inner.call(req);
-            return Box::pin(fut);
+            let mut inner = inner;
+            return Box::pin(async move { inner.call(req).await });
         };
 
-        // Not a Vite request → delegate to the application pipeline. The
-        // application's own proxy, Inertia layer, and routes see it.
-        if !is_vite_request(&req) {
-            let fut = self.inner.call(req);
-            return Box::pin(fut);
+        if self.routes.matches_request(&req) {
+            return Box::pin(forward_or_delegate(endpoint, req, inner));
         }
 
-        // Vite request → forward over IPC. Clone the inner service (standard
-        // tower `Service + Clone` idiom) and move it into the forwarding
-        // future so the future is `'static` and does not borrow `&mut self`.
-        // `self.inner` stays valid for the next `poll_ready`/`call`.
-        let inner = self.inner.clone();
-        Box::pin(forward_or_delegate(endpoint, req, inner))
+        // Not a Vite request by prefix -- but the prefix table is a guess
+        // about someone else's directory layout, so the application gets
+        // first refusal and Vite gets a second chance at a 404.
+        Box::pin(delegate_or_retry(endpoint, req, inner))
+    }
+}
+
+/// Hand `req` to the application, and give Vite a second chance on a `404`.
+///
+/// This is the AdonisJS arrangement: Vite's middleware sits *behind* the
+/// router, so a request the application has no route for still gets a look
+/// from the asset pipeline. Arcature needs it because the prefix table in
+/// [`ViteRoutes`] is a guess about a directory layout the framework does not
+/// own -- a project that keeps its entry point somewhere unusual would
+/// otherwise see a blank page and no explanation. With the retry in place a
+/// wrong prefix costs one extra round trip in development, and the
+/// documented default costs nothing at all.
+///
+/// # What is not retried
+///
+/// A request with a body cannot be replayed without buffering it, and
+/// buffering every request to make a `404` faster is a bad trade -- so only
+/// `GET` and `HEAD` are retried. That is no loss: those are the only methods
+/// Vite's middleware serves. An upgrade request is excluded too; its
+/// `OnUpgrade` extension is consumed by whoever handles it first, and Vite's
+/// own upgrades already match by subprotocol on the fast path.
+///
+/// The application's response is kept, not dropped, while Vite is consulted.
+/// If Vite also has nothing, the application's `404` is what the browser
+/// sees -- the retry can only add an answer, never replace one.
+async fn delegate_or_retry<Inner>(
+    endpoint: Arc<IpcEndpoint>,
+    req: Request,
+    mut inner: Inner,
+) -> Result<Response<Body>, Infallible>
+where
+    Inner: tower::Service<Request, Response = Response<Body>, Error = Infallible>
+        + Clone
+        + Send
+        + 'static,
+    Inner::Future: Send + 'static,
+{
+    let replayable = matches!(*req.method(), Method::GET | Method::HEAD)
+        && !req
+            .headers()
+            .contains_key(crate::axum::http::header::UPGRADE);
+    if !replayable {
+        return inner.call(req).await;
+    }
+
+    // Rebuild the replay from the wire parts only. Extensions are left
+    // behind on purpose: they are per-hop state (hyper's `OnUpgrade`, the
+    // connection info), not something Vite should be handed a copy of.
+    let replay = crate::axum::http::Request::builder()
+        .method(req.method().clone())
+        .uri(req.uri().clone())
+        .version(req.version())
+        .body(Body::empty())
+        .map(|mut replay| {
+            *replay.headers_mut() = req.headers().clone();
+            replay
+        });
+
+    let from_app = inner.call(req).await?;
+    if from_app.status() != StatusCode::NOT_FOUND {
+        return Ok(from_app);
+    }
+    let Ok(replay) = replay else {
+        return Ok(from_app);
+    };
+
+    // Vite is not up, or has nothing either -- the application's 404 stands.
+    let Ok(stream) = endpoint.connect().await else {
+        return Ok(from_app);
+    };
+    match forward(stream, replay).await {
+        Ok(from_vite) if from_vite.status() != StatusCode::NOT_FOUND => Ok(from_vite),
+        _ => Ok(from_app),
     }
 }
 
@@ -228,6 +317,11 @@ fn bad_gateway(err: ForwardError) -> Response<Body> {
 
 /// Forward `req` to Vite over `stream` using `hyper::client::conn::http1`.
 ///
+/// `pub(crate)` because `arc dev`'s supervisor forwards over IPC too -- to
+/// the application as well as to Vite -- and a second implementation of
+/// HTTP-over-IPC would be a second place for the upgrade tunnelling to go
+/// subtly wrong.
+///
 /// Returns the Vite response with its body converted to `axum::body::Body`.
 /// For a `101 Switching Protocols` response, spawns a tunnel task bridging
 /// the browser-side upgrade (extracted from the request extensions) and the
@@ -239,7 +333,10 @@ fn bad_gateway(err: ForwardError) -> Response<Body> {
 /// ([`forward_or_delegate`]) falls back to the application pipeline on a
 /// connect failure, or returns a 502 on a mid-request failure, so the dev
 /// port never hard-fails on a transient Vite outage.
-async fn forward(stream: IpcStream, req: Request) -> Result<Response<Body>, ForwardError> {
+pub(crate) async fn forward(
+    stream: IpcStream,
+    req: Request,
+) -> Result<Response<Body>, ForwardError> {
     // Take the browser-side upgrade handle out of the request *before*
     // forwarding: hyper's server sets `OnUpgrade` on the request extensions
     // when it parsed the `Connection: upgrade` request. We need it to drive
@@ -341,7 +438,7 @@ fn map_response(resp: hyper::Response<hyper::body::Incoming>) -> Response<Body> 
 /// 502). The variants exist only for the internal `?` flow in [`forward`] and
 /// for a one-line dev diagnostic in [`bad_gateway`]; they are not part of any
 /// public API and carry no "future-proof" variants.
-enum ForwardError {
+pub(crate) enum ForwardError {
     /// `handshake` or connect-time failure (Vite not up, stale socket, or
     /// the connection was canceled before the request was sent).
     Handshake(hyper::Error),
@@ -391,10 +488,19 @@ mod tests {
     }
 
     #[test]
+    fn a_layer_built_from_the_environment_still_knows_the_conventional_roots() {
+        let layer = DevProxyLayer::new(None);
+        assert!(layer.routes.matches_path("/resources/js/app.tsx"));
+    }
+
+    #[test]
     fn layer_with_endpoint_stores_arc() {
-        let layer = DevProxyLayer::new(Some(IpcEndpoint::new(std::path::PathBuf::from(
-            "/tmp/arcature-test.sock",
-        ))));
+        let layer = DevProxyLayer::with_routes(
+            Some(IpcEndpoint::new(std::path::PathBuf::from(
+                "/tmp/arcature-test.sock",
+            ))),
+            crate::dev_proxy::vite::ViteRoutes::defaults(),
+        );
         let endpoint = layer
             .endpoint
             .as_ref()
