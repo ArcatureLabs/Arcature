@@ -106,6 +106,22 @@ pub struct ModuleDescriptor {
     /// Schedule bindings declared in this module. Empty by default;
     /// populated when a `schedules:` section is added to `module!`.
     pub schedules: &'static [crate::jobs::ScheduleBinding],
+    /// Frontend page identities owned by this module, populated from
+    /// `module!`'s `pages:` section.
+    ///
+    /// The names are read off each page type's `PAGE_CONTRACT_ENTRY` const,
+    /// so listing a page here is only possible for a type the `#[page]`
+    /// macro accepted -- the Client Exposure Firewall is enforced by the
+    /// same const that supplies the name, not re-checked afterwards.
+    ///
+    /// Names rather than
+    /// [`PageContractEntry`](crate::inertia::PageContractEntry) values:
+    /// an entry carries a `fn` pointer, which has no meaningful
+    /// serialization and no equality, and it would drag the `inertia`
+    /// feature into a descriptor that every application builds. The UAG
+    /// joins these names to `RouteDescriptor.pages` and to
+    /// `ControllerMethod.page`, all three of which are the same identity.
+    pub pages: &'static [&'static str],
 }
 
 impl ModuleDescriptor {
@@ -124,6 +140,7 @@ impl ModuleDescriptor {
             jobs: &[],
             commands: &[],
             schedules: &[],
+            pages: &[],
         }
     }
 }

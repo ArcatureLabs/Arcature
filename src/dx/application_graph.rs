@@ -213,6 +213,7 @@ mod tests {
             jobs: &[],
             commands: &[],
             schedules: &[],
+            pages: &[],
         }
     }
 
