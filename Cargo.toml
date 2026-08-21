@@ -147,7 +147,8 @@ storage-s3 = ["storage-fs", "opendal/services-s3", "opendal/http-transport-reqwe
 # Mail: lettre SMTP.
 mail = ["dep:lettre", "dep:url", "dep:percent-encoding"]
 
-# Jobs: PostgreSQL SKIP LOCKED queue, worker runtime, scheduler.
+# Jobs: the durable queue (SKIP LOCKED on Postgres/MySQL, BEGIN IMMEDIATE on
+# SQLite), worker runtime, scheduler.
 # `database` brings in sqlx (with the PgPool), chrono, and uuid.
 jobs = [
     "database",
