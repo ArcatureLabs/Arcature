@@ -419,10 +419,26 @@ logged by accident.
 | `arc queue work\|drain\|stats` | Drive the job queue. |
 | `arc doctor` | Check the environment. |
 | `arc version` | Print the version. |
+| `arc dev` | Run the dev loop: one TCP port, Vite over IPC, rebuild on change (`--port`, `--host`, `--open`). |
+| `arc routes` | Print the route table from the application graph (`--json`). Needs `uag`. |
+| `arc typegen` | Write `resources/js/generated/` -- typed routes, page props, form rules. Needs `uag`. |
+| `arc build` | The production build: graph, typegen, `cargo build --release`, `npm run build`. Needs `uag`. |
 
-`arc dev`, `arc typegen` and `arc build` parse and report that they are not
-wired yet. They are declared rather than hidden so `arc --help` shows the real
-surface and a typo suggests the right name.
+`arc dev` is the largest command in the CLI and the one the rest of the dev
+experience hangs off: it supervises the application and Vite as child
+processes, watches the source tree, and proxies Vite's requests over IPC so
+the browser only ever sees one port -- the decision written up in
+[ADR 0003](docs/decisions/0003-one-tcp-port.md). `arc typegen` refuses to
+write anything if the graph has a diagnostic, because half a generation is
+worse than none, and `arc build` runs typegen before Vite so the bundle is
+compiled against the graph that shipped.
+
+`arc routes`, `arc typegen` and `arc build` read the application graph, so
+they are gated on the `uag` feature the way `arc queue` is gated on
+`database` + `jobs`. `cargo install arcature` gets them only with
+`--features uag`; the generated application turns the feature on for itself
+through its own `uag` feature, which is what `arc typegen` uses when no dev
+server is running.
 
 ## Documentation
 

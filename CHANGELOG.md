@@ -184,6 +184,14 @@ therefore its first.
   ordinary mistakes -- and the full `ARC-M001`..`ARC-M014` diagnostic
   table. A README is part of the published tarball, so this reaches
   crates.io with the next release rather than retroactively.
+- **The README no longer says three CLI commands are unwired.** It claimed
+  `arc dev`, `arc typegen` and `arc build` "parse and report that they are
+  not wired yet". All three have been implemented for some time --
+  `arc dev` alone is ~4,300 lines under `src/cli/commands/dev/`, and the
+  three are dispatched at `src/cli/mod.rs:131,149,151`. The command table
+  gains a row for each of them plus `arc routes`, and a paragraph now says
+  what `arc dev` does and that `routes`/`typegen`/`build` are gated on the
+  `uag` feature.
 - **The community-health files moved into `.github/`.**
   `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `SECURITY.md`
   and `SUPPORT.md` are no longer at the repository root, which leaves
