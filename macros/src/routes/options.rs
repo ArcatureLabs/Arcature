@@ -1,11 +1,12 @@
 //! The optional `{ ... }` block that follows a route handler.
 //!
 //! One responsibility: parse `name:`, `page:`/`pages:`, `action:`, `query:`,
-//! and `query_string:` into a [`RouteOptions`], rejecting the combinations
-//! that are contradictory by construction:
+//! `query_string:`, and `policy:`/`policies:` into a [`RouteOptions`],
+//! rejecting the combinations that are contradictory by construction:
 //!
 //! - `page:` and `pages:` on the same route (one declares one page, the other
 //!   declares the set; declaring both says nothing coherent).
+//! - `policy:` and `policies:` on the same route, for the same reason.
 //! - `action:` and `query:` on the same route (a route mutates or it reads).
 //! - `query_string:` without `query:` (a query-string contract is the typed
 //!   input of a query route; there is nothing for it to belong to otherwise).
@@ -18,6 +19,7 @@ use syn::parse::ParseStream;
 
 use super::keywords::option as keyword;
 use super::list;
+use super::type_name;
 
 /// The parsed contents of a route's options block.
 #[derive(Debug, Default)]
@@ -32,6 +34,9 @@ pub struct RouteOptions {
     pub query: Option<syn::Type>,
     /// The typed query-string contract of a Query route.
     pub query_string: Option<syn::Path>,
+    /// The policies that guard this route (`policy:` or `policies:`), each
+    /// stored as the final segment of the declared path.
+    pub policies: Vec<String>,
 }
 
 /// Parses the options block, or returns the defaults when no block follows.
@@ -46,6 +51,8 @@ pub fn parse(input: ParseStream<'_>) -> syn::Result<RouteOptions> {
     let mut options = RouteOptions::default();
     let mut saw_page = false;
     let mut saw_pages = false;
+    let mut saw_policy = false;
+    let mut saw_policies = false;
 
     while !content.is_empty() {
         let lookahead = content.lookahead1();
@@ -101,6 +108,30 @@ pub fn parse(input: ParseStream<'_>) -> syn::Result<RouteOptions> {
             let _: keyword::query_string = content.parse()?;
             let _: syn::Token![:] = content.parse()?;
             options.query_string = Some(content.parse()?);
+        } else if lookahead.peek(keyword::policy) {
+            if saw_policies {
+                return Err(both_policy_forms(content.span()));
+            }
+            let _: keyword::policy = content.parse()?;
+            let _: syn::Token![:] = content.parse()?;
+            let path: syn::Path = content.parse()?;
+            options.policies.push(type_name::final_segment(&path));
+            saw_policy = true;
+        } else if lookahead.peek(keyword::policies) {
+            if saw_policy {
+                return Err(both_policy_forms(content.span()));
+            }
+            let _: keyword::policies = content.parse()?;
+            let _: syn::Token![:] = content.parse()?;
+            let paths = list::paths(&content)?;
+            if paths.is_empty() {
+                return Err(syn::Error::new(
+                    content.span(),
+                    "`policies:` must list at least one policy, e.g.                      `policies: [LinkPolicy]`",
+                ));
+            }
+            options.policies = paths.iter().map(type_name::final_segment).collect();
+            saw_policies = true;
         } else {
             return Err(lookahead.error());
         }
@@ -112,6 +143,13 @@ pub fn parse(input: ParseStream<'_>) -> syn::Result<RouteOptions> {
 
 fn both_page_forms(span: proc_macro2::Span) -> syn::Error {
     syn::Error::new(span, "a route may declare `page:` or `pages:`, not both")
+}
+
+fn both_policy_forms(span: proc_macro2::Span) -> syn::Error {
+    syn::Error::new(
+        span,
+        "a route may declare `policy:` or `policies:`, not both",
+    )
 }
 
 fn both_action_and_query(span: proc_macro2::Span) -> syn::Error {

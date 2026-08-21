@@ -16,6 +16,8 @@ pub mod option {
     syn::custom_keyword!(action);
     syn::custom_keyword!(query);
     syn::custom_keyword!(query_string);
+    syn::custom_keyword!(policy);
+    syn::custom_keyword!(policies);
     syn::custom_keyword!(only);
     syn::custom_keyword!(except);
     syn::custom_keyword!(bind);

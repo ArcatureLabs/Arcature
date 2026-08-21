@@ -29,6 +29,10 @@ pub struct ExpandedRoute {
     pub query: Option<syn::Type>,
     /// The typed query-string contract of a Query route.
     pub query_string: Option<syn::Path>,
+    /// The policies that guard this route, by name. A resource action
+    /// inherits the resource's list; nothing else propagates, because a
+    /// group prefix is a path concern and authorization is not.
+    pub policies: Vec<String>,
 }
 
 /// Flattens entries under `prefix` into concrete routes.
@@ -57,6 +61,7 @@ fn single(route: &SingleRoute, prefix: &str) -> ExpandedRoute {
         // buys nothing.
         query: route.query.clone().map(|boxed| *boxed),
         query_string: route.query_string.clone(),
+        policies: route.policies.clone(),
     }
 }
 
@@ -70,6 +75,11 @@ fn group(group: &RouteGroup, prefix: &str) -> Vec<ExpandedRoute> {
 /// that carries a typed contract is written as an explicit route instead, so
 /// the contract edge stays visible at the declaration site rather than being
 /// implied by a convention.
+///
+/// The resource's `policy:`/`policies:` list is the exception, and it is
+/// copied onto every action: a policy guards a resource, and repeating the
+/// same name on each of seven generated routes would be the convention doing
+/// worse than the shorthand.
 fn resource(resource: &ResourceDeclaration, prefix: &str) -> Vec<ExpandedRoute> {
     let base = path::join(prefix, &resource.path);
     let param = path::singularize(&path::last_segment(&resource.name));
@@ -87,6 +97,7 @@ fn resource(resource: &ResourceDeclaration, prefix: &str) -> Vec<ExpandedRoute> 
                 action: None,
                 query: None,
                 query_string: None,
+                policies: resource.policies.clone(),
             }
         })
         .collect()

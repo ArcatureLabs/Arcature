@@ -62,6 +62,8 @@ pub struct SingleRoute {
     pub query: Option<Box<syn::Type>>,
     /// The typed query-string contract of a Query route.
     pub query_string: Option<syn::Path>,
+    /// The policies that guard this route, by name.
+    pub policies: Vec<String>,
 }
 
 /// A prefixed group of entries with optional shared middleware.
@@ -95,6 +97,8 @@ pub struct ResourceDeclaration {
     pub bind: Option<syn::Path>,
     /// Middleware values applied to every action route.
     pub middleware: Vec<syn::Path>,
+    /// The policies that guard every action route, by name.
+    pub policies: Vec<String>,
 }
 
 impl Parse for RoutesDeclaration {
@@ -205,6 +209,7 @@ fn parse_route(input: ParseStream<'_>, method: RouteMethodKind) -> syn::Result<S
         action: options.action,
         query: options.query.map(Box::new),
         query_string: options.query_string,
+        policies: options.policies,
     })
 }
 
@@ -253,6 +258,7 @@ fn parse_resource(input: ParseStream<'_>) -> syn::Result<ResourceDeclaration> {
     let mut except = Vec::new();
     let mut bind = None;
     let mut middleware = Vec::new();
+    let mut policies = Vec::new();
 
     while !content.is_empty() {
         let lookahead = content.lookahead1();
@@ -276,6 +282,18 @@ fn parse_resource(input: ParseStream<'_>) -> syn::Result<ResourceDeclaration> {
             let _: keyword::middleware = content.parse()?;
             let _: syn::Token![:] = content.parse()?;
             middleware = list::paths(&content)?;
+        } else if lookahead.peek(keyword::policy) {
+            let _: keyword::policy = content.parse()?;
+            let _: syn::Token![:] = content.parse()?;
+            let path: syn::Path = content.parse()?;
+            policies = vec![super::type_name::final_segment(&path)];
+        } else if lookahead.peek(keyword::policies) {
+            let _: keyword::policies = content.parse()?;
+            let _: syn::Token![:] = content.parse()?;
+            policies = list::paths(&content)?
+                .iter()
+                .map(super::type_name::final_segment)
+                .collect();
         } else {
             return Err(lookahead.error());
         }
@@ -298,6 +316,7 @@ fn parse_resource(input: ParseStream<'_>) -> syn::Result<ResourceDeclaration> {
         except,
         bind,
         middleware,
+        policies,
     })
 }
 

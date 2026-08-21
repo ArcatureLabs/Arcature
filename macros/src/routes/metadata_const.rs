@@ -2,7 +2,7 @@
 //!
 //! One responsibility: emit a `&'static [RouteDescriptor]` describing every
 //! declared route. This is the inspection artifact behind `arc routes`,
-//! `arc check`, and the Unified Application Graph.
+//! `arc build`, and the Unified Application Graph.
 //!
 //! The typed edges are resolved here, at compile time: an `action:` type
 //! becomes `<T as RequestMetadata>::FIELDS` and a `query:` type becomes
@@ -25,7 +25,7 @@ pub fn expand(decl: &RoutesDeclaration, flat: &[ExpandedRoute]) -> TokenStream {
     let descriptors = flat.iter().map(descriptor);
 
     quote! {
-        /// Route metadata for inspection (`arc routes`, `arc check`).
+        /// Route metadata for inspection (`arc routes`, `arc build`).
         #vis const #const_ident: &[::arcature::RouteDescriptor] = &[
             #(#descriptors),*
         ];
@@ -38,6 +38,7 @@ fn descriptor(route: &ExpandedRoute) -> TokenStream {
     let name = &route.name;
     let handler = type_name::handler(&route.handler);
     let pages = &route.pages;
+    let policies = &route.policies;
 
     let (action_fields, action_type) = request_edge(route.action.as_ref());
     let (query_string_fields, query_string_type) = request_edge(route.query_string.as_ref());
@@ -50,6 +51,7 @@ fn descriptor(route: &ExpandedRoute) -> TokenStream {
             name: #name,
             handler: #handler,
             pages: &[#(#pages),*],
+            policies: &[#(#policies),*],
             action_fields: #action_fields,
             action_type: #action_type,
             query_fields: #query_fields,
@@ -137,8 +139,45 @@ mod tests {
     }
 
     #[test]
+    fn a_single_policy_becomes_a_one_element_slice() {
+        let out = generated(quote! {
+            app { put "/links/{link}" => update { policy: LinkPolicy } }
+        });
+        assert!(out.contains("policies : & [\"LinkPolicy\"]"));
+    }
+
+    #[test]
+    fn several_policies_keep_their_declared_order() {
+        let out = generated(quote! {
+            app { put "/l/{l}" => update { policies: [LinkPolicy, AdminPolicy] } }
+        });
+        assert!(out.contains("policies : & [\"LinkPolicy\" , \"AdminPolicy\"]"));
+    }
+
+    #[test]
+    fn a_policy_path_is_recorded_by_its_final_segment() {
+        let out = generated(quote! {
+            app { put "/l/{l}" => update { policy: crate::policies::LinkPolicy } }
+        });
+        assert!(out.contains("policies : & [\"LinkPolicy\"]"));
+    }
+
+    #[test]
+    fn a_resource_policy_guards_every_action() {
+        let out = generated(quote! {
+            app {
+                resource "/links" => LinksController {
+                    name: links, only: [index, destroy], policy: LinkPolicy
+                }
+            }
+        });
+        assert_eq!(out.matches("policies : & [\"LinkPolicy\"]").count(), 2);
+    }
+
+    #[test]
     fn a_route_without_edges_carries_empty_metadata() {
         let out = generated(quote! { app { get "/" => home } });
+        assert!(out.contains("policies : & []"));
         assert!(out.contains("action_fields : & []"));
         assert!(out.contains("action_type : \"\""));
         assert!(out.contains("query_array : false"));

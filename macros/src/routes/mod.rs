@@ -34,7 +34,7 @@
 //! - `pub fn app_routes() -> Routes<AppState>` -- the routes themselves, with
 //!   group prefixes already resolved and middleware scoped to its group.
 //! - `pub const APP_ROUTES: &[RouteDescriptor]` -- the inspection metadata
-//!   behind `arc routes`, `arc check`, and the Unified Application Graph.
+//!   behind `arc routes`, `arc build`, and the Unified Application Graph.
 //! - `pub mod app_route` -- typed URL helpers (`app_route::auth::login()`),
 //!   so a misspelled route name fails to compile rather than 404.
 
