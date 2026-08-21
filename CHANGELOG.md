@@ -60,6 +60,15 @@ therefore its first.
   this?") and authorization ("may they do this?") are separate steps by
   design, and they are now separate files. The re-exports are unchanged and
   `arcature::auth::dx::Policy` still resolves.
+- **`arcature::auth::dx` is deprecated and scheduled for removal in `0.2.0`.**
+  It is now nothing but re-exports of the four modules above, so every path
+  that compiled at `0.1.0` still compiles and the fix is to delete the `dx`
+  segment. Most of the names warn when used; `Auth`, `OptionalAuth`,
+  `SessionError`, `UserLoader` and `Policy` do not, because rustc ignores
+  `#[deprecated]` on a re-export and the alias form that would carry the
+  attribute cannot be used as a tuple-struct constructor or pattern -- so
+  aliasing them would have broken `Auth(user)` to deliver a warning, which is
+  the wrong trade. The module documentation is the notice for those five.
 
 ### Fixed
 

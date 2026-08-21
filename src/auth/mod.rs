@@ -24,6 +24,17 @@
 //! * **Session/Flash ergonomics** ([`Session`], [`Flash`]).
 //! * **Authorization** via the [`Policy`] trait and [`Auth::authorize`].
 //!
+//! # Where each of those lives
+//!
+//! Every name above is re-exported from `arcature::auth`, so `use
+//! arcature::auth::Auth` is the path to write and the submodule is an
+//! implementation detail. When you do need the submodule: the extractors are
+//! in [`extract`], the handler-facing session API in [`session_api`], the
+//! one-time messages in [`flash`], the authorization seam in [`policy`], the
+//! cookie/middleware configuration in [`session`], and password hashing in
+//! [`password`]. The [`dx`] module is the pre-`0.1.1` spelling of the first
+//! four and is deprecated.
+//!
 //! # What this module does not own
 //!
 //! It does not own the User model, role/permission/account tables, or any
@@ -41,6 +52,11 @@
 //! appears in `Debug`, `Display`, error output, or logs.
 
 pub mod csrf;
+/// Deprecated compatibility re-exports; see the module docs for the new homes.
+#[deprecated(
+    since = "0.1.1",
+    note = "split into arcature::auth::{extract, session_api, flash, policy}"
+)]
 pub mod dx;
 pub mod error;
 pub mod extract;
