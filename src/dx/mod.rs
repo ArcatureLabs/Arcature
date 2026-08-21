@@ -76,6 +76,8 @@ pub mod graph;
 pub mod provider;
 #[cfg(feature = "dx")]
 pub mod request_cache;
+#[cfg(feature = "dx")]
+pub mod request_cache_store;
 pub mod resolve;
 pub mod response;
 pub mod route_metadata;
@@ -87,7 +89,7 @@ pub use application_graph::{ApplicationGraph, GraphError};
 #[cfg(all(feature = "dx", feature = "database", feature = "api"))]
 pub use bound::Bound;
 #[cfg(feature = "dx")]
-pub use command::{Command, CommandError, CommandRegistry};
+pub use command::{Command, CommandError, CommandFuture, CommandRegistry};
 pub use controller_metadata::{ControllerMetadata, ControllerMethod};
 #[cfg(all(feature = "dx", feature = "database"))]
 pub use db_from_state::DbFromState;

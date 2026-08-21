@@ -3,18 +3,24 @@
 //!
 //! A sibling to `AuthUser`: this is the *compile-time* contract the
 //! `#[request_cache]` proc-macro generates against. This descriptor is pure
-//! data -- a `&'static` const aggregated into the Unified Application Graph
-//! by `arcature-build` so the Inspector, `arc check`, and the MCP
-//! `system_checks` tool can show per-request memoized resolvers without
-//! running the application.
+//! data -- a `&'static` const describing which resolvers are memoized, and
+//! readable without running the application.
+//!
+//! Nothing reads it yet. `ModuleDescriptor` has no field for request caches,
+//! so the descriptor does not reach the Unified Application Graph and no
+//! command reports on it. That is worth stating plainly rather than naming a
+//! consumer that does not exist: the value here is the compile-time contract
+//! the macro checks against, and a reporting surface is still to be built.
 //!
 //! # No runtime here
 //!
-//! This module carries NO runtime behavior -- no `RequestCache`, no
-//! memoization, no locking. It is metadata only, matching the one-file-one-
-//! responsibility law: the descriptor (this file) is separate from any
-//! runtime container. A small app that enables `dx` gets the descriptor (so
-//! the UAG can record declared resolvers) without a runtime cache.
+//! This module carries NO runtime behavior -- no memoization, no locking.
+//! It is metadata only, matching the one-file-one-responsibility law: the
+//! descriptor (this file) is separate from the store that does the
+//! remembering, which lives next door in
+//! [`request_cache_store`](super::request_cache_store). Tooling that only
+//! needs to *report* which resolvers are memoized reads this file and never
+//! touches the store.
 //!
 //! # Example
 //!
@@ -37,7 +43,10 @@
 ///
 /// The fields are `&'static` so the descriptor is `const`-constructible and
 /// lives in the binary (no allocation). A descriptor is *declarative* -- it
-/// does not cause memoization. The descriptor is what the graph records.
+/// does not cause memoization; the wrapper the macro generates around the
+/// resolver does, against
+/// [`RequestCache`](super::request_cache_store::RequestCache). The
+/// descriptor is what the graph records.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct RequestCacheDescriptor {
     /// The resolver's name (typically the function name).
