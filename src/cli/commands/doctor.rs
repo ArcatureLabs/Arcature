@@ -525,6 +525,8 @@ mod tests {
         assert!(!excludes(" ; ; ", Path::new("C:\\app\\target")));
     }
 
+    // The advice text exists only on Windows, so the test for it does too.
+    #[cfg(windows)]
     #[test]
     fn the_advice_names_the_directory_and_the_command_to_run() {
         let advice = scanner_advice(Path::new("C:\\app\\target"));
