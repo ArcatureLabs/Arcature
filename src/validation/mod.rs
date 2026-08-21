@@ -58,9 +58,9 @@ pub use rejection::{
 ///
 /// #[request]
 /// pub struct StoreLinkRequest {
-///     #[rule(required, url)]
+///     #[validate(required, url)]
 ///     pub url: String,
-///     #[rule(required, length(min = 1, max = 120))]
+///     #[validate(required, length(min = 1, max = 120))]
 ///     pub title: String,
 /// }
 ///
@@ -99,8 +99,8 @@ where
 /// A marker trait implemented by types that serve as a validated request.
 ///
 /// The `#[request]` proc-macro (in `arcature-macros`) derives `Deserialize` and
-/// `Validate` on the request struct and implements this trait so `arc check`
-/// and other tooling can identify request types. A request type must implement
+/// `Validate` on the request struct and implements this trait so tooling can
+/// identify request types. A request type must implement
 /// [`serde::de::DeserializeOwned`] and [`validator::Validate`].
 ///
 /// Application code rarely names this trait directly; the `#[request]` macro
