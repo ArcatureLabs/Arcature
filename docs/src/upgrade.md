@@ -1,20 +1,24 @@
 # Upgrading
 
-## Nothing has been released yet
+## One release so far
 
-Neither `arcature` nor `arcature-macros` is published to crates.io. There is
-no released version to upgrade from, and this chapter describes the scheme
-that will apply once there is. Until the first publication, `main` is the only
-version, and it breaks without notice.
-
-Depend on it by git reference if you want to follow along:
+`arcature 0.1.0` and `arcature-macros 0.1.0` are on crates.io. There is
+nothing to upgrade *from* yet, so this chapter is the scheme rather than a
+history: read it before the second release, not after.
 
 ```toml
 [dependencies]
-arcature = { git = "https://github.com/ArcatureLabs/Arcature", features = ["fullstack"] }
+arcature = { version = "0.1", features = ["fullstack"] }
 ```
 
-Pin a revision. A branch reference will move under you.
+`main` moves ahead of the release and breaks without notice. To follow it,
+depend by git reference and pin a revision -- a branch reference will move
+under you.
+
+```toml
+[dependencies]
+arcature = { git = "https://github.com/ArcatureLabs/Arcature", rev = "...", features = ["fullstack"] }
+```
 
 ## The version scheme: semantic versioning
 

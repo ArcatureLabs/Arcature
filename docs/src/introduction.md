@@ -36,10 +36,14 @@ use arcature::prelude::*;
 
 ## Status
 
-Arcature is not published to crates.io yet. There is no released version to
-pin, no upgrade path from an earlier one, and the API is still moving. Read
+`arcature 0.1.0` is on crates.io. It is the first release of this codebase,
+there is no upgrade path from an earlier one, and the API is still moving. Read
 [the changelog](https://github.com/ArcatureLabs/Arcature/blob/main/CHANGELOG.md)
 before relying on anything here.
+
+The `2026.x` versions under the `arcature*` names on crates.io come from an
+abandoned predecessor repository. They are yanked and share nothing with this
+codebase but the name.
 
 Versioning is semantic, starting at `0.1.0`. Under `0.x` the fields shift one
 place left: a minor bump is the breaking one, a patch bump is compatible, and

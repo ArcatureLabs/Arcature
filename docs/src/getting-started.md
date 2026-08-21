@@ -9,14 +9,17 @@
 
 ## Installing
 
-Arcature is not on crates.io yet, so depend on the repository:
+```sh
+cargo add arcature
+```
+
+That is the whole install. To follow `main` ahead of a release instead, depend
+on the repository and pin a revision -- a branch reference will move under you.
 
 ```toml
 [dependencies]
-arcature = { git = "https://github.com/ArcatureLabs/Arcature" }
+arcature = { git = "https://github.com/ArcatureLabs/Arcature", rev = "..." }
 ```
-
-Once it is published, `cargo add arcature` will be the whole install.
 
 ## The smallest application
 
