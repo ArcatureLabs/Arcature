@@ -44,6 +44,7 @@ pub mod csrf;
 pub mod dx;
 pub mod error;
 pub mod extract;
+pub mod flash;
 pub mod password;
 pub mod password_config;
 pub mod session;
@@ -58,23 +59,25 @@ pub use tower_sessions;
 pub use argon2;
 
 pub use csrf::{CsrfConfig, CsrfLayer, CsrfMiddleware, CsrfToken};
-pub use dx::{AuthzError, Flash, FlashError, FlashLevel, FlashMessage, Policy};
-pub use extract::{
-    Auth, AuthError, AuthManager, Current, LoginBuilder, OptionalAuth, OptionalCurrent, UserLoader,
-};
-// The redirect mapper writes the same session key the `Flash` extractor
-// reads, and one spelling of it has to be authoritative.
-pub(crate) use dx::FLASH_DATA_KEY;
+pub use dx::{AuthzError, Policy};
 pub use error::{
     CsrfConfigError, CsrfError, PasswordHashError, PasswordVerifyError, SessionBuildError,
     SessionConfigError, SigningKeyReason,
 };
+pub use extract::{
+    Auth, AuthError, AuthManager, Current, LoginBuilder, OptionalAuth, OptionalCurrent, UserLoader,
+};
+pub use flash::{Flash, FlashError, FlashLevel, FlashMessage};
 pub use password::{
     PasswordHashString, PasswordHasher, PasswordSecret, RehashOutcome, verify_password,
 };
 pub use password_config::PasswordConfig;
 pub use session::{SameSite, SessionConfig, SessionKey, SessionLayer};
 pub use session_api::{Session, SessionError};
+
+// The redirect mapper writes the same session key the `Flash` extractor
+// reads, and one spelling of it has to be authoritative.
+pub(crate) use flash::FLASH_DATA_KEY;
 
 // Re-export the redacting secret wrapper for credential/token holders.
 pub use secrecy;

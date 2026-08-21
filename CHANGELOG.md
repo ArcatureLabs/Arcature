@@ -48,6 +48,11 @@ therefore its first.
   middleware layer. The two halves were previously a file apart for no
   reason other than which one had ended up in `dx`. The re-exports are
   unchanged and `arcature::auth::dx::Session` still resolves.
+- **The flash messages have a module that names them.** `Flash`,
+  `FlashMessage`, `FlashLevel` and `FlashError` now live in
+  `arcature::auth::flash`, together with the two session keys the extractor
+  and the redirect mapper have to agree on. The re-exports are unchanged and
+  `arcature::auth::dx::Flash` still resolves.
 
 ### Fixed
 
