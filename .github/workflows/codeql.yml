@@ -1,0 +1,90 @@
+# CodeQL: GitHub Actions workflow analysis. NOT Rust analysis.
+#
+# Read this paragraph before adding anything to `languages` below. This
+# workflow analyses exactly one thing: the YAML under `.github/workflows` and
+# any `action.yml` in the tree, using the `codeql/actions-queries` pack. It
+# looks for the things that go wrong in CI configuration -- cache poisoning,
+# `pull_request_target` handling untrusted input, expression injection into a
+# `run:` block, output clobbering, over-broad token permissions. It does not
+# read a single line of `src/`, and no alert it raises is a statement about
+# Arcature's Rust code.
+#
+# Rust is deliberately absent, and the reason is worth writing down because
+# the situation is genuinely ambiguous and someone will re-check it:
+#
+#   * GitHub does list Rust as an analysable language. The default-setup API
+#     for this repository offers `rust`, and codeql.github.com's supported
+#     languages table carries Rust with no preview marker on it.
+#   * But `codeql/rust-queries` is still at 0.1.x, against 1.8.x for Python,
+#     1.6.x for Go and 2.4.x for JavaScript. In CodeQL's own versioning that
+#     is a query pack that has not declared itself stable, and the security
+#     query set behind it is correspondingly thin.
+#   * And the Rust extractor builds the crate. This workspace has 29 features
+#     and three mutually exclusive SQL drivers -- `--all-features` never
+#     compiles here, which is the whole reason ci.yml has separate `drivers`
+#     and `features` jobs. A CodeQL Rust build would have to pick one driver
+#     and one feature set, so it would analyse a slice of the crate while
+#     reporting as though it had analysed the crate.
+#
+# A run that quietly covers a fraction of the code is worse than no run,
+# because the green check gets believed. So: Actions only, honestly labelled.
+# When the Rust pack reaches 1.x, add `rust` to the matrix WITH a `build-mode`
+# and an explicit `--features` choice, and change the first line of this file.
+#
+# `cargo deny`, `cargo audit` and Scorecard cover the dependency and supply
+# chain side. Nothing in this repository does static analysis of Arcature's
+# own Rust source beyond clippy, and that is the current honest state.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly. New Actions queries ship with every CodeQL bundle -- 2.26.3
+    # alone reworked the cache-poisoning and envvar-injection queries -- so a
+    # workflow file that was clean in March can have a finding in August
+    # without anyone touching it. Minute is not :00 to stay off the hour, and
+    # not 4:17 either, which is where ci.yml's powerset already sits.
+    - cron: "52 2 * * 3"
+
+# Read-only by default; the analysis job widens to upload its results.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  # Only on pull requests. A new push to a branch under review supersedes the
+  # previous analysis, so cancelling it costs nothing. The weekly run and the
+  # main-branch runs are the security record, and each one is wanted in the
+  # code scanning history, so they are never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze workflows
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # The one privilege this workflow needs beyond reading the repository:
+      # `github/codeql-action/analyze` posts the SARIF to the code scanning
+      # API, and that write is what puts alerts on the Security tab.
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `rust` here, and no `languages` matrix either -- one language means
+      # a matrix would be scaffolding around a single value. `build-mode: none`
+      # is the only mode Actions analysis supports: there is nothing to
+      # compile, CodeQL reads the YAML.
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: actions
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:actions"
