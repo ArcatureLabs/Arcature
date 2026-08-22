@@ -184,7 +184,7 @@ jobs:
           toolchain: stable
 
       - name: Test against ${{ matrix.driver }}
-        run: cargo test --no-default-features --features "jobs,test-kit,${{ matrix.feature }}" --lib --test test_kit
+        run: cargo test --no-default-features --features "jobs,session-store-db,test-kit,${{ matrix.feature }}" --lib --test test_kit
 
   drivers:
     name: Full features, per driver
@@ -205,7 +205,7 @@ jobs:
       - name: Build the full feature set once per driver
         run: |
           feats=api,api-docs,auth,cache,cli,database,dev-proxy,dx,events,inertia,jobs,macros,mail
-          feats=$feats,oauth,observe,otel,pages,realtime,storage-fs,storage-s3,templates,test-kit,uag,uploads,validation
+          feats=$feats,oauth,observe,otel,pages,realtime,session-store-db,storage-fs,storage-s3,templates,test-kit,uag,uploads,validation
           for driver in db-postgres db-sqlite db-mysql; do
             echo "== $driver =="
             cargo check --no-default-features --features "$feats,$driver" --all-targets
@@ -251,15 +251,15 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
 
-    # Not on the pull-request path. The crate has 30 features, so an uncapped
+    # Not on the pull-request path. The crate has 31 features, so an uncapped
     # powerset is a six-figure number of builds -- not slow, unrunnable. No
     # exact count is quoted for it: that number moves with every feature added
-    # and is never acted on, unlike the two depths below. `--depth 2` is 286,
+    # and is never acted on, unlike the two depths below. `--depth 2` is 312,
     # and pairwise is where feature-interaction bugs actually live: a feature
     # that breaks alone is caught by the `features` job, and one that breaks
     # only in a specific trio is rare enough not to be worth three orders of
-    # magnitude. Even 286 is too much to put in front of every pull request,
-    # so it runs once a night. Raise the depth to 3 (1,812 builds) when
+    # magnitude. Even 312 is too much to put in front of every pull request,
+    # so it runs once a night. Raise the depth to 3 (2,074 builds) when
     # chasing one.
     #
     # `--skip database` on top of the pinned driver: `db-postgres` already
