@@ -592,6 +592,27 @@ therefore its first.
   request from a fork. `observe_prometheus` is deliberately not in it:
   `observe` is a default feature, so that binary already runs in `Test`.
 
+- **The generated route helper is type-checked against a parameterised
+  route.** `routes.ts` emits a conditional rest-argument tuple, so that
+  `route("home")` takes no second argument and `route("links.show", {...})`
+  requires one. The unit tests in `src/uag/codegen/routes_ts.rs` pinned the
+  *text* of that machinery; nothing pinned its *behaviour*, because the
+  scaffold ships exactly one route and it has no parameters. The type could
+  have collapsed to one that accepts anything and every test would still
+  have passed. `tests/uag_typescript.rs` declares four route shapes -- none,
+  one, two, and a wildcard -- and runs `tsc` over usage that must compile
+  and, the half that carries the weight, seven snippets that must not: an
+  omitted parameter object, a misspelt key, a wrong value type, one of two
+  parameters, parameters passed to a parameterless route, a wildcard written
+  with its star, and a route name outside the union. Each is checked in its
+  own file so no failure masks another, and each is pinned to the diagnostic
+  code `tsc` actually raises, so "rejected" cannot quietly become "rejected
+  for an unrelated reason". The generator turned out to be correct; what was
+  missing was the proof. The suite needs a TypeScript compiler and reports
+  itself skipped without one -- `docs/decisions/0001-no-npm-package.md`
+  means this repo installs nothing on a contributor's behalf -- so point
+  `ARCATURE_TSC` at a `tsc` to run it locally.
+
 
 ### Changed
 
