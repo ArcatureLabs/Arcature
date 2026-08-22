@@ -222,6 +222,17 @@ geiger-accept:
 # `#![forbid(unsafe_code)]`", which most crates do not bother to, and that is
 # a different and much weaker question than "how much unsafe is in here".
 _geiger-report:
+    # Fetch first, or cargo-geiger 0.13.0 panics inside its vendored cargo:
+    # `assertion failed: self.pending_ids.insert(id)`, reached only from the
+    # code path that *downloads* a package it could not match. This lockfile
+    # has four such packages -- rkyv, rkyv_derive, borsh and borsh-derive,
+    # optional dependencies of rust_decimal that no feature turns on, so they
+    # sit in Cargo.lock and in no build graph. A warm registry cache skips
+    # that path entirely, which is why the bug is invisible on a machine that
+    # has built this tree before and fatal on a fresh CI runner. `cargo fetch`
+    # puts every lockfile entry on disk, including those four, so the report
+    # downloads nothing. On a warm cache it costs about a second.
+    @cargo fetch --locked
     @cargo geiger --all-targets --output-format Ascii
 
 # Generate an application with `arc new` and compile it.
