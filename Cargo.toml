@@ -266,6 +266,25 @@ session-store-db = ["auth", "database", "dep:sha2", "dep:async-trait"]
 # comes from `getrandom`, which is unconditional.
 api-tokens = ["database", "dep:sha2", "dep:subtle", "dep:zeroize"]
 
+# Multi-channel notifications: one event, told to one person, over whichever
+# channels apply.
+#
+# Off by default, like every other capability that brings a subsystem an
+# application may not want.
+#
+# It implies `mail` rather than splitting a channel-less core into its own
+# feature. Mail is the channel a notification system is overwhelmingly used
+# for, and the alternative -- a `notifications` that can deliver nothing plus
+# a `notifications-mail` on top -- would be two features and two powerset
+# dimensions to spare a dependency the same application has almost certainly
+# already enabled. Later channels do get their own features, because a
+# database table and a broadcast bus are costs a mail-only user should not
+# pay.
+#
+# No new crates enter the graph: everything here is `mail` plus `thiserror`,
+# which is unconditional.
+notifications = ["mail"]
+
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.
 oauth = ["dep:oauth2", "dep:url"]

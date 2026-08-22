@@ -734,7 +734,34 @@ therefore its first.
   not `401`: that is a wiring mistake, and answering `401` would send a
   correct client away to mint a token that would fail identically. A database
   error answers `503` for the same reason.
-
+- **Notifications deliver one event to one person over several channels**,
+  behind a new `notifications` feature. A `Notification` renders itself per
+  channel, a `Notifier` holds one backing per channel and delivers it, and a
+  `Recipient` says who to -- `Notifiable` maps an application's own user type
+  onto that. This release ships the mail channel, built on the existing
+  `mail` transport, so no new crate enters the dependency graph. Two design
+  choices differ from the framework this mirrors, and both remove a way to be
+  wrong rather than adding a way to be right. There is no `via()`: Laravel
+  declares its channel list in one method and renders the content in others,
+  which lets the two disagree -- a channel named with no method behind it
+  throws at runtime, a method the list forgot is never called. Here the
+  channel set is *derived*, a notification reaches the mail channel exactly
+  when `to_mail` returns `Some`, so there is no second place to keep in sync.
+  The per-recipient decision that `via($notifiable)` exists to make is still
+  available, because every channel method receives the `Recipient`, but it is
+  made where the content is produced. And asking for a channel the `Notifier`
+  was never given is a `NotConfigured` error rather than a silent skip: a
+  forgotten `.with_mail(..)` at startup must fail on the first send, not turn
+  into password-reset emails that never arrive. A successful send returns a
+  `Delivery` naming the channels that ran, so "reached nobody" is a thing the
+  caller can ask about instead of a silence identical to success. Adding a
+  channel later is additive -- every channel method has a default body
+  returning `None`, and `Channel` and `NotificationError` are both
+  `#[non_exhaustive]` -- so a notification written today keeps compiling when
+  the database and broadcast channels land. `Notifier`'s `Debug` reports
+  which channels are wired and nothing about what is behind them, because a
+  `Mailer` holds SMTP credentials and the first log line that formats
+  application state should not carry them.
 
 ### Changed
 

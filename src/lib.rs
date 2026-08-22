@@ -213,6 +213,14 @@ pub use mail::{
     Mailable, Mailer, SmtpConfig, SmtpCredentials, TlsMode,
 };
 
+#[cfg(feature = "notifications")]
+pub mod notifications;
+#[cfg(feature = "notifications")]
+pub use notifications::{
+    Channel, Delivery, MailContent, Notifiable, Notification, NotificationError, Notifier,
+    Recipient,
+};
+
 #[cfg(feature = "jobs")]
 pub mod jobs;
 #[cfg(feature = "jobs")]
