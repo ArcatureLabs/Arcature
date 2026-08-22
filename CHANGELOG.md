@@ -925,6 +925,34 @@ therefore its first.
   decisions. Off by default because it needs a database; the feature adds no
   crate to the graph. Spending a link does not sign anybody out: session
   invalidation on a password change is a separate mechanism.
+- `AuthUser::stored_credential`, and with it the other half of a password
+  change: every session bound to that user stops working. Returning the
+  password hash from the new method is the whole opt-in. Login stamps a
+  SHA-256 of it into the session, every authenticated request compares that
+  stamp against the credential the user row holds *now*, and a mismatch
+  flushes the session and answers as though nobody were logged in. Without
+  this, the reset link above hands an account back while the thief's session
+  keeps working -- which is to say the reset does not do the one thing the
+  person asking for it wanted. The comparison, rather than a
+  `DELETE FROM sessions WHERE user_id = ?`, is forced by the session stores
+  that exist: none of them index by user, so a query-based version would work
+  on some backends and silently do nothing on others. This one behaves
+  identically on `MemoryStore` and on a database store, and costs an
+  already-invalid session one round trip it was going to make anyway. The
+  session holds the digest and never the hash, so reading the session store
+  does not hand anyone an offline attack on a password. The current session
+  re-stamps itself through `AuthManager::rebind_credential`, which is how the
+  form that changed the password stays signed in while every other device does
+  not -- call it with the user re-read from the database, since a stale object
+  restores the old stamp and quietly disarms the check. The method defaults to
+  `None`, so an existing implementation is unchanged and unenforced, and an
+  application that authenticates entirely through an identity provider is not
+  asked to invent a credential. A session created before the application
+  adopted the method is stamped on its next request rather than signed out:
+  turning this on does not log out a deployment's users, at the price that a
+  password change made before that first stamped request is not detectable.
+  `auth` gains `dep:sha2`, which adds no crate to the graph -- `cookie`, which
+  `tower-sessions` already pulls in, depends on the same one.
 
 ### Changed
 

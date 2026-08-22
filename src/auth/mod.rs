@@ -157,4 +157,65 @@ pub trait AuthUser: Send + Sync + 'static {
 
     /// Get the ID to store in the session on login.
     fn id(&self) -> &Self::Id;
+
+    /// The stored verifier this user authenticates against -- the password
+    /// hash, in almost every case.
+    ///
+    /// Return it and a password change signs every session bound to this user
+    /// out, including the ones on devices nobody has in front of them. That is
+    /// the point of changing a password after a laptop is stolen, and without
+    /// this the reset link an application just built hands the account back
+    /// while the thief's session keeps working.
+    ///
+    /// # How the invalidation works
+    ///
+    /// Login stamps a digest of this value into the session, and every
+    /// authenticated request compares that stamp against the value the user
+    /// row holds *now*. A mismatch means the credential moved under the
+    /// session, so the session is flushed and the request is unauthenticated.
+    /// Nothing is stored anywhere but the session the browser already carries:
+    /// there is no per-user session index to consult, and consequently the
+    /// mechanism works the same on
+    /// [`MemoryStore`](tower_sessions::MemoryStore) as on a database store.
+    ///
+    /// The session holds a SHA-256 of what is returned, never the value
+    /// itself, so a leaked session row does not become an offline attack on
+    /// the password hash. Returning something *other* than the password hash
+    /// is fine as long as it changes when the credential does -- a
+    /// `password_changed_at` timestamp works -- but note that a low-entropy
+    /// value is guessable from its digest by anyone who reads the session
+    /// store, which for a timestamp means learning when the password changed.
+    ///
+    /// # The default
+    ///
+    /// `None`, which enforces nothing. Existing implementations keep their
+    /// current behaviour, and an application that has no password to speak of
+    /// -- one that authenticates entirely through an identity provider -- is
+    /// not being asked to invent a value.
+    ///
+    /// ```
+    /// use arcature::AuthUser;
+    ///
+    /// # #[allow(dead_code)]
+    /// struct User {
+    ///     id: i64,
+    ///     password_hash: String,
+    /// }
+    ///
+    /// impl AuthUser for User {
+    ///     type Id = i64;
+    ///
+    ///     fn id(&self) -> &i64 {
+    ///         &self.id
+    ///     }
+    ///
+    ///     fn stored_credential(&self) -> Option<&[u8]> {
+    ///         Some(self.password_hash.as_bytes())
+    ///     }
+    /// }
+    /// # fn main() {}
+    /// ```
+    fn stored_credential(&self) -> Option<&[u8]> {
+        None
+    }
 }

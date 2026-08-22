@@ -149,6 +149,11 @@ auth = [
     "dep:secrecy",
     "dep:zeroize",
     "dep:time",
+    # For the credential stamp: the session carries a SHA-256 of the user's
+    # password hash so that changing the password signs every session out.
+    # Adds no crate to the graph -- `cookie`, which `tower-sessions` above
+    # already pulls, depends on the same `sha2`.
+    "dep:sha2",
 ]
 
 # Request validation built on `validator`.

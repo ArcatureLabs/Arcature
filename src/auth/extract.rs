@@ -39,6 +39,33 @@ use crate::auth::AuthUser;
 /// bound deterministic.
 const ABSOLUTE_AUTH_AT_KEY: &str = "__arcature_absolute_auth_at";
 
+/// Session key under which the credential stamp is stored at login, for the
+/// credential-change enforcement in [`load_user`]. See
+/// [`AuthUser::stored_credential`](crate::auth::AuthUser::stored_credential)
+/// for what the stamp is and why it is a digest.
+const CREDENTIAL_STAMP_KEY: &str = "__arcature_credential_stamp";
+
+/// The value the session carries on behalf of a credential: a SHA-256 of it,
+/// hex-encoded.
+///
+/// Hex rather than the crate's base64url because this string is never parsed
+/// back. Nothing decodes it, nothing derives a lookup key from it, and the
+/// only operation it takes part in is equality against a value computed the
+/// same way one line earlier -- so the encoding is a display detail, and the
+/// legible one costs 22 bytes in a session row.
+fn credential_stamp(credential: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(credential);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write;
+        // Cannot fail: writing to a String is infallible.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 /// The current time as Unix milliseconds. Cannot panic: a clock set before
 /// the Unix epoch yields `0` rather than aborting. Used only to stamp and
 /// compare the absolute session lifetime.
@@ -194,8 +221,42 @@ impl<U: AuthUser> AuthManager<U> {
         LoginBuilder {
             session: &self.session,
             user_id: user.id().clone(),
+            credential_stamp: user.stored_credential().map(credential_stamp),
             remember: false,
         }
+    }
+
+    /// Re-bind this session to the user's credential as it stands now.
+    ///
+    /// Changing a password signs every session bound to that user out --
+    /// including the one that changed it, which is a surprising way to end a
+    /// settings form. Call this immediately afterwards, with the user
+    /// **re-read from the database** so the new hash is the one being stamped,
+    /// and this session survives while every other one stops working on its
+    /// next request. That asymmetry is the whole feature: "change my password
+    /// and sign my other devices out" is one call, not a session-store query
+    /// that has no index to answer it.
+    ///
+    /// Passing a stale user object -- the one loaded before the update -- puts
+    /// the old stamp back and quietly disarms the invalidation for this
+    /// session, so re-read rather than reuse.
+    ///
+    /// Does nothing when
+    /// [`stored_credential`](crate::auth::AuthUser::stored_credential) returns
+    /// `None`, since there is then no stamp to keep current.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AuthError::Session`] if the session write fails.
+    pub async fn rebind_credential(&self, user: &U) -> Result<(), AuthError> {
+        let Some(credential) = user.stored_credential() else {
+            return Ok(());
+        };
+        self.session
+            .insert(CREDENTIAL_STAMP_KEY, credential_stamp(credential))
+            .await
+            .map_err(|e| AuthError::Session(e.to_string()))?;
+        Ok(())
     }
 
     /// Log out: flush the session, clearing all data (including the user ID).
@@ -256,6 +317,7 @@ where
 pub struct LoginBuilder<'a, U: AuthUser> {
     session: &'a TowerSession,
     user_id: U::Id,
+    credential_stamp: Option<String>,
     remember: bool,
 }
 
@@ -297,6 +359,15 @@ impl<'a, U: AuthUser> std::future::IntoFuture for LoginBuilder<'a, U> {
                 .insert(ABSOLUTE_AUTH_AT_KEY, now_unix_millis())
                 .await
                 .map_err(|e| AuthError::Session(e.to_string()))?;
+            // Bind the credential the user authenticated with, so a later
+            // password change can be detected by comparison rather than by a
+            // per-user session index the store does not have.
+            if let Some(stamp) = self.credential_stamp {
+                self.session
+                    .insert(CREDENTIAL_STAMP_KEY, stamp)
+                    .await
+                    .map_err(|e| AuthError::Session(e.to_string()))?;
+            }
             if self.remember {
                 self.session
                     .insert("remember_me", true)
@@ -457,5 +528,67 @@ where
             .into_response()
     })?;
 
-    Ok(user)
+    let Some(user) = user else { return Ok(None) };
+
+    // Credential-change enforcement. The session carries a digest of the
+    // credential the user logged in with; the row carries the credential as
+    // it stands now. A mismatch means the password moved under the session --
+    // a reset, an administrator's intervention, a user reacting to a stolen
+    // laptop -- and the session is spent.
+    //
+    // This runs after the load because it needs the current credential, which
+    // costs an already-invalid session one database round trip. The
+    // alternative is a per-user index in the session store, which no store
+    // has and which would make this mechanism work on some stores and not
+    // others.
+    if let Some(credential) = user.stored_credential() {
+        let expected = credential_stamp(credential);
+        let bound: Option<String> = session.get(CREDENTIAL_STAMP_KEY).await.map_err(|_err| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "session read failed",
+            )
+                .into_response()
+        })?;
+        match bound {
+            // Not constant-time, deliberately. Both sides are computed
+            // server-side from server-held values: the session store keeps
+            // the data behind an opaque cookie id, so a caller cannot feed a
+            // chosen `bound` in to be timed against, and learning the digest
+            // of a password hash does not help forge a session that cannot be
+            // written in the first place.
+            Some(bound) if bound == expected => {}
+            Some(_) => {
+                session.flush().await.map_err(|_err| {
+                    (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "session flush failed",
+                    )
+                        .into_response()
+                })?;
+                return Ok(None);
+            }
+            None => {
+                // Bound but unstamped: a session created before the
+                // application implemented `stored_credential`, or before this
+                // version. Begin tracking from here rather than signing
+                // everyone out on upgrade -- the same trade the absolute
+                // lifetime makes above. A password change *after* this
+                // request is enforced normally; one that happened before it
+                // is not detectable, because there is nothing to compare to.
+                session
+                    .insert(CREDENTIAL_STAMP_KEY, expected)
+                    .await
+                    .map_err(|_err| {
+                        (
+                            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                            "session write failed",
+                        )
+                            .into_response()
+                    })?;
+            }
+        }
+    }
+
+    Ok(Some(user))
 }
