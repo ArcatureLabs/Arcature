@@ -294,6 +294,28 @@ uploads = ["axum/multipart", "validation", "storage-fs", "dep:tokio", "dep:unico
 # carrying a template compiler.
 views = ["dep:askama"]
 
+# Application-level authenticated encryption: `crypt::Encrypter`, which turns
+# bytes into a versioned, self-describing token and refuses to hand back a
+# single byte of a token that has been altered.
+#
+# Off by default, because an application that never encrypts anything should
+# not carry a cipher, and because the moment a build can produce ciphertext is
+# the moment somebody has to own a key rotation story. Enabling it is that
+# decision, written down in the manifest.
+#
+# `dep:hmac` + `dep:sha2` are here for the subkey derivation, not for the
+# cipher: `AppKey` never hands `APP_KEY` itself to an algorithm, it derives a
+# labelled 32-byte subkey per consumer. There is no `dep:subtle`, because the
+# only comparison in this feature is the AEAD's own tag check, which
+# `chacha20poly1305` already does in constant time.
+crypt = [
+    "dep:chacha20poly1305",
+    "dep:secrecy",
+    "dep:zeroize",
+    "dep:hmac",
+    "dep:sha2",
+]
+
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
     "macros",
@@ -389,6 +411,32 @@ time = { version = "0.3.55", default-features = false, optional = true }
 # itself depends on it, so this is the same crate the `auth` feature already
 # compiles.
 async-trait = { version = "0.1.92", default-features = false, optional = true }
+
+# Application cryptography (feature `crypt`).
+#
+# `chacha20poly1305` is the AEAD behind `crypt::Encrypter`, and the variant is
+# **X**ChaCha20-Poly1305 rather than the RFC 8439 one. That is the whole
+# reason this crate is here instead of an AES-GCM one: AES-GCM's nonce is 96
+# bits, which is small enough that a random nonce has a birthday bound a busy
+# application can actually reach, and a repeated GCM nonce does not merely
+# leak plaintext -- it leaks the authentication subkey, so the attacker gains
+# forgery too. XChaCha20's nonce is 192 bits, where a random draw per message
+# is safe for any number of messages a web application will ever send, and the
+# encrypter therefore never has to ask a caller to manage a counter.
+#
+# RustCrypto, pure Rust, `#![no_std]` here (`alloc` is on for the `Vec`
+# output, `getrandom` is off because the nonce comes from the `getrandom`
+# crate this manifest already depends on unconditionally). No C and no
+# assembly: `ring` and `aws-lc-rs` both carry both, and the point of this
+# module's threat model is that attacker-authored bytes never reach a C
+# parser. `zeroize` wipes the key schedule on drop.
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc", "zeroize"], optional = true }
+#
+# `hmac` derives the per-purpose subkeys from `APP_KEY`. Version 0.12 pairs
+# with the `sha2` 0.10 already declared under "Uploads" below, so on a build
+# that has `uploads` or `session-store-db` this adds an edge rather than a
+# crate. RustCrypto, pure Rust, no C.
+hmac = { version = "0.12", default-features = false, optional = true }
 
 # Validation.
 validator = { version = "0.21.0", default-features = false, features = ["derive"], optional = true }

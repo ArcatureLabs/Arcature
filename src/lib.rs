@@ -152,6 +152,15 @@ pub use auth::{
 #[cfg(feature = "session-store-db")]
 pub use auth::{DbSessionStore, SessionStoreError};
 
+// Keyed cryptography derived from `APP_KEY`. Independent of `auth`: an API
+// with no cookies and no sessions may still need to hand out an opaque token,
+// and making it compile a password hasher and a session layer to get one
+// would be a packaging decision pretending to be a security one.
+#[cfg(feature = "crypt")]
+pub mod crypt;
+#[cfg(feature = "crypt")]
+pub use crypt::{AppKey, AppKeyError, DecryptError, EncryptError, Encrypter};
+
 #[cfg(feature = "validation")]
 pub mod validation;
 #[cfg(feature = "validation")]

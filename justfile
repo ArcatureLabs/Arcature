@@ -114,7 +114,7 @@ features:
 drivers:
     #!/usr/bin/env bash
     set -euo pipefail
-    feats=api,api-docs,auth,cache,cli,database,dev-proxy,dx,events,inertia,jobs,macros,mail
+    feats=api,api-docs,auth,cache,cli,crypt,database,dev-proxy,dx,events,inertia,jobs,macros,mail
     feats=$feats,oauth,observe,otel,pages,realtime,session-store-db,storage-fs,storage-s3,templates,test-kit,uag,uploads,validation,views
     for driver in db-postgres db-sqlite db-mysql; do
         echo "== $driver =="

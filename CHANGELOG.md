@@ -32,6 +32,16 @@ therefore its first.
 
 ### Added
 
+- **An application encrypter, behind the new off-by-default `crypt`
+  feature.** `crypt::Encrypter` seals bytes with XChaCha20-Poly1305 into a
+  versioned, URL-safe token and refuses to return a single byte of one that
+  has been altered -- a tag mismatch is an error, never a partial plaintext.
+  The X variant is deliberate: its 192-bit nonce makes a randomly generated
+  nonce per message safe, where AES-GCM's 96-bit nonce has a birthday cliff
+  that costs both confidentiality and integrity. The key is a labelled
+  32-byte subkey of `APP_KEY` rather than `APP_KEY` itself, so the encrypter
+  and every future consumer are domain-separated by construction. The
+  dependency is pure Rust: no C, no assembly, nothing from OpenSSL.
 - **CI runs the suite against all three SQL dialects.** A new `Database`
   matrix job builds `jobs,test-kit` once per driver and points
   `ARCATURE_TEST_DB_URL` at a live PostgreSQL 17, MySQL 8, or SQLite file.
