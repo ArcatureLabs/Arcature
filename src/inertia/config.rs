@@ -4,6 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::error::InertiaError;
+use super::head::Head;
 use super::props::SharedProps;
 use crate::http::security::CspNonce;
 
@@ -40,19 +41,91 @@ impl AsRef<str> for AssetVersion {
 /// safe embedding. Constructed only by the adapter; applications receive it
 /// in their root document renderer and embed it via `Display`.
 ///
-/// It also carries this request's [`CspNonce`], when there is one. That is why
-/// the type is a struct rather than a `String`: the nonce could be added to it
-/// without touching [`RootDocument::render`], and every application that
-/// passes a plain `Fn(ScriptBody) -> String` closure kept compiling.
+/// It also carries this request's [`CspNonce`], when there is one, and the
+/// [`Head`] this page asked for. That is why the type is a struct rather than
+/// a `String`: each of those could be added to it without touching
+/// [`RootDocument::render`], and every application that passes a plain
+/// `Fn(ScriptBody) -> String` closure kept compiling. Whatever a root document
+/// needs next arrives the same way.
 #[derive(Debug, Clone)]
 pub struct ScriptBody {
     html: Arc<str>,
     nonce: Option<CspNonce>,
+    head: Option<Head>,
 }
 
 impl ScriptBody {
-    pub(crate) fn from_escaped(html: Arc<str>, nonce: Option<CspNonce>) -> ScriptBody {
-        ScriptBody { html, nonce }
+    pub(crate) fn from_escaped(
+        html: Arc<str>,
+        nonce: Option<CspNonce>,
+        head: Option<Head>,
+    ) -> ScriptBody {
+        ScriptBody { html, nonce, head }
+    }
+
+    /// The [`Head`] this page asked for: its title, meta description,
+    /// canonical URL and Open Graph and Twitter card fields, every value
+    /// already HTML-escaped.
+    ///
+    /// `None` when the handler set none, which is the case for every
+    /// application written before this existed. A root document that wants
+    /// server-rendered metadata reads it here and falls back to whatever it
+    /// used before; the stock [`default_root_document`] and
+    /// [`vite_root_document`] do exactly that with their own `title`.
+    ///
+    /// This is the entire server-side SEO story and it is deliberately small.
+    /// Google runs JavaScript, so a client-rendered title reaches it
+    /// eventually; Facebook, Zalo, Slack, Discord, LinkedIn, Telegram and X
+    /// do not run any, so whatever is not in these bytes does not exist to
+    /// them. Rendering the application itself on the server would mean a
+    /// JavaScript runtime in the request path, which buys nothing a scraper
+    /// reads.
+    ///
+    /// ```
+    /// use arcature::axum::body::{Body, to_bytes};
+    /// use arcature::axum::http::Request;
+    /// use arcature::axum::routing::get;
+    /// use arcature::axum::Router;
+    /// use arcature::inertia::{Head, Inertia, InertiaConfig, InertiaLayer, ScriptBody};
+    /// use tower::ServiceExt as _;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let config = InertiaConfig::versionless(|body: ScriptBody| {
+    ///     let title = body.head().and_then(Head::title).unwrap_or("Acme");
+    ///     format!(
+    ///         "<!doctype html><html><head><title>{title}</title></head>\
+    ///          <body>{body}</body></html>"
+    ///     )
+    /// });
+    ///
+    /// let app = Router::new()
+    ///     .route(
+    ///         "/",
+    ///         get(|inertia: Inertia| async move {
+    ///             inertia
+    ///                 .render("Home", arcature::serde_json::json!({}))
+    ///                 .await
+    ///                 .unwrap()
+    ///         }),
+    ///     )
+    ///     .layer(InertiaLayer::new(config));
+    ///
+    /// let response = app
+    ///     .oneshot(Request::get("/").body(Body::empty()).unwrap())
+    ///     .await
+    ///     .unwrap();
+    /// let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    /// let html = String::from_utf8(bytes.to_vec()).unwrap();
+    ///
+    /// // Nothing set a head on this render, so the document's own title
+    /// // stands -- exactly what it did before heads existed.
+    /// assert!(html.contains("<title>Acme</title>"), "{html}");
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn head(&self) -> Option<&Head> {
+        self.head.as_ref()
     }
 
     /// This request's Content-Security-Policy nonce, if the application

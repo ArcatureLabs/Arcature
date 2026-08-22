@@ -145,7 +145,7 @@ impl Inertia {
             let json = serialize(&page)?;
             Ok(json_response(json, status))
         } else {
-            html(&page, &self.config, self.nonce.clone(), status)
+            html(&page, &self.config, self.nonce.clone(), None, status)
         }
     }
 

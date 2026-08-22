@@ -120,6 +120,13 @@ therefore its first.
   `summary_large_image` or `summary` -- X renders no preview at all without
   that tag. Nothing here executes JavaScript: this is meta tags for scrapers,
   not server-side rendering.
+- **`ScriptBody` carries the page head.** `ScriptBody::head` hands a root
+  document the `Head` for the page it is about to wrap, so a custom
+  `Fn(ScriptBody) -> String` can put real `<title>` and `og:` tags in the
+  document it builds instead of one title shared by every route. The head
+  travels beside the markup rather than inside it because only the root
+  document knows where its own `<head>` element is. `RootDocument::render`
+  keeps its signature and every existing closure keeps compiling.
 
 ### Deprecated
 

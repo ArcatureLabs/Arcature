@@ -9,6 +9,7 @@ use axum::response::{IntoResponse, Response};
 
 use super::config::{InertiaConfig, ScriptBody};
 use super::error::InertiaError;
+use super::head::Head;
 use super::headers::Headers;
 use super::page::Page;
 use crate::http::security::CspNonce;
@@ -35,24 +36,30 @@ pub(crate) fn escape_script_body(json: &str) -> String {
     out
 }
 
-/// Build a [`ScriptBody`] from a serialized page JSON, the page-element id and
-/// this request's Content-Security-Policy nonce.
+/// Build a [`ScriptBody`] from a serialized page JSON, the page-element id,
+/// this request's Content-Security-Policy nonce and this page's [`Head`].
 ///
 /// The nonce goes on the payload script because that script *is* the
 /// application: a policy that blocks `<script data-page>` does not degrade an
 /// Inertia page, it leaves a blank `<div>`. With no nonce the markup is
 /// byte-for-byte what it was before nonces existed.
+///
+/// The head goes *beside* the markup rather than into it. It is metadata for
+/// the `<head>` element, and only the root document knows where that is --
+/// which is the whole reason it travels on the `ScriptBody` instead of being
+/// rendered here.
 pub(crate) fn build_script_body(
     page_json: &str,
     page_id: &str,
     nonce: Option<CspNonce>,
+    head: Option<Head>,
 ) -> ScriptBody {
     let escaped = escape_script_body(page_json);
     let attribute = nonce.as_ref().map(CspNonce::attribute).unwrap_or_default();
     let html = format!(
         "<script{attribute} data-page=\"{page_id}\" type=\"application/json\">{escaped}</script><div id=\"{page_id}\"></div>"
     );
-    ScriptBody::from_escaped(Arc::from(html), nonce)
+    ScriptBody::from_escaped(Arc::from(html), nonce, head)
 }
 
 /// Serialize a [`Page`] to JSON.
@@ -65,10 +72,11 @@ pub(crate) fn html(
     page: &Page,
     config: &InertiaConfig,
     nonce: Option<CspNonce>,
+    head: Option<Head>,
     status: StatusCode,
 ) -> Result<Response, InertiaError> {
     let page_json = serialize(page)?;
-    let script_body = build_script_body(&page_json, config.page_id(), nonce);
+    let script_body = build_script_body(&page_json, config.page_id(), nonce, head);
     let document = config.root_document().render(script_body);
 
     let mut headers = HeaderMap::new();
@@ -172,7 +180,7 @@ mod tests {
         // A `script-src 'nonce-X'` policy with an un-nonced payload script
         // does not harden the page, it leaves a blank mount point.
         let nonce = CspNonce::generate().expect("OS RNG");
-        let body = build_script_body(r#"{"a":1}"#, "app", Some(nonce.clone())).to_string();
+        let body = build_script_body(r#"{"a":1}"#, "app", Some(nonce.clone()), None).to_string();
         assert!(
             body.starts_with(&format!("<script nonce=\"{nonce}\" data-page=\"app\"")),
             "unexpected markup: {body}"
@@ -181,7 +189,7 @@ mod tests {
 
     #[test]
     fn the_payload_script_is_unchanged_when_there_is_no_nonce() {
-        let body = build_script_body(r#"{"a":1}"#, "app", None).to_string();
+        let body = build_script_body(r#"{"a":1}"#, "app", None, None).to_string();
         assert_eq!(
             body,
             "<script data-page=\"app\" type=\"application/json\">{\"a\":1}</script>\
@@ -195,13 +203,46 @@ mod tests {
         // The documented path for a hand-written `RootDocument` that emits
         // scripts of its own, which the framework never sees.
         let nonce = CspNonce::generate().expect("OS RNG");
-        let body = build_script_body("{}", "app", Some(nonce.clone()));
+        let body = build_script_body("{}", "app", Some(nonce.clone()), None);
         assert_eq!(body.nonce().map(CspNonce::as_str), Some(nonce.as_str()));
         assert_eq!(body.nonce_attribute(), format!(" nonce=\"{nonce}\""));
 
-        let none = build_script_body("{}", "app", None);
+        let none = build_script_body("{}", "app", None, None);
         assert!(none.nonce().is_none());
         assert_eq!(none.nonce_attribute(), "");
+    }
+
+    #[test]
+    fn a_root_document_can_read_the_head_off_the_script_body() {
+        // The head reaches the root document beside the markup, not inside
+        // it: the `<head>` element belongs to the document, and only the
+        // document knows where it is.
+        let head = Head::new()
+            .with_title("Quarterly report")
+            .with_og_image("/og.png");
+        let body = build_script_body("{}", "app", None, Some(head));
+        assert_eq!(body.head().and_then(Head::title), Some("Quarterly report"));
+        assert!(
+            body.head()
+                .is_some_and(|h| h.to_html().contains("og:image"))
+        );
+
+        // Every application written before heads existed sets none, and its
+        // root document sees exactly what it saw before.
+        assert!(build_script_body("{}", "app", None, None).head().is_none());
+    }
+
+    #[test]
+    fn the_head_does_not_leak_into_the_payload_markup() {
+        // Escaped or not, metadata in the body is metadata a scraper reading
+        // `<head>` never sees and a parser in `<body>` may act on.
+        let head = Head::new().with_title("Quarterly report");
+        let markup = build_script_body("{}", "app", None, Some(head)).to_string();
+        assert!(
+            !markup.contains("Quarterly report"),
+            "unexpected markup: {markup}"
+        );
+        assert!(!markup.contains("<title"), "unexpected markup: {markup}");
     }
 
     #[test]
