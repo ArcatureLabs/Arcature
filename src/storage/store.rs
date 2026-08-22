@@ -266,6 +266,230 @@ impl Disk {
     }
 }
 
+/// The key prefix every in-flight upload is written under.
+///
+/// One directory, so a disk's real content is not interleaved with half-
+/// written objects, and an operator can see at a glance whether anything was
+/// left behind by a process that died mid-upload.
+#[cfg(feature = "uploads")]
+pub const STAGING_PREFIX: &str = "_staging";
+
+/// A monotonically increasing part of the staging key, so two uploads that
+/// start inside the same nanosecond still get different keys.
+#[cfg(feature = "uploads")]
+static STAGING_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A unique key for one in-flight upload.
+///
+/// Process id, wall-clock nanoseconds and a process-local counter. Uniqueness
+/// is the whole requirement -- the key is transient, lives under
+/// [`STAGING_PREFIX`], and is never derived from anything the client sent, so
+/// there is nothing here for a request to influence.
+#[cfg(feature = "uploads")]
+fn staging_path() -> StoragePath {
+    let counter = STAGING_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let pid = std::process::id();
+    StoragePath::new(&format!(
+        "{STAGING_PREFIX}/{pid:08x}-{nanos:032x}-{counter:016x}.part"
+    ))
+    .expect("a hex-only key under a fixed ASCII prefix is always a valid object key")
+}
+
+#[cfg(feature = "uploads")]
+impl Disk {
+    /// Begin a streaming upload whose object key will be its own SHA-256.
+    ///
+    /// Chunks are written through [`Disk::writer`] as they arrive and hashed
+    /// on the way past, so the whole object is never resident. Because the
+    /// key is not known until the last byte has been seen, the bytes go to a
+    /// unique key under [`STAGING_PREFIX`] first and are moved onto the
+    /// content-addressed key by [`UploadWriter::finish`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Backend`] if the staging object cannot be
+    /// opened for writing.
+    pub async fn begin_upload(&self) -> Result<UploadWriter, StorageError> {
+        self.open_upload(None).await
+    }
+
+    /// As [`Disk::begin_upload`], with the finished object placed under an
+    /// application-chosen prefix (`avatars/ab/cd/<digest>.<ext>`).
+    ///
+    /// The prefix is the application's own string -- never anything that came
+    /// off the request -- and it is validated here, before a byte is written,
+    /// rather than after the whole body has been streamed to a key that
+    /// turns out to have nowhere to go.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Path`] if `prefix` is not a valid relative
+    /// key, and [`StorageError::Backend`] if the staging object cannot be
+    /// opened.
+    pub async fn begin_upload_under(&self, prefix: &str) -> Result<UploadWriter, StorageError> {
+        let prefix = prefix.trim_end_matches('/');
+        StoragePath::new(prefix)?;
+        self.open_upload(Some(prefix.to_string())).await
+    }
+
+    async fn open_upload(&self, prefix: Option<String>) -> Result<UploadWriter, StorageError> {
+        let staging = staging_path();
+        let writer = self.writer(&staging).await?;
+        Ok(UploadWriter {
+            disk: self.clone(),
+            staging,
+            prefix,
+            writer,
+            hasher: crate::storage::content::ContentHasher::new(),
+        })
+    }
+}
+
+/// An upload in flight: bytes go to the disk as they arrive, and the SHA-256
+/// of what has gone past is kept beside them.
+///
+/// Created by [`Disk::begin_upload`]. Feed it with [`UploadWriter::write`],
+/// then either [`UploadWriter::finish`] (close, then move the object onto its
+/// content-addressed key) or [`UploadWriter::abort`] (drop the staging
+/// object).
+///
+/// **Neither is optional.** Dropping an `UploadWriter` without calling one of
+/// them leaves the staging object behind, and on an S3-compatible backend
+/// leaves the multipart upload un-closed -- there is no `Drop` that can fix
+/// that, because both fixes are `async`.
+///
+/// # Example
+///
+/// ```no_run
+/// use arcature::storage::{Extension, Storage, StorageConfig};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let storage = Storage::connect(StorageConfig::fs("/var/lib/myapp/storage")?).await?;
+/// let mut upload = storage.default_disk().begin_upload_under("avatars").await?;
+///
+/// // In a real handler these chunks come from a `BoundedField`.
+/// for chunk in [&b"\x89PNG\r\n\x1a\n"[..], b"...."] {
+///     upload.write(chunk).await?;
+/// }
+///
+/// let address = upload.finish(Extension::parse("png")?).await?;
+/// println!("stored {} bytes at {}", address.byte_len(), address.path().as_str());
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "uploads")]
+pub struct UploadWriter {
+    disk: Disk,
+    staging: StoragePath,
+    prefix: Option<String>,
+    writer: opendal::Writer,
+    hasher: crate::storage::content::ContentHasher,
+}
+
+#[cfg(feature = "uploads")]
+impl std::fmt::Debug for UploadWriter {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("UploadWriter")
+            .field("staging", &self.staging)
+            .field("prefix", &self.prefix)
+            .field("byte_len", &self.hasher.byte_len())
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "uploads")]
+impl UploadWriter {
+    /// The transient key the bytes are being written to.
+    #[must_use]
+    pub fn staging_path(&self) -> &StoragePath {
+        &self.staging
+    }
+
+    /// How many bytes have been written so far.
+    #[must_use]
+    pub fn byte_len(&self) -> u64 {
+        self.hasher.byte_len()
+    }
+
+    /// Write the next chunk.
+    ///
+    /// The chunk goes to the backend and to the hasher, and is then dropped.
+    /// Nothing accumulates: an upload of any size costs one chunk of memory,
+    /// which is what makes the size caps in
+    /// [`MultipartLimits`](crate::http::multipart::MultipartLimits) a policy
+    /// rather than the only thing standing between a request and the heap.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Backend`] wrapping the upstream OpenDAL error.
+    pub async fn write(&mut self, chunk: impl Into<bytes::Bytes>) -> Result<(), StorageError> {
+        let chunk = chunk.into();
+        self.hasher.update(&chunk);
+        self.writer.write(chunk).await?;
+        Ok(())
+    }
+
+    /// Close the object and move it onto its content-addressed key.
+    ///
+    /// The close is what completes the object on an S3-compatible backend,
+    /// and it happens before the move, so a failed upload never leaves a
+    /// truncated object under a digest that does not describe it.
+    ///
+    /// If an object already exists at the destination the staging copy is
+    /// deleted instead of moved. That is not an optimisation: the key *is*
+    /// the digest, so an object already there has exactly these bytes, and
+    /// overwriting it would be a no-op that can still fail -- on Windows a
+    /// rename over a file another reader has open does.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Backend`] if the close, the existence check,
+    /// the move or the cleanup fails, and [`StorageError::Path`] if the
+    /// prefix and the digest do not form a valid key.
+    pub async fn finish(
+        mut self,
+        extension: crate::storage::filename::Extension,
+    ) -> Result<crate::storage::content::ContentAddress, StorageError> {
+        self.writer.close().await?;
+
+        let address = self.hasher.finish(extension);
+        let destination = match &self.prefix {
+            Some(prefix) => address.path_under(prefix)?,
+            None => address.path(),
+        };
+
+        if self.disk.exists(&destination).await? {
+            self.disk.delete(&self.staging).await?;
+        } else {
+            self.disk.rename(&self.staging, &destination).await?;
+        }
+        Ok(address)
+    }
+
+    /// Discard the upload and remove the staging object.
+    ///
+    /// The right call on any rejection after the first byte -- a bound
+    /// exceeded, an extension refused, a sniffed type that disagrees with the
+    /// declared one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::Backend`] if the staging object cannot be
+    /// deleted. The backend's own `abort` is attempted first and its failure
+    /// is deliberately ignored: a filesystem disk does not implement one, and
+    /// the delete is what actually removes the bytes on every backend.
+    pub async fn abort(mut self) -> Result<(), StorageError> {
+        let _ = self.writer.abort().await;
+        self.disk.delete(&self.staging).await?;
+        Ok(())
+    }
+}
+
 /// Build the OpenDAL [`opendal::Operator`] for the selected backend.
 async fn build_operator(config: &StorageConfig) -> Result<opendal::Operator, opendal::Error> {
     match config {
@@ -343,5 +567,161 @@ impl StorageBuilder {
                 default_name,
             }),
         })
+    }
+}
+
+#[cfg(all(test, feature = "uploads"))]
+mod upload_tests {
+    use super::*;
+
+    use crate::storage::content::ContentAddress;
+    use crate::storage::filename::Extension;
+
+    fn png() -> Extension {
+        Extension::parse("png").expect("png is a valid extension")
+    }
+
+    /// A filesystem disk rooted in a directory that dies with the test.
+    async fn disk() -> (tempfile::TempDir, Disk) {
+        let root = tempfile::tempdir().expect("a temporary directory");
+        let config = StorageConfig::fs(root.path().to_string_lossy().into_owned())
+            .expect("the temporary path is a valid root");
+        let storage = Storage::connect(config).await.expect("the disk connects");
+        let disk = storage.default_disk();
+        (root, disk)
+    }
+
+    /// How many objects the disk holds under `prefix`.
+    async fn count_under(disk: &Disk, prefix: &str) -> usize {
+        let path = StoragePath::new(prefix).expect("a valid list prefix");
+        match disk.list(&path).await {
+            Ok(entries) => entries
+                .iter()
+                .filter(|entry| !entry.path().ends_with('/'))
+                .count(),
+            // A prefix that was never written does not exist on a filesystem
+            // disk, and "no objects" is the answer either way.
+            Err(_) => 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_streamed_upload_lands_on_its_content_addressed_key() {
+        let (_root, disk) = disk().await;
+
+        let mut upload = disk.begin_upload().await.expect("the upload opens");
+        for chunk in [&b"a"[..], b"b", b"c"] {
+            upload.write(chunk).await.expect("the chunk is written");
+        }
+        assert_eq!(upload.byte_len(), 3);
+
+        let address = upload.finish(png()).await.expect("the upload finishes");
+
+        // The same key the one-shot hasher would have produced.
+        assert_eq!(address, ContentAddress::of(b"abc", png()));
+        assert_eq!(
+            disk.get(&address.path())
+                .await
+                .expect("the object is there"),
+            bytes::Bytes::from_static(b"abc")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_staging_object_does_not_survive_the_upload() {
+        let (_root, disk) = disk().await;
+
+        let mut upload = disk.begin_upload().await.expect("the upload opens");
+        let staging = upload.staging_path().clone();
+        upload
+            .write(&b"abc"[..])
+            .await
+            .expect("the chunk is written");
+        upload.finish(png()).await.expect("the upload finishes");
+
+        assert!(!disk.exists(&staging).await.expect("the check runs"));
+        assert_eq!(count_under(&disk, "_staging/").await, 0);
+    }
+
+    #[tokio::test]
+    async fn an_aborted_upload_leaves_nothing_behind() {
+        let (_root, disk) = disk().await;
+
+        let mut upload = disk.begin_upload().await.expect("the upload opens");
+        let staging = upload.staging_path().clone();
+        upload
+            .write(&b"partial"[..])
+            .await
+            .expect("the chunk is written");
+        upload.abort().await.expect("the abort succeeds");
+
+        assert!(!disk.exists(&staging).await.expect("the check runs"));
+        assert_eq!(count_under(&disk, "_staging/").await, 0);
+    }
+
+    #[tokio::test]
+    async fn the_same_bytes_twice_occupy_one_object() {
+        let (_root, disk) = disk().await;
+
+        let mut first = disk.begin_upload().await.expect("the upload opens");
+        first.write(&b"abc"[..]).await.expect("written");
+        let one = first.finish(png()).await.expect("the upload finishes");
+
+        let mut second = disk.begin_upload().await.expect("the upload opens");
+        second.write(&b"abc"[..]).await.expect("written");
+        let two = second.finish(png()).await.expect("the upload finishes");
+
+        assert_eq!(one, two);
+        // The second upload's staging copy was dropped, not moved over the
+        // first, and nothing was left in the staging directory either way.
+        assert_eq!(count_under(&disk, "_staging/").await, 0);
+        assert_eq!(
+            disk.get(&one.path()).await.expect("the object is there"),
+            bytes::Bytes::from_static(b"abc")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_application_prefix_is_honoured() {
+        let (_root, disk) = disk().await;
+
+        let mut upload = disk
+            .begin_upload_under("avatars/")
+            .await
+            .expect("the upload opens");
+        upload.write(&b"abc"[..]).await.expect("written");
+        let address = upload.finish(png()).await.expect("the upload finishes");
+
+        let path = address.path_under("avatars").expect("a valid key");
+        assert!(path.as_str().starts_with("avatars/ba/78/"));
+        assert!(disk.exists(&path).await.expect("the check runs"));
+    }
+
+    #[tokio::test]
+    async fn a_hostile_prefix_is_refused_before_a_byte_is_written() {
+        let (_root, disk) = disk().await;
+
+        assert!(matches!(
+            disk.begin_upload_under("../../etc").await,
+            Err(StorageError::Path { .. })
+        ));
+        assert!(matches!(
+            disk.begin_upload_under("/absolute").await,
+            Err(StorageError::Path { .. })
+        ));
+        // Nothing was opened, so nothing was staged.
+        assert_eq!(count_under(&disk, "_staging/").await, 0);
+    }
+
+    #[tokio::test]
+    async fn two_uploads_in_flight_do_not_share_a_staging_key() {
+        let (_root, disk) = disk().await;
+
+        let first = disk.begin_upload().await.expect("the upload opens");
+        let second = disk.begin_upload().await.expect("the upload opens");
+        assert_ne!(first.staging_path(), second.staging_path());
+
+        first.abort().await.expect("the abort succeeds");
+        second.abort().await.expect("the abort succeeds");
     }
 }

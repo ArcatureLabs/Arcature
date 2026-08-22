@@ -24,6 +24,9 @@
 //! * With the `uploads` feature, `content` addressing: a `ContentAddress`
 //!   names an object after the SHA-256 of its own bytes, so no byte of the
 //!   request reaches the path.
+//! * With the `uploads` feature, `Disk::begin_upload` and `UploadWriter`:
+//!   a streaming write that hashes as it goes, so an upload of any size costs
+//!   one chunk of memory and lands on a key derived from its own bytes.
 //!
 //! # What this module does not own
 //!
@@ -56,6 +59,8 @@ pub use error::{StorageConfigError, StorageConnectError, StorageError, StoragePa
 pub use filename::{AllowedExtensions, Extension, MAX_FILENAME_BYTES, SafeFilename};
 pub use path::StoragePath;
 pub use store::{Disk, Storage, StorageBuilder};
+#[cfg(feature = "uploads")]
+pub use store::{STAGING_PREFIX, UploadWriter};
 
 // Re-export the certified OpenDAL and bytes crates so downstream code targets
 // the Arcature-pinned versions.

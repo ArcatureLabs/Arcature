@@ -214,6 +214,26 @@ therefore its first.
   header bytes the client wrote. `BoundedField::declared_content_type` is
   named for what it is -- a claim by the client about bytes the client also
   chose.
+- **Streaming uploads, `Disk::begin_upload` and `UploadWriter` (feature
+  `uploads`).** Reading a whole upload into a `Vec<u8>` before storing it
+  makes the request's peak memory a function of what the client chose to
+  send, and multiplies it by the number of clients: a hundred concurrent
+  8 MiB uploads is 800 MiB of heap that no size cap prevents, because every
+  one of them is within the cap. `UploadWriter` writes each chunk through
+  `Disk::writer` as it arrives and hashes it on the way past, so an upload of
+  any size costs one chunk of memory and the size limits become a policy
+  rather than the only thing between a request and the heap. Because the
+  content-addressed key is not known until the last byte has been seen, the
+  bytes go to a unique transient key under `_staging` first -- process id,
+  nanoseconds and a counter, never anything from the request -- and
+  `finish()` closes the object *before* moving it onto `ab/cd/<digest>.<ext>`,
+  so a failed upload cannot leave a truncated object under a digest that does
+  not describe it. If the destination already exists the staging copy is
+  deleted rather than renamed over it: the key is the digest, so the bytes
+  are already there, and a rename over a file another reader has open fails
+  on Windows. `abort()` is the counterpart for a rejection after the first
+  byte. Neither is optional -- dropping an `UploadWriter` leaves the staging
+  object behind, and no `Drop` can fix it because both fixes are `async`.
 
 
 ### Changed
