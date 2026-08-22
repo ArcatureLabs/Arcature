@@ -178,6 +178,30 @@ edited -- is already inside the budget. The loop is not slow because the
 compiler is slow at understanding the change; it is slow because the whole
 program is rebuilt around it.
 
+### Two things this measurement cannot tell you
+
+The seconds above are per-unit compile time on a saturated four-core machine.
+They are the right numbers for comparing the before and after of this change,
+because both runs were taken the same way, and they are the wrong numbers for
+deciding how far 2.5s is. Scaled against the quiet-machine reading in issue
+#8 -- `cargo 5.48s (check 2.05, codegen+link 3.36)` -- the same proportions
+put a post-change Cargo invocation near 3.8s. That is over the target by
+about half again, not by the factor the raw figures above suggest. Which of
+the two readings is right is not settled here; it is settled by re-measuring
+on an idle machine, and until someone does, the honest claim is the ratio and
+not the distance.
+
+The second thing is larger, and is missing from the list above because
+`--timings` cannot see it. Issue #8's own breakdown has `spawn` at 5.55s of
+an 11.20s loop -- bigger than the entire Cargo invocation -- and identifies
+it as Microsoft Defender scanning the 18.9 MB executable that was just
+linked, reproducibly, at roughly 80x the cost of running a file it has
+already seen. Nothing in this change touches it, and no profile setting can:
+the scan happens after Cargo has exited. `arc doctor` already reports it with
+the remediation. Anyone reading this page as the state of the dev loop should
+read that stage as still the single largest one.
+
+
 Getting to 2.5s therefore needs a structural change rather than another
 profile flag, and the candidates all have real costs:
 
