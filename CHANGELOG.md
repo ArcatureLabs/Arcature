@@ -234,6 +234,31 @@ therefore its first.
   on Windows. `abort()` is the counterpart for a rejection after the first
   byte. Neither is optional -- dropping an `UploadWriter` leaves the staging
   object behind, and no `Drop` can fix it because both fixes are `async`.
+- **Magic-byte content sniffing, `storage::sniff` and
+  `UploadWriter::finish_verified` (feature `uploads`).** A multipart part
+  arrives with two claims about its type and the client wrote both of them:
+  `Content-Type: image/png` is a string in a header the uploader chose, and
+  `filename="avatar.png"` is a string in the same header chosen by the same
+  uploader. Neither is evidence. The only statement about an upload the
+  client did not author is the one its first few hundred bytes make, so
+  `sniff` reads those -- at most `SNIFF_BYTES` (512) of them, the one part of
+  an upload ever held in memory -- and `verify` holds them and the accepted
+  extension to a symmetric agreement. An extension with a known signature
+  (`png`, `jpg`, `pdf`, ...) *must* sniff to it, and bytes that sniff to
+  nothing are refused rather than waved through, because "unrecognized" is
+  precisely what `shell.php` renamed `avatar.png` looks like. An extension
+  with no signature (`txt`, `csv`) must sniff to nothing in turn, so a `.txt`
+  whose first bytes are a zip header is refused too. There is no "unknown"
+  state an upload can land in and be accepted by default.
+  `UploadWriter::finish_verified` is the call an upload handler wants: it
+  removes the staging object *before* returning the rejection, so a refused
+  upload costs no disk. `UploadError` keeps the two failures apart because
+  they mean opposite things -- a rejected file is a 4xx and a backend failure
+  is a 5xx, and collapsing them is how an upload endpoint reports a bad file
+  as an outage. Nothing here decodes: the check is a byte-prefix comparison
+  against `infer`'s table and never an image parse, because a decoder is an
+  interpreter for attacker-controlled input and the densest source of memory
+  CVEs in any web stack. This is a statement about format, not about safety.
 
 
 ### Changed

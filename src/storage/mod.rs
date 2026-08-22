@@ -27,6 +27,10 @@
 //! * With the `uploads` feature, `Disk::begin_upload` and `UploadWriter`:
 //!   a streaming write that hashes as it goes, so an upload of any size costs
 //!   one chunk of memory and lands on a key derived from its own bytes.
+//! * With the `uploads` feature, `sniff`: a magic-number check that holds an
+//!   object's bytes and its accepted extension to agreement. It compares byte
+//!   prefixes and never decodes -- the client's `Content-Type` is not
+//!   consulted anywhere in this module.
 //!
 //! # What this module does not own
 //!
@@ -47,17 +51,21 @@ pub mod error;
 #[cfg(feature = "uploads")]
 pub mod filename;
 pub mod path;
+#[cfg(feature = "uploads")]
+pub mod sniff;
 pub mod store;
 
 pub use config::{FsConfig, S3Config, StorageConfig};
 #[cfg(feature = "uploads")]
 pub use content::{ContentAddress, ContentHasher, DIGEST_HEX_LEN};
 #[cfg(feature = "uploads")]
-pub use error::FilenameError;
+pub use error::{FilenameError, SniffError, UploadError};
 pub use error::{StorageConfigError, StorageConnectError, StorageError, StoragePathError};
 #[cfg(feature = "uploads")]
 pub use filename::{AllowedExtensions, Extension, MAX_FILENAME_BYTES, SafeFilename};
 pub use path::StoragePath;
+#[cfg(feature = "uploads")]
+pub use sniff::{SNIFF_BYTES, SniffedType};
 pub use store::{Disk, Storage, StorageBuilder};
 #[cfg(feature = "uploads")]
 pub use store::{STAGING_PREFIX, UploadWriter};

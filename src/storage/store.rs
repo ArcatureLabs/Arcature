@@ -344,6 +344,7 @@ impl Disk {
             prefix,
             writer,
             hasher: crate::storage::content::ContentHasher::new(),
+            head: Vec::new(),
         })
     }
 }
@@ -388,6 +389,7 @@ pub struct UploadWriter {
     prefix: Option<String>,
     writer: opendal::Writer,
     hasher: crate::storage::content::ContentHasher,
+    head: Vec<u8>,
 }
 
 #[cfg(feature = "uploads")]
@@ -430,6 +432,10 @@ impl UploadWriter {
     pub async fn write(&mut self, chunk: impl Into<bytes::Bytes>) -> Result<(), StorageError> {
         let chunk = chunk.into();
         self.hasher.update(&chunk);
+        if self.head.len() < crate::storage::sniff::SNIFF_BYTES {
+            let room = crate::storage::sniff::SNIFF_BYTES - self.head.len();
+            self.head.extend_from_slice(&chunk[..chunk.len().min(room)]);
+        }
         self.writer.write(chunk).await?;
         Ok(())
     }
@@ -487,6 +493,71 @@ impl UploadWriter {
         let _ = self.writer.abort().await;
         self.disk.delete(&self.staging).await?;
         Ok(())
+    }
+
+    /// The object's leading bytes, at most
+    /// [`SNIFF_BYTES`](crate::storage::sniff::SNIFF_BYTES) of them.
+    ///
+    /// This buffer is the only part of an upload that is ever held in memory,
+    /// and its size does not depend on the size of the object.
+    #[must_use]
+    pub fn head(&self) -> &[u8] {
+        &self.head
+    }
+
+    /// What the object's leading bytes were recognized as, if anything.
+    ///
+    /// A statement about the bytes, unlike the part's `Content-Type` and
+    /// unlike its filename, both of which the client wrote.
+    #[must_use]
+    pub fn sniffed(&self) -> Option<crate::storage::sniff::SniffedType> {
+        crate::storage::sniff::sniff(&self.head)
+    }
+
+    /// Whether the bytes seen so far agree with `extension`.
+    ///
+    /// Answerable from the first chunk, so a caller that wants to stop
+    /// reading a hostile body early can ask before the last byte arrives.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SniffError`](crate::storage::SniffError) when the bytes and
+    /// the extension disagree, in either direction.
+    pub fn verify(
+        &self,
+        extension: &crate::storage::filename::Extension,
+    ) -> Result<Option<crate::storage::sniff::SniffedType>, crate::storage::error::SniffError> {
+        crate::storage::sniff::verify(&self.head, extension)
+    }
+
+    /// [`UploadWriter::finish`], refusing to keep an object whose bytes
+    /// disagree with `extension`.
+    ///
+    /// This is the call an upload handler wants. On disagreement the staging
+    /// object is removed before the error is returned, so a rejected upload
+    /// costs no disk -- the ordering matters, because the obvious version of
+    /// this (verify, return early, let the writer drop) leaves the bytes
+    /// behind exactly when the caller least wants them kept.
+    ///
+    /// The check is on the leading bytes, so it is a statement about format,
+    /// never about safety: nothing here decodes the object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UploadError::Content`](crate::storage::UploadError::Content)
+    /// if the bytes and the extension disagree, and
+    /// [`UploadError::Storage`](crate::storage::UploadError::Storage) if the
+    /// backend fails -- kept apart because the first is a 4xx and the second
+    /// is a 5xx.
+    pub async fn finish_verified(
+        self,
+        extension: crate::storage::filename::Extension,
+    ) -> Result<crate::storage::content::ContentAddress, crate::storage::error::UploadError> {
+        if let Err(rejection) = self.verify(&extension) {
+            self.abort().await?;
+            return Err(rejection.into());
+        }
+        Ok(self.finish(extension).await?)
     }
 }
 
@@ -723,5 +794,81 @@ mod upload_tests {
 
         first.abort().await.expect("the abort succeeds");
         second.abort().await.expect("the abort succeeds");
+    }
+
+    const PNG: &[u8] = &[
+        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, b'I', b'H', b'D', b'R',
+    ];
+    const PHP: &[u8] = b"<?php system($_GET['c']); ?>";
+
+    #[tokio::test]
+    async fn a_verified_upload_of_real_png_bytes_is_kept() {
+        let (_root, disk) = disk().await;
+
+        let mut upload = disk.begin_upload().await.expect("the upload opens");
+        upload.write(PNG).await.expect("the write succeeds");
+        assert_eq!(
+            upload.sniffed().map(|kind| kind.mime()),
+            Some("image/png"),
+            "the bytes identify themselves"
+        );
+
+        let address = upload.finish_verified(png()).await.expect("a png is a png");
+        assert!(disk.exists(&address.path()).await.expect("the stat runs"));
+    }
+
+    #[tokio::test]
+    async fn a_php_script_renamed_to_png_is_refused_and_leaves_nothing() {
+        let (_root, disk) = disk().await;
+
+        let mut upload = disk.begin_upload().await.expect("the upload opens");
+        upload.write(PHP).await.expect("the write succeeds");
+
+        let error = upload
+            .finish_verified(png())
+            .await
+            .expect_err("a script is not an image");
+        assert!(matches!(
+            error,
+            crate::storage::error::UploadError::Content { .. }
+        ));
+
+        // The refusal is worthless if the bytes are still on the disk.
+        assert_eq!(count_under(&disk, "_staging/").await, 0);
+        let rejected = ContentAddress::of(PHP, png());
+        assert!(
+            !disk.exists(&rejected.path()).await.expect("the stat runs"),
+            "the refused object must not have been promoted"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_sniff_buffer_does_not_grow_with_the_object() {
+        let (_root, disk) = disk().await;
+
+        let mut upload = disk.begin_upload().await.expect("the upload opens");
+        upload.write(PNG).await.expect("the write succeeds");
+        for _ in 0..64 {
+            upload
+                .write(vec![0u8; 4096])
+                .await
+                .expect("the write succeeds");
+        }
+
+        assert_eq!(upload.head().len(), crate::storage::sniff::SNIFF_BYTES);
+        assert_eq!(upload.byte_len(), PNG.len() as u64 + 64 * 4096);
+        upload.abort().await.expect("the abort succeeds");
+    }
+
+    #[tokio::test]
+    async fn the_verdict_is_available_from_the_first_chunk() {
+        let (_root, disk) = disk().await;
+
+        // A caller that wants to stop reading a hostile body early must be
+        // able to ask before the last byte arrives.
+        let mut upload = disk.begin_upload().await.expect("the upload opens");
+        upload.write(&PHP[..8]).await.expect("the write succeeds");
+        assert!(upload.verify(&png()).is_err());
+        upload.abort().await.expect("the abort succeeds");
     }
 }

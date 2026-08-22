@@ -122,6 +122,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "infer",
  "lettre",
  "notify",
  "oauth2",
@@ -1950,6 +1951,12 @@ checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
 dependencies = [
  "rustversion",
 ]
+
+[[package]]
+name = "infer"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4200d433cbd5178df7797c9c2e75b348b728e39631cf14520d1e2fc424201f4"
 
 [[package]]
 name = "inotify"

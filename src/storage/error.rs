@@ -221,3 +221,110 @@ impl From<opendal::Error> for StorageConnectError {
         Self::Backend { source }
     }
 }
+
+/// The bytes of an upload disagree with the extension it was accepted under.
+///
+/// Raised by [`crate::storage::sniff::verify`]. Separate from
+/// [`FilenameError`] on purpose: that one answers "is this label safe to
+/// keep?", and this one answers "is the object what its label says?". A
+/// caller telling an uploader why their file was refused needs to tell those
+/// two apart, and so does anyone reading a log line.
+#[cfg(feature = "uploads")]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SniffError {
+    /// The extension names a format with a magic number, and the bytes match
+    /// no known signature at all. This is what a script renamed to an image
+    /// extension looks like, which is why "unrecognized" is a refusal rather
+    /// than a shrug.
+    Unrecognized {
+        /// The extension the object was accepted under.
+        declared: crate::storage::filename::Extension,
+    },
+    /// The bytes were recognized, as a different format than the extension
+    /// claims -- in either direction, including a `.txt` whose first bytes
+    /// are a known binary header.
+    Mismatch {
+        /// The extension the object was accepted under.
+        declared: crate::storage::filename::Extension,
+        /// The media type the bytes were actually recognized as.
+        sniffed: &'static str,
+    },
+}
+
+#[cfg(feature = "uploads")]
+impl fmt::Display for SniffError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unrecognized { declared } => write!(
+                formatter,
+                "file contents are not a recognized {declared} file"
+            ),
+            Self::Mismatch { declared, sniffed } => write!(
+                formatter,
+                "file contents are {sniffed}, which does not match the .{declared} extension"
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "uploads")]
+impl std::error::Error for SniffError {}
+
+/// Failure from a verified upload
+/// ([`UploadWriter::finish_verified`](crate::storage::UploadWriter::finish_verified)).
+///
+/// The two halves are kept apart because they mean opposite things to an
+/// operator: [`UploadError::Storage`] is the server's problem and belongs in
+/// a 5xx, while [`UploadError::Content`] is the client's and belongs in a
+/// 4xx. Collapsing them into one error is how an upload endpoint ends up
+/// reporting a rejected file as an outage.
+#[cfg(feature = "uploads")]
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum UploadError {
+    /// The storage backend failed.
+    Storage {
+        /// The underlying storage error.
+        source: StorageError,
+    },
+    /// The object's bytes disagree with its extension.
+    Content {
+        /// The underlying content-sniffing error.
+        source: SniffError,
+    },
+}
+
+#[cfg(feature = "uploads")]
+impl From<StorageError> for UploadError {
+    fn from(source: StorageError) -> Self {
+        Self::Storage { source }
+    }
+}
+
+#[cfg(feature = "uploads")]
+impl From<SniffError> for UploadError {
+    fn from(source: SniffError) -> Self {
+        Self::Content { source }
+    }
+}
+
+#[cfg(feature = "uploads")]
+impl fmt::Display for UploadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Storage { source } => write!(formatter, "upload failed: {source}"),
+            Self::Content { source } => write!(formatter, "upload rejected: {source}"),
+        }
+    }
+}
+
+#[cfg(feature = "uploads")]
+impl std::error::Error for UploadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Storage { source } => Some(source),
+            Self::Content { source } => Some(source),
+        }
+    }
+}

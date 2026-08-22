@@ -178,7 +178,7 @@ pub mod storage;
 #[cfg(feature = "uploads")]
 pub use storage::{
     AllowedExtensions, ContentAddress, ContentHasher, Extension, FilenameError, SafeFilename,
-    UploadWriter,
+    SniffError, SniffedType, UploadError, UploadWriter,
 };
 #[cfg(feature = "storage-fs")]
 pub use storage::{

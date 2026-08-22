@@ -262,7 +262,7 @@ api-docs = ["api", "uag"]
 # and the clock has to be the runtime's. Nothing else is pulled in; `tokio` is
 # already on in every build that has `macros`, `jobs`, `cli`, `pages` or
 # `realtime`, which is every default build.
-uploads = ["axum/multipart", "validation", "storage-fs", "dep:tokio", "dep:unicode-normalization", "dep:sha2"]
+uploads = ["axum/multipart", "validation", "storage-fs", "dep:tokio", "dep:unicode-normalization", "dep:sha2", "dep:infer"]
 
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
@@ -381,6 +381,19 @@ unicode-normalization = { version = "0.1.25", default-features = false, features
 # backend is the portable software one -- no C, no OpenSSL, no assembly unless
 # the `asm` feature is asked for, and it is not.
 sha2 = { version = "0.10", default-features = false, optional = true }
+#
+# `infer` answers "what are these bytes" from the leading magic number, and
+# nothing else. The client's `Content-Type` is a string the client chose, and
+# the extension is a string the client chose; the only statement about an
+# upload that the client did not author is the one made by its first few
+# hundred bytes. Pure Rust, `#![no_std]` here (`default-features = false`
+# drops `std`, which only adds the `cfb` reader for legacy Office documents),
+# **zero transitive dependencies**, and -- the reason it is this crate and not
+# an image library -- it compares byte prefixes and never decodes. A decoder
+# is an interpreter for attacker-controlled input and the densest source of
+# memory CVEs in any web stack; a prefix comparison has no state for hostile
+# bytes to drive. MIT, already on the allow-list.
+infer = { version = "0.22", default-features = false, optional = true }
 
 # Mail.
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "pool", "tokio1", "rustls", "tokio1-rustls", "aws-lc-rs", "webpki-roots", "hostname"], optional = true }
