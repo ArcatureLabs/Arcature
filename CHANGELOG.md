@@ -492,6 +492,25 @@ therefore its first.
   so they are source like `app/` and `routes/` rather than runtime data, and
   omitting the line would leave a tree that compiles on a laptop and cannot
   build an image at all. That line has its own assertion.
+- **The OAuth authorization code flow is proven end to end against a
+  provider.** `tests/oauth.rs` had twenty-nine tests and not one of them
+  completed a flow: every one asserted a property of a value in isolation,
+  so `authorize` and `exchange` had never been shown to agree with each
+  other, let alone with a server. `tests/oauth_round_trip.rs` stands up a
+  mock authorization server on a loopback port and drives the real
+  `OauthClient` from `authorize()` through the redirect, the callback and
+  `exchange()` to a bearer-authenticated userinfo call. The provider
+  recomputes the PKCE challenge from the verifier it is handed, so the
+  suite proves the challenge sent to `/authorize` really is the SHA-256 of
+  the verifier sent to `/token` and that a mismatched verifier is refused;
+  a callback carrying another flow's `state` never reaches the token
+  endpoint; an `{"error": "invalid_grant"}` body surfaces as
+  `OauthError::Provider` rather than a success; and a refreshed token set
+  carries the new access token. The mock is written against the `axum` and
+  `tokio` already in the tree rather than a mocking crate, and so is the
+  test's own SHA-256, which is pinned against the FIPS 180-4 and RFC 7636
+  vectors -- a dependency not taken is a dependency nobody has to watch for
+  advisories.
 
 
 ### Changed
