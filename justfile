@@ -183,7 +183,7 @@ geiger:
     #!/usr/bin/env bash
     set -euo pipefail
     baseline="unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
-    just _geiger-report > unsafe-report.txt
+    just _geiger-report unsafe-report.txt
     if [ ! -f "$baseline" ]; then
         # Copy rather than move. The two files are identical here, but a CI
         # run bootstrapping a new target hands its evidence back by uploading
@@ -211,7 +211,7 @@ geiger-accept:
     if [ -f unsafe-report.txt ]; then
         mv unsafe-report.txt "$baseline"
     else
-        just _geiger-report > "$baseline"
+        just _geiger-report "$baseline"
     fi
     echo "recorded $baseline"
 
@@ -221,7 +221,9 @@ geiger-accept:
 # `--forbid-only` is deliberately not used: it answers "does this crate write
 # `#![forbid(unsafe_code)]`", which most crates do not bother to, and that is
 # a different and much weaker question than "how much unsafe is in here".
-_geiger-report:
+_geiger-report out:
+    #!/usr/bin/env bash
+    set -uo pipefail
     # Fetch first, or cargo-geiger 0.13.0 panics inside its vendored cargo:
     # `assertion failed: self.pending_ids.insert(id)`, reached only from the
     # code path that *downloads* a package it could not match. This lockfile
@@ -232,8 +234,40 @@ _geiger-report:
     # has built this tree before and fatal on a fresh CI runner. `cargo fetch`
     # puts every lockfile entry on disk, including those four, so the report
     # downloads nothing. On a warm cache it costs about a second.
-    @cargo fetch --locked
-    @cargo geiger --all-targets --output-format Ascii
+    cargo fetch --locked
+
+    # `--color never` because this output is a file to be diffed, not a
+    # terminal to be read. cargo-geiger colours the `!` and `:)` markers when
+    # it believes something is watching, and a GitHub runner qualifies: the
+    # first Linux report carried 831 escape sequences and the Windows one
+    # none, which would have rendered every cross-host comparison as though
+    # the entire tree had changed.
+    cargo geiger --all-targets --output-format Ascii --color never > "{{ out }}"
+    status=$?
+
+    # cargo-geiger exits non-zero when it finishes the scan but could not read
+    # some file in the tree: READMEs, JSON, `.gitkeep`, ICU `.rs.data` blobs.
+    # It counted 283 of those on Linux and not one of them is a fact about
+    # `unsafe`. The exit code therefore conflates "the scan failed" with "this
+    # tree contains files that are not Rust", and only the first of those is a
+    # reason to stop.
+    #
+    # So the report is validated rather than the status. A run that produced
+    # the column header and a totals line did the work it was asked to do,
+    # whatever it exited with; a run that did not is a real failure and still
+    # fails, carrying the status with it. Checking the artifact is also the
+    # stronger test -- `|| true` would have accepted the panicking run that
+    # wrote an empty file.
+    if grep -q '^Functions  Expressions' "{{ out }}" \
+        && tail -n 5 "{{ out }}" | grep -qE '[0-9]+/[0-9]+'; then
+        if [ "$status" -ne 0 ]; then
+            echo "note: cargo-geiger exited $status after a complete scan;" >&2
+            echo "      that is its answer to unreadable non-Rust files, not to unsafe" >&2
+        fi
+        exit 0
+    fi
+    echo "cargo-geiger exited $status without producing a usable report" >&2
+    exit 1
 
 # Generate an application with `arc new` and compile it.
 #
