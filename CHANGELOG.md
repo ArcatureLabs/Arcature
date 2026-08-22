@@ -541,6 +541,23 @@ therefore its first.
   server half, `opentelemetry-proto`) add no package the lock did not
   already carry through `opentelemetry-otlp`'s `grpc-tonic`.
 
+- **What `/metrics` serves is now checked against the exposition format,
+  not against `contains`.** Every existing test of `src/observe/metrics.rs`
+  asserts that a substring is present, which cannot see the rules that make
+  a document scrapeable: one `# TYPE` per name, a name's samples
+  contiguous, a series appearing once, buckets cumulative and ending at
+  `+Inf`. Break any of those and every one of those tests still passes
+  while Prometheus rejects the scrape -- silently, because nobody reads a
+  scrape target's error page. `tests/observe_prometheus.rs` writes the
+  format's rules out as a parser and runs the rendered registry, the
+  layer's own output and the `/metrics` response through it, checking the
+  content type on the way. The parser is itself tested against sixteen
+  documents that each break one rule and six that exercise what the format
+  allows, because a validator nothing fails is a validator that proves
+  nothing. Hand-written rather than a Prometheus client crate, for the same
+  reason as everywhere else here: a dependency taken to check forty lines
+  of text is a dependency somebody watches for advisories forever.
+
 
 ### Changed
 
