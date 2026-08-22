@@ -522,6 +522,25 @@ therefore its first.
   loopback port inside the test process -- so it behaves identically on a
   pull request from a fork.
 
+- **The OTLP exporter is proven against a collector rather than against a
+  builder.** `src/observe/otel.rs` had two unit tests and both of them read
+  a field back off the builder that had just been handed it; the module's
+  own test file said why, in as many words -- an export test "would need a
+  live collector, which is an integration concern". `tests/observe_otlp.rs`
+  is that collector: a `TraceService` gRPC server on a kernel-assigned
+  loopback port, decoding the protobuf the exporter actually wrote, sharing
+  nothing with the code under test but a socket. Seven tests pin what a
+  backend needs before it can draw anything -- a span arrives at all, a
+  parent and its child arrive under one trace id, the child names its
+  parent's span id, a three-level nesting arrives as a chain rather than a
+  fan hung off the root, `service.name` travels as a resource attribute, a
+  recorded field arrives as an attribute, and a collector that never answers
+  fails the export instead of panicking the process. A trace whose spans are
+  all roots is worse than no trace: it looks like working telemetry right up
+  until somebody needs it. The collector's two dev-dependencies (`tonic`'s
+  server half, `opentelemetry-proto`) add no package the lock did not
+  already carry through `opentelemetry-otlp`'s `grpc-tonic`.
+
 
 ### Changed
 

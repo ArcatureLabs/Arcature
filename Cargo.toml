@@ -581,6 +581,20 @@ tempfile = { version = "3.23.0", default-features = false }
 serde_urlencoded = { version = "0.7.1", default-features = false }
 tower-sessions-memory-store = { version = "0.15.0", default-features = false }
 
+# The mock OTLP collector the telemetry tests export into. Neither of these
+# is a new package: `opentelemetry-otlp`'s `grpc-tonic` feature already puts
+# both in `Cargo.lock`, and every feature named here (`server`, `router`,
+# `codegen`) resolves to crates the lock already carries. Nothing new to
+# watch for advisories, and `[dev-dependencies]` keeps it out of a
+# consumer's build entirely.
+#
+# The alternative was to decode the OTLP protobuf and speak gRPC over HTTP/2
+# by hand, and that trades a dependency already present for a hand-rolled
+# implementation of the exact wire format the assertion is about -- a test
+# that agrees with its own decoder bug proves nothing.
+tonic = { version = "0.14.6", default-features = false, features = ["router", "server", "codegen"] }
+opentelemetry-proto = { version = "0.32.0", default-features = false, features = ["gen-tonic", "trace"] }
+
 # Benchmarks. `default-features = false` drops `plotters` and `rayon`: the
 # numbers are read from the terminal and from `target/criterion`, and a
 # charting stack in the dev-dependency graph is a compile cost every
