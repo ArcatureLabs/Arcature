@@ -4,6 +4,13 @@
 target
 node_modules
 public/build
+# `resources/js/generated` is the one entry here that is not merely wasteful.
+# It is gitignored too, so it exists only on the machine that last ran
+# `arc typegen`; letting it into the context would mean stage 1 bundling
+# whatever route table happened to be on that one developer's disk. Stage 1
+# is Node-only and cannot regenerate it, which is also why the scaffold's own
+# pages do not import it -- Arcature ADR 0006:
+# https://arcaturelabs.github.io/Arcature/decisions.html
 resources/js/generated
 .arcature
 .git

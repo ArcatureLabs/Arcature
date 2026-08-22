@@ -368,6 +368,30 @@ fn the_gitignore_excludes_the_generated_typescript_and_the_dev_scratch_directory
     assert!(ignore.contains(".arcature/"), "{ignore}");
 }
 
+/// ADR 0006 -- "The generated TypeScript stays derived" -- rests on the
+/// directory being absent from both contexts, and the two exclusions live in
+/// two files that know nothing about each other. Deleting either line is a
+/// one-character fix for a build someone is annoyed by, and neither file
+/// would have said what it was holding up.
+///
+/// What breaks if `.gitignore` loses it: a derived file becomes a second
+/// source of truth for every route name, and a stale copy type-checks green
+/// against routes that no longer exist. What breaks if `.dockerignore` loses
+/// it: a developer's local copy rides into the image build, so stage 1
+/// bundles whatever happened to be on that one machine.
+#[test]
+fn the_generated_typescript_reaches_neither_git_nor_the_image_build() {
+    let scratch = Scratch::new("generated-excluded");
+    let target = scratch.join("demo");
+    generate(&target, Stack::default(), Database::default()).expect("generated");
+
+    let git = read(&target, ".gitignore");
+    assert!(git.contains("resources/js/generated/"), "{git}");
+
+    let docker = read(&target, ".dockerignore");
+    assert!(docker.contains("resources/js/generated"), "{docker}");
+}
+
 #[test]
 fn the_typescript_config_aliases_the_generated_bindings() {
     let scratch = Scratch::new("tsconfig");

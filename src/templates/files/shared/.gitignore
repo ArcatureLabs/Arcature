@@ -10,7 +10,10 @@
 
 # Generated TypeScript. `arc typegen` (and `arc dev`, after every restart)
 # rewrites this directory from the application graph. It is derived from the
-# Rust source, so committing it means two sources of truth for the same names.
+# Rust source, so committing it means two sources of truth for the same names
+# -- and a stale copy type-checks green against routes that no longer exist,
+# which is worse than no check at all. Arcature ADR 0006 records the trade,
+# including what it costs: https://arcaturelabs.github.io/Arcature/decisions.html
 /resources/js/generated/
 
 # The dev harness's scratch directory: the Vite IPC bootstrap script, the

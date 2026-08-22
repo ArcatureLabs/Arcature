@@ -1170,6 +1170,14 @@ therefore its first.
   guidance sits at the call site in all three stacks, because that is where
   someone deciding between the two is reading.
 
+- The scaffold's `.gitignore` and `.dockerignore` now each say what their
+  `resources/js/generated` exclusion is holding up, and link to ADR 0006. The
+  two lines carry different reasons -- a committed copy is a second source of
+  truth for every route name, and a copy that exists only on the machine that
+  last ran `arc typegen` must not decide what the image's Node-only asset
+  stage bundles -- so neither line is safe to delete on the strength of the
+  other. A new scaffold test fails if either one goes.
+
 
 
 ## [0.1.0]

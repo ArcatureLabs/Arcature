@@ -84,7 +84,12 @@ stops being unsound, and this record should be reopened — that is new evidence
 in the sense `docs/decisions/README.md` means. Until then the decision rests on
 an absence, which is the weakest thing a decision can rest on.
 
-**Two ignore files now encode a design decision between them.** `.gitignore` and
+**Two ignore files encode this decision between them.** `.gitignore` and
 `.dockerignore` each exclude `resources/js/generated`, for related but not
-identical reasons, and nothing links them to this record. Someone deleting a line
-from either one to fix a build will not find out what it was holding up.
+identical reasons: the first because a committed copy is a second source of
+truth, the second because a copy that exists only on one developer's disk must
+not decide what stage 1 bundles. Both now say so and both link here, and
+`the_generated_typescript_reaches_neither_git_nor_the_image_build` fails if
+either line goes. That makes the coupling visible; it does not make it any less
+of a coupling, and a third context needing the same exclusion would be a third
+place to remember.
