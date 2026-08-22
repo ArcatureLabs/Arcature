@@ -57,7 +57,7 @@
 //! request extension, so every reader downstream sees the same answer and
 //! no reader re-derives it from headers on its own.
 //!
-//! ```ignore
+//! ```
 //! use arcature::http::ClientIp;
 //! use arcature::axum::Extension;
 //!
