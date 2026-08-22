@@ -558,6 +558,27 @@ therefore its first.
   reason as everywhere else here: a dependency taken to check forty lines
   of text is a dependency somebody watches for advisories forever.
 
+- **Redaction is now tested on the wire, in all three channels at once --
+  and two of the three do not hold.** `src/observe/mod.rs` promises that
+  credentials never reach "a log line, a metric label, or a span
+  attribute". `tests/observe_redaction.rs` drives one request carrying a
+  password, an `Authorization: Bearer` header, a session cookie and a PKCE
+  verifier through a router wearing request ids, access logging, metrics
+  and trace context, with a JSON sink, a metrics registry and a live OTLP
+  collector capturing simultaneously, and searches every byte of all three
+  outputs for each secret's value. The framework's own layers pass: nothing
+  the request carried appears anywhere, and the access log records the path
+  without the query string. The deny-list also holds for anything an
+  application records, in the JSON log. It does **not** hold for the other
+  two destinations: a field named `password` recorded on a `tracing` span is
+  written as `[redacted]` to the log and exported to the collector in full,
+  and a metric label named `session_id` is rendered in full, because
+  `Telemetry::tracing_layer` and `Metrics` never consult the deny-list.
+  Rather than work around that, the suite asserts it, in two tests named so
+  nobody mistakes them for a working defence -- and it asserts its own
+  channels are non-empty before searching them, so an absence can never
+  pass by capturing nothing.
+
 
 ### Changed
 
