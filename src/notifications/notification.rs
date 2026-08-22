@@ -80,6 +80,25 @@ pub trait Notification: Send + Sync {
         let _ = recipient;
         None
     }
+
+    /// Render this notification as a live push to whoever is connected right
+    /// now, or `None` if it should not be pushed.
+    ///
+    /// Separate from [`to_database`](Self::to_database) rather than sharing
+    /// its content, because the two are read in different situations. An
+    /// inbox row is read deliberately and can afford detail; a live push
+    /// arrives unasked, is usually rendered as a toast or a badge, and is
+    /// often a smaller thing -- sometimes nothing but a count. A notification
+    /// that wants them identical says so by building both from the same
+    /// value, which is a line of code; one that wants them different has
+    /// nowhere to say so if they share a method.
+    ///
+    /// This method exists whatever features are on, for the same reason
+    /// [`to_database`](Self::to_database) does.
+    fn to_broadcast(&self, recipient: &Recipient) -> Option<BroadcastContent> {
+        let _ = recipient;
+        None
+    }
 }
 
 /// The body of a notification email, independent of any mail library.
@@ -235,6 +254,103 @@ impl DatabaseContent {
     /// Returns the `serde_json` error if `data` cannot be serialised -- which
     /// for a derived `Serialize` means a map with non-string keys, or a
     /// custom implementation that failed.
+    pub fn serializing<T: serde::Serialize>(
+        kind: impl Into<String>,
+        data: &T,
+    ) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            kind: kind.into(),
+            data: serde_json::to_value(data)?,
+        })
+    }
+
+    /// The application's own name for what this notification is.
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    /// The payload.
+    #[must_use]
+    pub fn data(&self) -> &serde_json::Value {
+        &self.data
+    }
+}
+
+/// One live push: a name for the shape, and the payload.
+///
+/// The same pair [`DatabaseContent`] carries, and deliberately a different
+/// type. They travel to different places -- one to a row that will be read
+/// later, one to a socket that is open now -- and a notification that wants
+/// to say less over the wire than it stores has nowhere to say it if the two
+/// are one type. Where they should be identical, they are one expression
+/// apart.
+///
+/// # What reaches the browser
+///
+/// The payload is published as the JSON object
+/// `{"kind": <kind>, "data": <data>}`, and a subscriber receives those bytes
+/// verbatim. Nothing filters it on the way out: whatever a notification puts
+/// in `data` is what the connected client sees, so a field that the recipient
+/// should not learn does not belong here even if the page would not display
+/// it.
+///
+/// # Example
+///
+/// ```
+/// use arcature::notifications::{BroadcastContent, Notification, Recipient};
+///
+/// struct Mentioned {
+///     by: String,
+/// }
+///
+/// impl Notification for Mentioned {
+///     fn to_broadcast(&self, _recipient: &Recipient) -> Option<BroadcastContent> {
+///         Some(BroadcastContent::new(
+///             "mention",
+///             serde_json::json!({ "by": self.by }),
+///         ))
+///     }
+/// }
+///
+/// let content = Mentioned { by: "ada".into() }
+///     .to_broadcast(&Recipient::new("user:42"))
+///     .unwrap();
+/// assert_eq!(content.kind(), "mention");
+/// assert_eq!(content.data()["by"], "ada");
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct BroadcastContent {
+    kind: String,
+    data: serde_json::Value,
+}
+
+impl BroadcastContent {
+    /// A live push with a kind and a payload.
+    ///
+    /// The kind is the application's own name for what this notification is,
+    /// for the same reason it is on [`DatabaseContent::new`]: it crosses a
+    /// boundary -- here to a front end that switches on it -- so deriving it
+    /// from a Rust type name would turn a rename into a silent protocol
+    /// change.
+    #[must_use]
+    pub fn new(kind: impl Into<String>, data: serde_json::Value) -> Self {
+        Self {
+            kind: kind.into(),
+            data,
+        }
+    }
+
+    /// A live push whose payload is serialised from a value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the `serde_json` error if `data` cannot be serialised. It
+    /// exists for the reason [`DatabaseContent::serializing`] does:
+    /// [`Notification::to_broadcast`] returns an `Option`, so a constructor
+    /// that serialised would have to turn a failure into a notification that
+    /// is never pushed.
     pub fn serializing<T: serde::Serialize>(
         kind: impl Into<String>,
         data: &T,

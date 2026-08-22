@@ -215,10 +215,12 @@ pub use mail::{
 
 #[cfg(feature = "notifications")]
 pub mod notifications;
+#[cfg(feature = "notifications-broadcast")]
+pub use notifications::{BroadcastChannels, BroadcastNotifications, PerRecipientChannels};
 #[cfg(feature = "notifications")]
 pub use notifications::{
-    Channel, DatabaseContent, Delivery, MailContent, Notifiable, Notification, NotificationError,
-    Notifier, Recipient,
+    BroadcastContent, Channel, DatabaseContent, Delivery, MailContent, Notifiable, Notification,
+    NotificationError, Notifier, Recipient,
 };
 #[cfg(feature = "notifications-db")]
 pub use notifications::{DatabaseNotifications, NotificationId, StoredNotification};

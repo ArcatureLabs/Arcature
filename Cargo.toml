@@ -295,6 +295,19 @@ notifications = ["mail"]
 # from `getrandom`, which is too.
 notifications-db = ["notifications", "database"]
 
+# The broadcast notification channel: a live push to whoever is connected
+# right now, over the `realtime` WebSocket/SSE machinery.
+#
+# Separate from `notifications-db` because the two answer different questions
+# -- the inbox is what a recipient sees when they arrive, the broadcast is
+# what they see without reloading -- and an application wanting one does not
+# want the other's cost. No new crate enters the graph: this is `realtime`,
+# which is `tokio` and `axum`, plus the unconditional `serde_json`.
+#
+# The fanout is per process. See `notifications::broadcast` for what that
+# means for a deployment with more than one instance.
+notifications-broadcast = ["notifications", "realtime"]
+
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.
 oauth = ["dep:oauth2", "dep:url"]

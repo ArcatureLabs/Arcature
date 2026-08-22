@@ -26,6 +26,18 @@ pub enum Channel {
     /// surfaces as [`NotConfigured`](NotificationError::NotConfigured) on the
     /// first send, naming the channel that has no backing.
     Database,
+
+    /// A live push to whoever is connected right now, over the
+    /// [`crate::realtime`] machinery.
+    ///
+    /// Ungated for the same reason [`Database`](Self::Database) is.
+    ///
+    /// This channel appears in a [`Delivery`](crate::notifications::Delivery)
+    /// only when at least one connection actually received the push. Nobody
+    /// connected is not a failure -- it is the ordinary state of a recipient
+    /// who is not looking at the application -- so it is reported as the
+    /// channel simply not being among the ones that ran.
+    Broadcast,
 }
 
 impl fmt::Display for Channel {
@@ -33,6 +45,7 @@ impl fmt::Display for Channel {
         let name = match self {
             Self::Mail => "mail",
             Self::Database => "database",
+            Self::Broadcast => "broadcast",
         };
         f.write_str(name)
     }
@@ -127,4 +140,14 @@ pub enum NotificationError {
     #[cfg(feature = "notifications-db")]
     #[error("notification: the OS randomness source is unavailable")]
     Entropy,
+
+    /// A broadcast payload could not be serialised to the bytes a channel
+    /// carries.
+    ///
+    /// Holds the message rather than the `serde_json::Error` so that the
+    /// variant does not put `serde_json` in the public signature of a type
+    /// that is otherwise reachable without it.
+    #[cfg(feature = "notifications-broadcast")]
+    #[error("notification: a broadcast payload could not be serialised: {0}")]
+    Encode(String),
 }

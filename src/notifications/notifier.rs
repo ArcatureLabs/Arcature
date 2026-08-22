@@ -4,8 +4,10 @@ use std::fmt;
 
 use crate::mail::{Email, EmailError, Mail, Mailable, lettre::Message};
 
+#[cfg(feature = "notifications-broadcast")]
+use super::broadcast::BroadcastNotifications;
 use super::channel::{Channel, NotificationError};
-use super::notification::{DatabaseContent, MailContent, Notification};
+use super::notification::{BroadcastContent, DatabaseContent, MailContent, Notification};
 use super::recipient::Notifiable;
 #[cfg(feature = "notifications-db")]
 use super::store::DatabaseNotifications;
@@ -96,6 +98,8 @@ pub struct Notifier {
     mail: Option<Mail>,
     #[cfg(feature = "notifications-db")]
     database: Option<DatabaseNotifications>,
+    #[cfg(feature = "notifications-broadcast")]
+    broadcast: Option<BroadcastNotifications>,
 }
 
 impl fmt::Debug for Notifier {
@@ -108,6 +112,8 @@ impl fmt::Debug for Notifier {
         out.field("mail", &self.mail.is_some());
         #[cfg(feature = "notifications-db")]
         out.field("database", &self.database.is_some());
+        #[cfg(feature = "notifications-broadcast")]
+        out.field("broadcast", &self.broadcast.is_some());
         out.finish()
     }
 }
@@ -152,6 +158,25 @@ impl Notifier {
         self.database.is_some()
     }
 
+    /// Enable the live push channel.
+    ///
+    /// Wiring it says the application *can* push, not that anyone is
+    /// listening. A recipient with no open connection is the ordinary case,
+    /// and a push to them succeeds having reached nobody.
+    #[cfg(feature = "notifications-broadcast")]
+    #[must_use]
+    pub fn with_broadcast(mut self, broadcast: BroadcastNotifications) -> Self {
+        self.broadcast = Some(broadcast);
+        self
+    }
+
+    /// Whether the live push channel is wired.
+    #[cfg(feature = "notifications-broadcast")]
+    #[must_use]
+    pub fn has_broadcast(&self) -> bool {
+        self.broadcast.is_some()
+    }
+
     /// Render `notification` for `to` and deliver it on every channel it
     /// produced content for.
     ///
@@ -163,18 +188,23 @@ impl Notifier {
     ///   recipient with no email address.
     /// - [`NotificationError::Mail`] if the transport refuses the message.
     /// - [`NotificationError::Database`] if the inbox row cannot be written.
+    /// - [`NotificationError::Encode`] if a broadcast payload cannot be
+    ///   serialised.
     ///
     /// Delivery stops at the first failing channel, and the order the channels
-    /// run in is therefore part of the contract: the in-app inbox is written
-    /// **before** the mail is sent. The inbox is the durable local record and
-    /// the one that cannot fail for a reason outside this process, so writing
-    /// it first means an SMTP server that is down leaves the notification
-    /// visible in the application rather than losing it along with the email.
-    /// The reverse order would trade a recoverable failure for an
-    /// unrecoverable one.
+    /// run in is therefore part of the contract: **inbox, then live push, then
+    /// mail** -- the durable local record first, then the local push, then the
+    /// one thing that leaves this process. The inbox cannot fail for a reason
+    /// outside the application, so writing it first means an SMTP server that
+    /// is down leaves the notification visible in the application rather than
+    /// losing it along with the email. The reverse order would trade a
+    /// recoverable failure for an unrecoverable one.
     ///
     /// The [`Delivery`] a successful call returns is the record of what did go
-    /// out.
+    /// out. [`Channel::Broadcast`] appears in it only when at least one
+    /// connection received the push: a recipient who is not connected is not
+    /// an error, and recording the channel as delivered when nobody was
+    /// listening would make the record say something it does not know.
     pub async fn send<N>(
         &self,
         to: &impl Notifiable,
@@ -189,6 +219,12 @@ impl Notifier {
         if let Some(content) = notification.to_database(&recipient) {
             self.deliver_database(recipient.key(), &content).await?;
             channels.push(Channel::Database);
+        }
+
+        if let Some(content) = notification.to_broadcast(&recipient)
+            && self.deliver_broadcast(recipient.key(), &content)? > 0
+        {
+            channels.push(Channel::Broadcast);
         }
 
         if let Some(content) = notification.to_mail(&recipient) {
@@ -247,6 +283,43 @@ impl Notifier {
             channel: Channel::Database,
         })
     }
+
+    /// Push once, and report how many connections received it.
+    ///
+    /// Not `async`: a `tokio::sync::broadcast` send neither waits nor blocks,
+    /// so awaiting here would only add a suspension point that never yields.
+    #[cfg(feature = "notifications-broadcast")]
+    fn deliver_broadcast(
+        &self,
+        key: &str,
+        content: &BroadcastContent,
+    ) -> Result<usize, NotificationError> {
+        let broadcast = self
+            .broadcast
+            .as_ref()
+            .ok_or(NotificationError::NotConfigured {
+                channel: Channel::Broadcast,
+            })?;
+        broadcast.push(key, content)
+    }
+
+    /// Without the `notifications-broadcast` feature there is nothing to push
+    /// through, so every attempt is the wiring error -- the same reasoning as
+    /// [`deliver_database`](Self::deliver_database). Note that this is *not*
+    /// the same case as a recipient with no open connection, which succeeds
+    /// having reached nobody: that is a fact about the recipient, this is a
+    /// fact about the build.
+    #[cfg(not(feature = "notifications-broadcast"))]
+    fn deliver_broadcast(
+        &self,
+        key: &str,
+        content: &BroadcastContent,
+    ) -> Result<usize, NotificationError> {
+        let _ = (key, content);
+        Err(NotificationError::NotConfigured {
+            channel: Channel::Broadcast,
+        })
+    }
 }
 
 /// Adapts a [`MailContent`] to the [`Mailable`] the mail transport takes.
@@ -289,6 +362,19 @@ mod tests {
 
         fn to_database(&self, _recipient: &Recipient) -> Option<DatabaseContent> {
             Some(DatabaseContent::new("filed", serde_json::json!({})))
+        }
+    }
+
+    /// Renders for the live push and for mail, so a test can tell whether a
+    /// push that reached nobody stopped the mail.
+    struct Pushed;
+    impl Notification for Pushed {
+        fn to_mail(&self, _recipient: &Recipient) -> Option<MailContent> {
+            Some(MailContent::new("subject", "body"))
+        }
+
+        fn to_broadcast(&self, _recipient: &Recipient) -> Option<BroadcastContent> {
+            Some(BroadcastContent::new("pushed", serde_json::json!({})))
         }
     }
 
@@ -418,15 +504,67 @@ mod tests {
         assert!(mailer.captured().await.unwrap().is_empty());
     }
 
+    #[tokio::test]
+    async fn a_broadcast_notification_without_a_channel_source_is_an_error_and_not_a_skip() {
+        // Same guarantee again, and the same reason it has to hold in both
+        // builds. Distinct from the case a wired notifier reports, where a
+        // recipient who is simply not connected succeeds having reached
+        // nobody -- that is a fact about the recipient, this is a mistake.
+        let (mailer, notifier) = wired();
+        let ada = Recipient::new("user:1").email("ada@example.com");
+
+        let error = notifier.send(&ada, &Pushed).await.unwrap_err();
+
+        assert!(
+            matches!(
+                error,
+                NotificationError::NotConfigured {
+                    channel: Channel::Broadcast
+                }
+            ),
+            "got {error:?}"
+        );
+        assert!(mailer.captured().await.unwrap().is_empty());
+    }
+
+    #[cfg(feature = "notifications-broadcast")]
+    #[tokio::test]
+    async fn an_unconnected_recipient_is_not_a_delivery_and_not_a_failure() {
+        use super::super::broadcast::{BroadcastNotifications, PerRecipientChannels};
+
+        let (mailer, notifier) = wired();
+        let channels = PerRecipientChannels::new(8).unwrap();
+        let notifier = notifier.with_broadcast(BroadcastNotifications::new(channels.clone()));
+        let ada = Recipient::new("user:1").email("ada@example.com");
+
+        // Nobody connected: the mail still goes, the push reports nothing.
+        let delivery = notifier.send(&ada, &Pushed).await.unwrap();
+        assert_eq!(delivery.channels(), [Channel::Mail]);
+
+        // Connected: the push is recorded, and before the mail.
+        let _connection = channels.subscribe("user:1");
+        let delivery = notifier.send(&ada, &Pushed).await.unwrap();
+        assert_eq!(delivery.channels(), [Channel::Broadcast, Channel::Mail]);
+
+        assert_eq!(mailer.captured().await.unwrap().len(), 2);
+    }
+
     #[test]
     fn debug_does_not_print_the_mailer() {
         let (_mailer, notifier) = wired();
         let rendered = format!("{notifier:?}");
 
-        #[cfg(not(feature = "notifications-db"))]
-        assert_eq!(rendered, "Notifier { mail: true }");
-        #[cfg(feature = "notifications-db")]
-        assert_eq!(rendered, "Notifier { mail: true, database: false }");
+        // Built rather than written out, because the field list depends on
+        // two independent features and a hand-written expectation per
+        // combination is three chances to encode the wrong one.
+        let mut fields = vec!["mail: true"];
+        if cfg!(feature = "notifications-db") {
+            fields.push("database: false");
+        }
+        if cfg!(feature = "notifications-broadcast") {
+            fields.push("broadcast: false");
+        }
+        assert_eq!(rendered, format!("Notifier {{ {} }}", fields.join(", ")));
 
         // Whatever the feature set, what is printed is which channels are
         // wired -- never a credential from behind one.
@@ -438,6 +576,8 @@ mod tests {
         assert!(!Notifier::new().has_mail());
         #[cfg(feature = "notifications-db")]
         assert!(!Notifier::new().has_database());
+        #[cfg(feature = "notifications-broadcast")]
+        assert!(!Notifier::new().has_broadcast());
         assert!(Delivery::default().is_empty());
     }
 }

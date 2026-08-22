@@ -797,6 +797,44 @@ therefore its first.
   sending the mail: the local record is the one that cannot fail for a reason
   outside the process, so an SMTP server that is down leaves the notification
   visible in the application instead of losing it with the email.
+- **Notifications can be pushed live to whoever is connected**, behind a new
+  `notifications-broadcast` feature that wires the existing `realtime`
+  WebSocket and SSE machinery to the notifier. A notification reaches the push
+  exactly when `to_broadcast` returns `Some`. No new crate enters the
+  dependency graph: this is `realtime`, which is `tokio` and `axum`, plus the
+  `serde_json` already present. The feature is separate from
+  `notifications-db` because the two answer different questions -- the inbox
+  is what a recipient sees when they arrive, the push is what they see without
+  reloading -- and they are complements rather than alternatives.
+  **Targeting is structural, not a filter.** `realtime` offers one flat
+  fanout, where everything subscribed to a channel receives everything
+  published to it, which is the wrong shape for something addressed to a
+  person: publishing notifications onto a shared channel would hand every
+  connected user every other user's notifications. So the channel is a
+  `BroadcastChannels` resolver from recipient key to channel, with
+  `PerRecipientChannels` as the built-in implementation, and one recipient's
+  payload has no code path into another's connection. **A recipient who is not
+  connected is not a failure.** The push succeeds having reached nobody, and
+  `Channel::Broadcast` appears in the returned `Delivery` only when at least
+  one connection actually received it -- recording it otherwise would make the
+  record claim something it does not know. `PerRecipientChannels` reclaims the
+  entries of recipients whose last connection dropped, because a map keyed by
+  application user ids that only ever grows is a slow leak rather than a
+  cache. `Channel::Broadcast`, `BroadcastContent`, and
+  `Notification::to_broadcast` are present whatever features are on, for the
+  same reason the inbox equivalents are: without the feature the first send
+  answers `NotConfigured`, naming the channel, rather than silently sending
+  nothing. `BroadcastContent` is a separate type from `DatabaseContent`
+  because the two are read in different situations -- an inbox row is read
+  deliberately and can afford detail, a live push arrives unasked and is often
+  a toast or a count -- and a notification that wants them identical says so
+  in one expression. Delivery order is inbox, then push, then mail: everything
+  local before the one thing that leaves the process. **The fanout is per
+  process**, the same limit the rest of `realtime` carries: two instances
+  behind a load balancer each reach only their own connections, and a
+  notification sent from a background worker reaches none. An application
+  running more than one instance should treat the push as an optimisation over
+  the inbox rather than a delivery guarantee.
 
 ### Changed
 

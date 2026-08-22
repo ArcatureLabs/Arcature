@@ -4,10 +4,37 @@
 //! in-app row, a live push. A [`Notification`] renders itself per channel, a
 //! [`Notifier`] delivers it, and a [`Recipient`] says who to.
 //!
-//! Two channels ship today: mail, and -- behind the `notifications-db`
-//! feature -- an in-app inbox backed by the application's own database. The
-//! trait is shaped so later channels arrive without touching a line of
+//! Three channels ship today: mail; behind the `notifications-db` feature, an
+//! in-app inbox backed by the application's own database; and behind
+//! `notifications-broadcast`, a live push to whoever is connected right now.
+//! The trait is shaped so later channels arrive without touching a line of
 //! application code.
+//!
+//! The inbox and the live push are complements rather than alternatives. The
+//! push is what a recipient sees without reloading; the inbox is what they see
+//! when they arrive. A recipient who was offline missed the push and lost
+//! nothing, provided the inbox was written too -- which is why an application
+//! enabling `notifications-broadcast` alone should know it is choosing
+//! best-effort delivery.
+//!
+//! # The live push is per process, and targeted by construction
+//!
+//! [`crate::realtime`] offers a single flat fanout, which is the wrong shape
+//! for something addressed to a person: everything subscribed to a channel
+//! receives everything published to it. So the broadcast channel is not a
+//! channel but a [`BroadcastChannels`] resolver, recipient key to channel.
+//! Targeting is then which channel the bytes go into rather than a filter
+//! applied afterwards, and one recipient's payload has no path into another's
+//! connection. [`PerRecipientChannels`] is the built-in resolver.
+//!
+//! The fanout underneath is a `tokio::sync::broadcast`, so it reaches the
+//! connections held by *this* process and no others. An application running
+//! more than one instance -- or sending notifications from a background
+//! worker, which is a different process from the one holding the socket --
+//! should treat the push as an optimisation over the inbox rather than a
+//! delivery guarantee. The same limit is disclosed for the rest of
+//! [`crate::realtime`] in `README.md` and `docs/src/deployment.md`; it is
+//! repeated here because a notification is exactly the case where it bites.
 //!
 //! # The inbox cannot be read across recipients
 //!
@@ -92,6 +119,8 @@
 //! # }
 //! ```
 
+#[cfg(feature = "notifications-broadcast")]
+mod broadcast;
 mod channel;
 #[cfg(feature = "notifications-db")]
 mod dialect;
@@ -105,10 +134,12 @@ mod store;
 #[cfg(feature = "notifications-db")]
 mod stored;
 
+#[cfg(feature = "notifications-broadcast")]
+pub use broadcast::{BroadcastChannels, BroadcastNotifications, PerRecipientChannels};
 pub use channel::{Channel, NotificationError};
 #[cfg(feature = "notifications-db")]
 pub use dialect::NotificationPool;
-pub use notification::{DatabaseContent, MailContent, Notification};
+pub use notification::{BroadcastContent, DatabaseContent, MailContent, Notification};
 pub use notifier::{Delivery, Notifier};
 pub use recipient::{Notifiable, Recipient};
 #[cfg(feature = "notifications-db")]
