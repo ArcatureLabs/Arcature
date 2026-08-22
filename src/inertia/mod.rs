@@ -36,6 +36,7 @@
 pub mod config;
 pub mod contracts;
 pub mod error;
+pub mod head;
 pub mod headers;
 pub mod page;
 pub mod pending;
@@ -54,6 +55,7 @@ pub use contracts::{
     PageContracts, PageProps, PageSchema, PageType, PropSchema, PropsSchema,
 };
 pub use error::InertiaError;
+pub use head::Head;
 pub use page::{Component, PageIdentifier, PageOptions, ScrollProp};
 pub use pending::PendingPage;
 pub use props::{

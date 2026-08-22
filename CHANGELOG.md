@@ -109,6 +109,17 @@ therefore its first.
   is and at which public address, instead of only the socket it happened to
   bind. Nothing was removed and no signature changed; `AppConfig::url` and
   `AppConfig::name` remain the fields they were. Closes #9.
+- **Per-page document metadata: `inertia::Head`.** A page title, meta
+  description, canonical URL, and the Open Graph and Twitter card fields,
+  rendered as HTML by `Head::to_html`. Every value is HTML-escaped by the
+  setter that stores it rather than by the renderer that writes it, because a
+  page title is routinely a database row and a renderer that forgets is a
+  stored-XSS hole; the consequence to know is that the accessors return
+  escaped text. `og:title`, `og:description` and `og:url` fall back to the
+  title, description and canonical URL, and `twitter:card` defaults to
+  `summary_large_image` or `summary` -- X renders no preview at all without
+  that tag. Nothing here executes JavaScript: this is meta tags for scrapers,
+  not server-side rendering.
 
 ### Deprecated
 

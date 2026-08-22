@@ -119,8 +119,8 @@ pub use dx::{RequestCache, RequestCacheKey};
 pub mod inertia;
 #[cfg(feature = "inertia")]
 pub use inertia::{
-    AssetVersion, Inertia, InertiaConfig, InertiaError, InertiaLayer, InertiaRequest, RootDocument,
-    ScriptBody, default_root_document, vite_root_document,
+    AssetVersion, Head, Inertia, InertiaConfig, InertiaError, InertiaLayer, InertiaRequest,
+    RootDocument, ScriptBody, default_root_document, vite_root_document,
 };
 // The `inertia!()` macro is `#[macro_export]` inside `inertia::mod`, so it is
 // reachable as `arcature::inertia!(...)` at the crate root.
