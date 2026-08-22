@@ -150,4 +150,34 @@ pub enum NotificationError {
     #[cfg(feature = "notifications-broadcast")]
     #[error("notification: a broadcast payload could not be serialised: {0}")]
     Encode(String),
+
+    /// A queued email could not be written to the job queue.
+    #[cfg(feature = "notifications-queue")]
+    #[error("notification: {source}")]
+    Queue {
+        /// The enqueue failure.
+        #[from]
+        source: crate::jobs::EnqueueError,
+    },
+
+    /// [`Notifier::queue`](super::Notifier::queue) was asked to defer an
+    /// email and the notifier has no queue.
+    ///
+    /// # Why this one is feature-gated and `NotConfigured` is not
+    ///
+    /// [`Channel::Database`] and [`Channel::Broadcast`] stay in the enum
+    /// whether or not their features are on, because `to_database` and
+    /// `to_broadcast` are trait methods an application can write without
+    /// them -- and a build that quietly dropped those channels would turn a
+    /// missing feature flag into notifications that never arrive. Surfacing
+    /// it as [`NotConfigured`](Self::NotConfigured) on the first send is the
+    /// loudest signal available there.
+    ///
+    /// Here a louder one exists. `Notifier::queue` cannot be *called* without
+    /// `notifications-queue`, so the same mistake is already a compile error,
+    /// and a variant that only ever appears alongside the method it belongs
+    /// to costs nothing to gate.
+    #[cfg(feature = "notifications-queue")]
+    #[error("notification: the mail channel was queued, but this notifier has no queue")]
+    QueueNotConfigured,
 }

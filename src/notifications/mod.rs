@@ -36,6 +36,26 @@
 //! [`crate::realtime`] in `README.md` and `docs/src/deployment.md`; it is
 //! repeated here because a notification is exactly the case where it bites.
 //!
+//! # Mail can be deferred; the other two cannot
+//!
+//! Behind `notifications-queue`, [`Notifier::queue`] writes the email to
+//! [`crate::jobs`] instead of waiting for the SMTP server, and the request
+//! stops paying for a TLS handshake to a machine it does not control. The
+//! inbox row and the live push still run inline in the same call.
+//!
+//! That asymmetry is not an omission. Deferring the inbox would mean the
+//! recipient who opens the application right after the event finds nothing
+//! there, which is the exact failure writing the inbox first was meant to
+//! prevent. And the push reaches the connections held by *this* process; a
+//! worker holds none of them, so a queued push is a dropped one.
+//!
+//! The queue is at-least-once, so a worker that dies after handing a message
+//! to the SMTP server but before marking the job complete leaves a job that
+//! runs again -- and the email arrives twice. That is the cost of the
+//! deferral, and it is disclosed rather than designed away, because writing
+//! to a remote server and recording that you did cannot be made one
+//! operation.
+//!
 //! # The inbox cannot be read across recipients
 //!
 //! [`DatabaseNotifications`] takes the recipient key on *every* method,
@@ -128,6 +148,8 @@ mod dialect;
 mod migrate;
 mod notification;
 mod notifier;
+#[cfg(feature = "notifications-queue")]
+mod queue;
 mod recipient;
 #[cfg(feature = "notifications-db")]
 mod store;
@@ -141,6 +163,8 @@ pub use channel::{Channel, NotificationError};
 pub use dialect::NotificationPool;
 pub use notification::{BroadcastContent, DatabaseContent, MailContent, Notification};
 pub use notifier::{Delivery, Notifier};
+#[cfg(feature = "notifications-queue")]
+pub use queue::{MAIL_JOB, NotificationQueue, QueuedMail, register_mail_handler};
 pub use recipient::{Notifiable, Recipient};
 #[cfg(feature = "notifications-db")]
 pub use store::DatabaseNotifications;

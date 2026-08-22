@@ -8,6 +8,8 @@ use crate::mail::{Email, EmailError, Mail, Mailable, lettre::Message};
 use super::broadcast::BroadcastNotifications;
 use super::channel::{Channel, NotificationError};
 use super::notification::{BroadcastContent, DatabaseContent, MailContent, Notification};
+#[cfg(feature = "notifications-queue")]
+use super::queue::{NotificationQueue, QueuedMail};
 use super::recipient::Notifiable;
 #[cfg(feature = "notifications-db")]
 use super::store::DatabaseNotifications;
@@ -18,10 +20,19 @@ use super::store::DatabaseNotifications;
 /// outcome and an invisible one: a notification whose `to_mail` returns
 /// `None` for everybody is indistinguishable from a working one unless the
 /// caller can ask.
+/// A channel a notification was *handed to* rather than delivered over is
+/// reported separately, because the two are different promises. A channel in
+/// [`Delivery::channels`] has run: the message left the process. A channel in
+/// [`Delivery::queued`] has been written down and will run later, or will
+/// not, and the caller finds out from the queue rather than from here.
+///
+/// Folding the two together would make [`Delivery::reached`] say yes to a job
+/// row -- which is the one answer nobody would want it to give.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct Delivery {
     channels: Vec<Channel>,
+    queued: Vec<Channel>,
 }
 
 impl Delivery {
@@ -37,10 +48,30 @@ impl Delivery {
         self.channels.contains(&channel)
     }
 
-    /// Whether the notification reached nobody on any channel.
+    /// The channels that were handed to the queue instead of run inline.
+    ///
+    /// Only [`Notifier::queue`] populates this; a plain
+    /// [`send`](Notifier::send) always leaves it empty.
+    #[must_use]
+    pub fn queued(&self) -> &[Channel] {
+        &self.queued
+    }
+
+    /// Whether a particular channel was queued rather than delivered.
+    #[must_use]
+    pub fn is_queued(&self, channel: Channel) -> bool {
+        self.queued.contains(&channel)
+    }
+
+    /// Whether the notification neither reached anybody nor was queued for
+    /// anybody.
+    ///
+    /// A queued channel counts as not-empty. The question this answers is
+    /// "did asking to notify this person amount to nothing", and a job row
+    /// waiting to be run is not nothing.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.channels.is_empty()
+        self.channels.is_empty() && self.queued.is_empty()
     }
 }
 
@@ -100,6 +131,8 @@ pub struct Notifier {
     database: Option<DatabaseNotifications>,
     #[cfg(feature = "notifications-broadcast")]
     broadcast: Option<BroadcastNotifications>,
+    #[cfg(feature = "notifications-queue")]
+    queue: Option<NotificationQueue>,
 }
 
 impl fmt::Debug for Notifier {
@@ -114,6 +147,8 @@ impl fmt::Debug for Notifier {
         out.field("database", &self.database.is_some());
         #[cfg(feature = "notifications-broadcast")]
         out.field("broadcast", &self.broadcast.is_some());
+        #[cfg(feature = "notifications-queue")]
+        out.field("queue", &self.queue.is_some());
         out.finish()
     }
 }
@@ -175,6 +210,26 @@ impl Notifier {
     #[must_use]
     pub fn has_broadcast(&self) -> bool {
         self.broadcast.is_some()
+    }
+
+    /// Enable [`Notifier::queue`].
+    ///
+    /// Wiring a queue changes nothing about [`Notifier::send`], which still
+    /// talks to the SMTP server inline. The two are separate methods so that
+    /// a handler asking to defer is saying so, rather than finding out from
+    /// whether startup happened to call this.
+    #[cfg(feature = "notifications-queue")]
+    #[must_use]
+    pub fn with_queue(mut self, queue: NotificationQueue) -> Self {
+        self.queue = Some(queue);
+        self
+    }
+
+    /// Whether a queue is wired.
+    #[cfg(feature = "notifications-queue")]
+    #[must_use]
+    pub fn has_queue(&self) -> bool {
+        self.queue.is_some()
     }
 
     /// Render `notification` for `to` and deliver it on every channel it
@@ -242,7 +297,91 @@ impl Notifier {
             channels.push(Channel::Mail);
         }
 
-        Ok(Delivery { channels })
+        Ok(Delivery {
+            channels,
+            queued: Vec::new(),
+        })
+    }
+
+    /// Like [`send`](Notifier::send), but hand the email to the job queue
+    /// instead of waiting for the SMTP server.
+    ///
+    /// The inbox row and the live push still run inline, in the same order
+    /// [`send`](Notifier::send) runs them. Only the mail moves, because only
+    /// the mail leaves the machine -- see the [module
+    /// docs](crate::notifications) and [`queue`](super::queue) for why
+    /// deferring the other two would be dropping them rather than delaying
+    /// them.
+    ///
+    /// The returned [`Delivery`] reports the mail channel under
+    /// [`Delivery::queued`], never [`Delivery::channels`]. A job row is not a
+    /// delivery, and the two accessors keep saying exactly one thing each.
+    ///
+    /// # Duplicates are possible
+    ///
+    /// [`crate::jobs`] is at-least-once, so a worker that dies between
+    /// handing the message to the SMTP server and marking the job complete
+    /// leaves a job another worker will run -- and the recipient gets the
+    /// email twice. This is inherent to writing across two systems, not a gap
+    /// here; a notification whose second copy is harmful should not be sent
+    /// this way.
+    ///
+    /// # Errors
+    ///
+    /// - [`NotificationError::QueueNotConfigured`] if the notification
+    ///   renders mail and no queue was wired. Loud rather than silently
+    ///   falling back to an inline send, because the fallback would take the
+    ///   latency the caller asked to avoid and only under load, which is when
+    ///   it is least affordable and hardest to see.
+    /// - [`NotificationError::NoAddress`] if the notification renders mail
+    ///   for a recipient with no email address. Checked here rather than in
+    ///   the worker: an address that does not exist is not going to appear by
+    ///   the time the job runs, and failing now puts the error in the request
+    ///   that caused it instead of in a dead job row.
+    /// - [`NotificationError::Queue`] if the row cannot be written.
+    /// - The same inbox and broadcast errors [`send`](Notifier::send)
+    ///   returns, from the channels that still run inline.
+    #[cfg(feature = "notifications-queue")]
+    pub async fn queue<N>(
+        &self,
+        to: &impl Notifiable,
+        notification: &N,
+    ) -> Result<Delivery, NotificationError>
+    where
+        N: Notification + ?Sized,
+    {
+        let recipient = to.recipient();
+        let mut channels = Vec::new();
+        let mut queued = Vec::new();
+
+        if let Some(content) = notification.to_database(&recipient) {
+            self.deliver_database(recipient.key(), &content).await?;
+            channels.push(Channel::Database);
+        }
+
+        if let Some(content) = notification.to_broadcast(&recipient)
+            && self.deliver_broadcast(recipient.key(), &content)? > 0
+        {
+            channels.push(Channel::Broadcast);
+        }
+
+        if let Some(content) = notification.to_mail(&recipient) {
+            let queue = self
+                .queue
+                .as_ref()
+                .ok_or(NotificationError::QueueNotConfigured)?;
+            let address =
+                recipient
+                    .email_address()
+                    .ok_or_else(|| NotificationError::NoAddress {
+                        key: recipient.key().to_owned(),
+                    })?;
+
+            queue.enqueue(&QueuedMail::new(address, &content)).await?;
+            queued.push(Channel::Mail);
+        }
+
+        Ok(Delivery { channels, queued })
     }
 
     /// Write one inbox row.
@@ -328,7 +467,13 @@ impl Notifier {
 /// here means address parsing, the `From` header, and the transport's own
 /// error mapping stay in one place instead of being reimplemented with
 /// slightly different edge cases.
-struct AsMailable<'a>(&'a MailContent);
+///
+/// Visible to the rest of the module so [`queue`](super::queue) sends a
+/// deferred email through this same adapter. Two spellings of "turn content
+/// into a message" would eventually disagree about something small -- a
+/// missing HTML part, a different encoding -- and the disagreement would only
+/// show up in whichever path had no test for it.
+pub(super) struct AsMailable<'a>(pub(super) &'a MailContent);
 
 impl Mailable for AsMailable<'_> {
     fn build(&self, email: Email) -> Result<Message, EmailError> {
@@ -397,6 +542,48 @@ mod tests {
         assert!(delivery.reached(Channel::Mail));
         assert_eq!(delivery.channels(), [Channel::Mail]);
         assert_eq!(mailer.captured().await.unwrap().len(), 1);
+    }
+
+    #[cfg(feature = "notifications-queue")]
+    #[tokio::test]
+    async fn queueing_mail_with_no_queue_is_an_error_and_not_an_inline_send() {
+        // The tempting fallback -- no queue, so send it inline -- would take
+        // exactly the latency the caller asked to avoid, and only under the
+        // load that made them ask. A wiring mistake should cost the first
+        // call, not the busiest one.
+        let (mailer, notifier) = wired();
+        let ada = Recipient::new("user:1").email("ada@example.com");
+
+        let error = notifier.queue(&ada, &Mails).await.unwrap_err();
+
+        assert!(
+            matches!(error, NotificationError::QueueNotConfigured),
+            "got {error:?}"
+        );
+        assert!(
+            mailer.captured().await.unwrap().is_empty(),
+            "the mail must not have gone out inline instead"
+        );
+    }
+
+    #[cfg(feature = "notifications-queue")]
+    #[tokio::test]
+    async fn a_queued_channel_is_reported_as_queued_and_not_as_reached() {
+        // `Notifier::queue` needs a pool to reach, so this asserts the shape
+        // of the record rather than a round trip: a job row is not a
+        // delivery, and neither accessor may start saying it is.
+        let queued = Delivery {
+            channels: Vec::new(),
+            queued: vec![Channel::Mail],
+        };
+
+        assert!(queued.is_queued(Channel::Mail));
+        assert!(!queued.reached(Channel::Mail));
+        assert_eq!(queued.channels(), []);
+        assert!(
+            !queued.is_empty(),
+            "a job row waiting to run is not nothing"
+        );
     }
 
     #[tokio::test]
@@ -555,14 +742,17 @@ mod tests {
         let rendered = format!("{notifier:?}");
 
         // Built rather than written out, because the field list depends on
-        // two independent features and a hand-written expectation per
-        // combination is three chances to encode the wrong one.
+        // three independent features and a hand-written expectation per
+        // combination is eight chances to encode the wrong one.
         let mut fields = vec!["mail: true"];
         if cfg!(feature = "notifications-db") {
             fields.push("database: false");
         }
         if cfg!(feature = "notifications-broadcast") {
             fields.push("broadcast: false");
+        }
+        if cfg!(feature = "notifications-queue") {
+            fields.push("queue: false");
         }
         assert_eq!(rendered, format!("Notifier {{ {} }}", fields.join(", ")));
 

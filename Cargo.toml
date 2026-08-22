@@ -308,6 +308,26 @@ notifications-db = ["notifications", "database"]
 # means for a deployment with more than one instance.
 notifications-broadcast = ["notifications", "realtime"]
 
+# Hand the mail channel to the job queue instead of the request.
+#
+# Its own feature because it is the only one of the four that changes where
+# the work happens rather than what work there is: an application enabling it
+# takes on running a worker process, and one that has no worker should not be
+# offered a method that writes rows nobody drains. No new crate enters the
+# graph -- `jobs` is `database` plus the `tokio`/`tokio-util` that `server`
+# already brings, and the payload rides the unconditional `serde_json`.
+#
+# Only mail is queued. The inbox row is deferred into uselessness (the
+# recipient arrives before it lands) and a live push cannot be deferred at all
+# (a worker holds none of the web process's sockets), so both keep running
+# inline. See `notifications::queue`.
+#
+# The queue is at-least-once, so a queued email can be delivered twice. That
+# is inherent to writing across two systems, and it is disclosed at every
+# level -- module docs, `Notifier::queue`, the changelog -- rather than left
+# for an operator to discover from a duplicate.
+notifications-queue = ["notifications", "jobs"]
+
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.
 oauth = ["dep:oauth2", "dep:url"]

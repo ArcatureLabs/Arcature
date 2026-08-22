@@ -224,6 +224,8 @@ pub use notifications::{
 };
 #[cfg(feature = "notifications-db")]
 pub use notifications::{DatabaseNotifications, NotificationId, StoredNotification};
+#[cfg(feature = "notifications-queue")]
+pub use notifications::{NotificationQueue, QueuedMail, register_mail_handler};
 
 #[cfg(feature = "jobs")]
 pub mod jobs;

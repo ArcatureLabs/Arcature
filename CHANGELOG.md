@@ -835,6 +835,36 @@ therefore its first.
   notification sent from a background worker reaches none. An application
   running more than one instance should treat the push as an optimisation over
   the inbox rather than a delivery guarantee.
+- **Notification mail can be handed to the job queue.** `Notifier::queue`,
+  behind a new `notifications-queue` feature, writes the rendered email to
+  `jobs` and returns; a worker registered with `register_mail_handler` does the
+  SMTP conversation. The request stops waiting on a connection, a TLS
+  handshake, and a server it does not control -- and stops *varying* with them,
+  which matters where the timing is readable: a registration handler whose
+  duration depends on whether the recipient's domain resolves or the server
+  greylists is telling anyone with a stopwatch which addresses are already
+  taken. This removes that one oracle; it does not make the handler
+  constant-time, since the inbox write, the push, and password hashing are all
+  still inline. Only mail is deferred. Deferring the inbox row would mean a
+  recipient who opens the application right after the event finds it empty,
+  the exact failure that put the inbox first in `send`; and a live push reaches
+  the sockets held by *this* process, so a worker queued to deliver one would
+  be dropping it. `Notifier::send` is unchanged -- wiring a queue does not
+  reroute it -- and `Delivery` reports a deferred channel under a new
+  `queued()`, never under `channels()`, so neither accessor starts calling a
+  job row a delivery. **The queue is at-least-once, so a queued email can
+  arrive twice**: a worker that dies between handing the message to the SMTP
+  server and marking the job complete leaves a job another worker will claim.
+  Handing bytes to a remote server and recording that you did are two
+  operations in two systems and no care makes them one; the choice is which way
+  to fail, and a notification that arrives twice beats one that never arrives.
+  Anything whose second delivery is harmful -- a code consumed on send, a mail
+  that charges a card -- should not rely on the send being the only record it
+  happened. What is queued is the *rendered* `MailContent`, not the
+  notification, so nothing new is required of the `Notification` trait, a
+  notification holding borrowed data queues like any other, and the email says
+  what the code that sent it meant rather than what the worker's build of the
+  code would have said mid-deploy.
 
 ### Changed
 
