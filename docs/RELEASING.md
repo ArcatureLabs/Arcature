@@ -120,9 +120,31 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --no-fail-fast
 cargo deny check
-cargo publish --dry-run --no-verify
 cargo publish --dry-run --no-verify --manifest-path macros/Cargo.toml
 ```
+
+There is deliberately no `cargo publish --dry-run` for `arcature` here, and
+adding one back will waste an afternoon. Packaging `arcature` resolves
+`arcature-macros = { version = "=X.Y.Z", path = "macros" }` against the
+registry -- `--no-verify` skips the build, not the resolve -- so between
+bumping the version and the release job publishing the macro crate, the only
+answer it can give is:
+
+```
+failed to select a version for the requirement `arcature-macros = "=X.Y.Z"`
+candidate versions found which didn't match: <previous version>
+```
+
+That is the exact-version pin working. The macro crate is published first for
+this reason, and `arcature`'s dry run is only meaningful after it lands, which
+is why the equivalent step lives in `ci.yml` and runs on `main` rather than
+here.
+
+The same window makes CI's `publish-dry-run` job go red on `main` from the
+moment the release commit is pushed until the release job publishes the macro
+crate -- usually a couple of minutes. That red is expected. Re-run the job
+after the release and it passes; if it still fails then, the publish ordering
+really did break.
 
 Then once per off-by-default feature that has tests of its own, because the
 default run does not compile them:
