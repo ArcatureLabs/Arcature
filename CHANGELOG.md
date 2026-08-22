@@ -933,6 +933,16 @@ therefore its first.
   still missed and is pinned as such in `tests/observe_redaction.rs`.
 
 
+- **CI reports every failing test suite, not the first one.** The `Test` job
+  ran `cargo test` without `--no-fail-fast`, so cargo stopped at the first
+  test target that failed and never built the remaining binaries or ran a
+  single doctest. A run with two unrelated breakages reported one of them;
+  the second appeared only after the first was fixed and the job re-run,
+  which turns one review cycle into as many as there are broken suites. The
+  failure it hid best is the accidental one -- a change that breaks a suite
+  alphabetically later than a suite already red looks free until the day the
+  first one goes green.
+
 ### Security
 
 - **Tampering with a token or a signed URL is proven to fail, one byte at a

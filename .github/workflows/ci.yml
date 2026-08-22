@@ -90,8 +90,14 @@ jobs:
       - name: Build (default features)
         run: cargo build
 
+      # `--no-fail-fast` is not tidiness. Without it cargo stops at the first
+      # test target that fails, so the remaining binaries and every doctest
+      # never run -- and the log ends in a failure that names one suite while
+      # saying nothing about twenty others. One red target then hides however
+      # many are behind it, and the second failure only surfaces after the
+      # first is fixed, one round trip at a time.
       - name: Test (default features)
-        run: cargo test
+        run: cargo test --no-fail-fast
 
       - name: Build (no default features, kernel only)
         run: cargo build --no-default-features
