@@ -74,6 +74,8 @@ pub use application::{
 pub use error::{Error, Result, ValidationError, bad_request, forbidden, not_found};
 #[cfg(any(feature = "api", feature = "inertia"))]
 pub use http::json;
+#[cfg(feature = "uploads")]
+pub use http::{BoundedField, BoundedMultipart, MultipartError, MultipartLimits};
 pub use http::{RedirectResponse, no_content, redirect, text};
 pub use routing::{IntoRoutes, Middleware, Next, Route, RouteGroup, RouterState, Routes};
 

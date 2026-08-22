@@ -255,7 +255,14 @@ api-docs = ["api", "uag"]
 # It pulls `validation` (the extractor lives beside the other validated
 # extractors and reports RFC 9457 problem details) and `storage-fs` (an upload
 # is written to a storage disk, never to a path the request named).
-uploads = ["axum/multipart", "validation", "storage-fs", "dep:unicode-normalization", "dep:sha2"]
+#
+# `dep:tokio` is here for one thing: `tokio::time::timeout`. A byte cap cannot
+# express "the client stopped sending", because a request that never finishes
+# never exceeds anything -- the only bound that catches a slowloris is a clock,
+# and the clock has to be the runtime's. Nothing else is pulled in; `tokio` is
+# already on in every build that has `macros`, `jobs`, `cli`, `pages` or
+# `realtime`, which is every default build.
+uploads = ["axum/multipart", "validation", "storage-fs", "dep:tokio", "dep:unicode-normalization", "dep:sha2"]
 
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [

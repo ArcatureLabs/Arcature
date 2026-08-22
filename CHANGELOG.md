@@ -192,6 +192,28 @@ therefore its first.
   filename sanitizer -- the sanitizer makes the *metadata* safe to display,
   content addressing makes the *path* safe to resolve -- and an unguessable
   key is not authorization: authorize the download.
+- **Bounded multipart bodies, `MultipartLimits` and `BoundedMultipart`
+  (feature `uploads`).** A body-size cap is three quarters of an answer. It
+  says nothing about part *count* -- fifty thousand parts of two bytes each
+  fit inside a 1 MiB body, and the cost of a part is not its length but a
+  header parse, an allocation, a filename sanitization and a storage round
+  trip -- and it says nothing at all about a client that sends a byte a
+  minute, because a request that never finishes never exceeds anything. The
+  new `MultipartLimits` carries all four bounds: a total, a per-part cap, a
+  part count (default 32) and a per-read timeout (default 30s) enforced with
+  `tokio::time::timeout`. The count is checked *before* the part is parsed,
+  and a chunk that crosses a byte cap is counted and then refused rather than
+  returned. This is the inner bound, not a replacement for the outer one:
+  stage 12 of the pipeline (`tower-http`'s `RequestBodyLimitLayer`) still
+  applies to the body before a byte reaches the parser, nothing here can
+  raise it, and `MultipartLimits` is a `tower::Layer` so one upload route can
+  be made stricter than the rest of the application without loosening
+  anything. A route with no layer gets the conservative defaults; there is no
+  way to end up unbounded. Failures report RFC 9457 problem details with a
+  fixed per-category `detail`, never axum's parser message, which can quote
+  header bytes the client wrote. `BoundedField::declared_content_type` is
+  named for what it is -- a claim by the client about bytes the client also
+  chose.
 
 
 ### Changed
