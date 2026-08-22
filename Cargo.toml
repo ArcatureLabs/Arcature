@@ -234,6 +234,33 @@ test-kit = ["macros", "dep:http-body-util", "dep:tower-sessions-memory-store"]
 # the dependency graph that `auth` and `database` produce.
 session-store-db = ["auth", "database", "dep:sha2", "dep:async-trait"]
 
+# Hashed personal access tokens: an opaque bearer credential for clients that
+# have no cookie and no session -- a CLI, a CI job, another service.
+#
+# Off by default. It brings a table and a migration, and an application that
+# only serves a browser never needs one.
+#
+# Independent of `auth`, for the reason `crypt` states: an API with no
+# passwords and no sessions may still hand out a token, and making it compile
+# a password hasher and a session layer to get one would be a packaging
+# decision pretending to be a security one. It does require `database`,
+# because a revocable credential has to live somewhere revocable.
+#
+# `dep:sha2` is what the row stores -- the SHA-256 of the token's secret half,
+# never the secret. Deliberately not argon2: the secret is 256 bits from the
+# OS CSPRNG, so a slow hash defends against a search that is already
+# impossible while costing tens of milliseconds and tens of megabytes on every
+# API request. The full argument is at the hashing site in
+# `src/tokens/store.rs`.
+#
+# `dep:zeroize` wipes the one plaintext copy when it drops, so a credential
+# that was shown once does not linger in freed heap.
+#
+# No new crates enter the graph: `sha2` and `zeroize` are already pulled by
+# `session-store-db`, `crypt`, and `signed-urls`, and the randomness comes
+# from `getrandom`, which is unconditional.
+api-tokens = ["database", "dep:sha2", "dep:zeroize"]
+
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.
 oauth = ["dep:oauth2", "dep:url"]

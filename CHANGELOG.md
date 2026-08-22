@@ -692,6 +692,32 @@ therefore its first.
   the feature cannot reach any of these names, and its pages and views render
   byte for byte as before.
 
+- **Hashed personal access tokens, behind the new `api-tokens` feature.**
+  `ApiTokens` mints an opaque bearer credential for clients that have no
+  cookie and no session -- a CLI, a CI job, another service -- and stores
+  only a SHA-256 of it. A token is a public 16-byte id plus a secret 32-byte
+  half; the row holds the id in the clear (it is a lookup key, not a
+  credential) and the digest of the secret. `ApiTokens::issue` returns the
+  plaintext exactly once, wrapped in a `PlaintextToken` that has no `Clone`,
+  prints `[redacted]` from `Debug`, and zeroizes on drop -- after that call
+  there is nothing in the database, a backup, a replica, or a read-only
+  reporting account that can be turned back into a working credential. The
+  digest is deliberately SHA-256 and not argon2, and the reasoning is written
+  at the hashing site: the secret is 256 bits of uniform CSPRNG output, so a
+  slow hash defends against a search that is already impossible, while
+  running one on every API request would hand anyone holding a valid token a
+  memory-hard denial-of-service primitive against the server. Every token
+  carries an `Abilities` set -- exact string matching, no glob grammar, with
+  one reserved `"*"` -- and an expiry that has no null state and no
+  constructor that omits it, checked as `expires_at > now()` inside every
+  query so an expired token dies on time whether or not `sweep_expired` has
+  run. `migrate()` ships per-dialect SQL for PostgreSQL, SQLite, and MySQL 8
+  under the same advisory-lock-and-history-table pattern as the job queue and
+  the database session store. Off by default and additive: no new crate
+  enters the dependency graph (`sha2` and `zeroize` are already there,
+  randomness comes from the unconditional `getrandom`), and an application
+  that does not enable `api-tokens` cannot reach any of these names.
+
 
 ### Changed
 

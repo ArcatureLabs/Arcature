@@ -239,6 +239,15 @@ pub use realtime::{Broadcast, SseEndpoint, WebSocketEndpoint};
 pub mod api;
 pub use api::{PROBLEM_JSON, Problem, ProblemBuilder, ProblemKind};
 
+// Hashed personal access tokens. Off by default: it brings a table and a
+// migration, and an application that only serves a browser never needs one.
+// Independent of `auth` on purpose -- see the feature's comment in
+// `Cargo.toml`.
+#[cfg(feature = "api-tokens")]
+pub mod tokens;
+#[cfg(feature = "api-tokens")]
+pub use tokens::{ApiToken, ApiTokenError, ApiTokenId, ApiTokens};
+
 #[cfg(feature = "observe")]
 pub mod observe;
 #[cfg(feature = "observe")]
