@@ -126,7 +126,7 @@ position is in the module documentation and in
 | Mail | lettre 0.11 (rustls) | `mail` |
 | Jobs | Database-backed queue, one claim strategy per dialect | `jobs` |
 | Events | in-process dispatch | `events` |
-| Realtime | WebSocket + SSE over axum | `realtime` |
+| Realtime | WebSocket + SSE over axum, fan-out within one process | `realtime` |
 | Problem Details (RFC 9457), OpenAPI | -- | `api` |
 | Observability | tracing, request ids, JSON logs, Prometheus text, W3C trace context | `observe` |
 | Static pages and assets | tower-http `fs` | `pages` |

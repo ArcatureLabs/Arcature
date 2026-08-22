@@ -98,6 +98,55 @@ Ctrl-C is wired.
 skips ordered startup entirely. Health endpoints still work, but they report
 on an empty resource set, because on that path there are no subsystems.
 
+## Running more than one instance
+
+Most of the framework is indifferent to how many processes you run. Three
+subsystems are not, and the difference between them matters more than the
+list suggests: two have a cross-instance mode you switch on, and one does
+not.
+
+**Sessions are shared, if you configure a store that shares them.** The
+`session-store-db` feature puts sessions in the same database the
+application already uses, so a request may land on any instance and a
+deploy does not log everyone out. `MemoryStore` does neither. This is a
+configuration choice with a correct answer, not a limit.
+
+**Rate limiting is per-process until you point it at Redis.** The default
+backend is an in-process `HashMap` of token buckets, so with *n* instances
+behind a load balancer a client gets roughly *n* times the nominal quota.
+`RateLimit::redis(cache)` (needs the `cache` feature) moves the buckets to
+Redis/Valkey and the quota becomes global. Decide this deliberately:
+`OnBackendError` controls what happens when Redis is unreachable, and it
+defaults to `Refuse` -- the limiter fails closed rather than silently
+becoming no limiter at all.
+
+**Realtime fan-out is per-process, and there is no switch.** `Broadcast`
+wraps a `tokio::sync::broadcast` channel, which is a channel between tasks
+inside one process. A message published on instance A reaches only the
+WebSocket and SSE subscribers connected to instance A. Nothing errors and
+nothing warns: subscribers on instance B simply never see it, which is why
+this is worth stating plainly rather than leaving to be discovered. With
+two instances and clients spread evenly, roughly half of each broadcast is
+lost from any given client's point of view.
+
+Until a cross-instance bridge exists, there are three honest ways to live
+with this:
+
+- **Run one instance.** Vertical scale goes a long way, and this is the
+  only option that needs no extra reasoning.
+- **Pin realtime connections to one instance.** A load balancer routing
+  WebSocket and SSE upgrades to a single backend keeps fan-out correct
+  while ordinary HTTP scales out. Whether that instance's failure is
+  acceptable is an availability question, not a correctness one.
+- **Publish from a shared source.** If every message originates from a job
+  worker or an external system, have each instance subscribe to that
+  source and re-publish locally. This is the bridge, written by hand.
+
+A Redis pub/sub bridge is the obvious general answer and `redis` is already
+in the tree behind the `cache` feature, but it is not written: it would
+need delivery semantics, ordering and back-pressure decided on purpose
+rather than inherited, and no traffic has yet asked the question.
+
 ## Maintenance mode
 
 `Maintenance` is an `Arc`-backed handle, not a global and not a file on disk.

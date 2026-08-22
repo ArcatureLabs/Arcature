@@ -888,6 +888,20 @@ therefore its first.
   TCP are named, along with `ClientIp::resolve` for anyone keeping their
   own listener.
 
+- Deployment guide: a "Running more than one instance" section that
+  separates the subsystems with a cross-instance mode from the one
+  without. Sessions share through `session-store-db`; rate limiting
+  shares through `RateLimit::redis`, failing closed when Redis is
+  unreachable. Realtime fan-out does not share and has no switch:
+  `Broadcast` wraps a `tokio::sync::broadcast` channel, which reaches
+  only the subscribers connected to the publishing process, so two
+  instances mean roughly half of every broadcast is missing from a given
+  client's view -- with no error and no warning, because the channel
+  delivers correctly to everyone it can see. The section lists the three
+  ways to live with that and says why the obvious Redis pub/sub bridge is
+  not written yet. The `realtime` module docs and the README feature table
+  now say the same thing where a reader meets them first.
+
 
 
 ## [0.1.0]

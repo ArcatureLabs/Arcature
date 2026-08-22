@@ -6,6 +6,23 @@
 //! `tokio::sync::broadcast` channel. Raw `axum::extract::ws` /
 //! `axum::response::sse` remain first-class escape hatches.
 //!
+//! # Fan-out reaches one process
+//!
+//! `tokio::sync::broadcast` is a channel between tasks inside a single
+//! process, so a message published on one instance reaches only the
+//! subscribers connected to *that* instance. Run two instances behind a
+//! load balancer and roughly half of every broadcast is missing from any
+//! given client's view. Nothing errors and nothing warns -- the message is
+//! delivered correctly to everyone the channel can see, and the channel
+//! cannot see the other process.
+//!
+//! This is the one limit here that has no configuration switch, unlike
+//! sessions (`session-store-db`) or rate limiting
+//! ([`RateLimit::redis`](crate::routing::RateLimit)). The deployment guide
+//! lists the three ways to live with it; the short version is to run one
+//! instance, or to pin realtime upgrades to one instance, until a
+//! cross-process bridge exists.
+//!
 //! Realtime is app-owned, not engine-owned: the app constructs
 //! [`Broadcast`], [`Registry`], and [`ShutdownConfig`] once, stores them in
 //! `AppState`, and clones [`WebSocketEndpoint`] / [`SseEndpoint`] into
