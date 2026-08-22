@@ -1152,6 +1152,17 @@ therefore its first.
   not written yet. The `realtime` module docs and the README feature table
   now say the same thing where a reader meets them first.
 
+- ADR 0006, "The generated TypeScript stays derived": why
+  `resources/js/generated/` is written by `arc typegen` and never committed,
+  and why that makes the type-safe `route()` helper opt-in rather than the
+  default. Turning it on means the scaffold's own page imports a directory
+  that does not exist in a fresh clone, in the `Dockerfile`'s Node-only asset
+  stage, or in any frontend job with no Rust toolchain in reach. The record
+  states the price of both ways out -- committing the directory makes `tsc`
+  check against a snapshot that goes stale silently, and putting Rust in the
+  asset stage undoes the reason the stages were split -- and names the
+  condition under which it should be reopened.
+
 
 
 ## [0.1.0]

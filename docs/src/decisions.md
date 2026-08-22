@@ -21,3 +21,7 @@ in the repository.
 - [**There is no hidden registry**](https://github.com/ArcatureLabs/Arcature/blob/main/docs/decisions/0005-no-hidden-registry.md).
   No `inventory`, no `linkme`, no `TypeId` map, no thread-locals. All metadata
   is `&'static` const data emitted by macros and named by code you wrote.
+- [**The generated TypeScript stays derived**](https://github.com/ArcatureLabs/Arcature/blob/main/docs/decisions/0006-generated-typescript-stays-derived.md).
+  `resources/js/generated/` is written by `arc typegen`, never committed, and
+  never imported by the scaffold itself — so the type-safe `route()` helper is
+  opt-in rather than on by default.

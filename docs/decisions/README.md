@@ -15,3 +15,4 @@ that is new evidence and the record should be amended.
 | [0003](0003-one-tcp-port.md) | Exactly one TCP port, in development as well as production |
 | [0004](0004-layer-order-contract.md) | Layer order is a written contract |
 | [0005](0005-no-hidden-registry.md) | There is no hidden registry |
+| [0006](0006-generated-typescript-stays-derived.md) | The generated TypeScript stays derived |
