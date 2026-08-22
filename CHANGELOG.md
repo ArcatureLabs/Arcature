@@ -720,6 +720,22 @@ therefore its first.
 
 ### Security
 
+- **Tampering with a token or a signed URL is proven to fail, one byte at a
+  time.** Two adversarial suites now stand behind the `crypt` and
+  `signed-urls` features, and the two central tests are exhaustive rather
+  than illustrative: every single-bit flip anywhere in an encrypted token --
+  all 568 of them, across nonce, ciphertext and tag -- must come back as an
+  authentication failure, and every byte position of a signed URL must be
+  rejected under both substitution and deletion, which covers the origin,
+  the path, each parameter name and value, the expiry, the separators and
+  the signature without anyone remembering to add a case. Around them:
+  a failed tag check yields no plaintext at all rather than a prefix, the
+  same plaintext never seals to the same token twice, an expiry edited
+  forward is refused, an expired link is refused against an injected clock
+  rather than a sleep, a reordered query still verifies while values swapped
+  between their keys do not, and a second `signature` parameter is refused
+  rather than one of the two being picked.
+
 - **`SECURITY.md` says that the largest memory-safety surface here is not
   Rust.** `cargo geiger` counts `unsafe` in Rust, so the baseline it produces
   is silent about C and assembly reached through FFI -- and the biggest such
