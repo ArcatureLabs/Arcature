@@ -865,6 +865,22 @@ therefore its first.
   notification holding borrowed data queues like any other, and the email says
   what the code that sent it meant rather than what the worker's build of the
   code would have said mid-deploy.
+- `auth::flows`, behind the new off-by-default `auth-flows` feature: the small
+  security-critical decisions between `auth`'s seams and a login form, where
+  the obvious implementation is wrong in a way nothing reports. First of them
+  is `CredentialChecker`, which answers "do these credentials match?" in the
+  same amount of work whether or not the address has an account. The naive
+  handler returns early when the lookup misses, so it answers an order of
+  magnitude faster than one that ran Argon2id -- the message says nothing, but
+  the response time is a working list of who has registered. `CredentialChecker`
+  hashes a fixed throwaway plaintext once at construction and verifies against
+  *that* when there is no account, so both paths run exactly one Argon2id
+  verification at the same parameters. Its `CredentialOutcome` has two variants
+  and no `NoSuchUser`, because a caller that can branch on the distinction will
+  eventually put it in a response, and `verifications()` exposes the count so
+  the property is something a test can assert rather than something a comment
+  claims. The feature adds no dependency: everything it needs is already in the
+  graph `auth` produces.
 
 ### Changed
 

@@ -234,6 +234,19 @@ test-kit = ["macros", "dep:http-body-util", "dep:tower-sessions-memory-store"]
 # the dependency graph that `auth` and `database` produce.
 session-store-db = ["auth", "database", "dep:sha2", "dep:async-trait"]
 
+# The security-critical pieces of a sign-in screen: `auth::flows`.
+#
+# `auth` owns the seams -- hash a password, bind a user to a session,
+# authorize an action. This feature owns the small decisions between those
+# seams and a login form where the obvious implementation is wrong in a way
+# nothing reports: an account lookup that skips the hash when the address is
+# unknown, and so turns the response time into a list of who has an account.
+#
+# Off by default, and for the ordinary reason: an application with no login
+# screen should not carry a login screen's code. It adds no dependency of its
+# own -- everything it needs is already in the graph `auth` produces.
+auth-flows = ["auth"]
+
 # Hashed personal access tokens: an opaque bearer credential for clients that
 # have no cookie and no session -- a CLI, a CI job, another service.
 #

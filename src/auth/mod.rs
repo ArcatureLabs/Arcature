@@ -61,6 +61,13 @@ pub mod dx;
 pub mod error;
 pub mod extract;
 pub mod flash;
+// The security-critical pieces of a sign-in screen -- the ones where the
+// obvious implementation leaks something. Behind `auth-flows`, off by
+// default. These keep their module rather than being flattened into
+// `arcature::auth`: `flows::CredentialChecker` says which layer it belongs
+// to, and the layer is the thing a reviewer needs to see.
+#[cfg(feature = "auth-flows")]
+pub mod flows;
 pub mod password;
 pub mod password_config;
 pub mod policy;
