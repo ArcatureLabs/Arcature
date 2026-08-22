@@ -236,12 +236,14 @@ crate boundary, and the crate boundary is not where the memory-safety risk is:
 the framework's job is to integrate other people's code, and other people's
 code is where the `unsafe` lives.
 
-`unsafe-baseline.txt` at the repository root records the whole picture, one
-line per crate, as measured by [`cargo-geiger`]. `just geiger` recomputes it
-and diffs against the recorded file; `just geiger-accept` records a new
-answer. The diff is a review prompt, not a gate -- a pull request that moves
-these numbers is expected to say which dependency moved and why the change is
-acceptable.
+`unsafe-baseline.<host-target>.txt` at the repository root records the whole
+picture, one line per crate, as measured by [`cargo-geiger`]. `just geiger`
+recomputes it and diffs against the file for the current host;
+`just geiger-accept` records a new answer. On a developer's machine the diff
+is a review prompt -- a pull request that moves these numbers is expected to
+say which dependency moved and why the change is acceptable. On Linux it is
+also a gate: `.github/workflows/geiger.yml` runs the same diff whenever
+`Cargo.lock` changes on `main`, and weekly as a backstop.
 
 As recorded, over `--all-targets` with default features, the tree is 360
 crates. 153 of them contain `unsafe`; 49 declare `#![forbid(unsafe_code)]`;
@@ -266,12 +268,19 @@ is memory-safe" on trust for a tree this size.
 
 Three caveats on reading the file:
 
-- The reading is per host target. Near the leaves the graph is
-  platform-specific -- the recorded file contains `windows-sys` because it was
-  taken on `x86_64-pc-windows-msvc` -- so `just geiger` only compares like
-  with like on the target the file was recorded for. Re-record with
-  `just geiger-accept` when the target changes, and say in the pull request
-  which target the file now describes.
+- The reading is per host target, which is why the filename carries the
+  target. Near the leaves the graph is platform-specific -- the
+  `x86_64-pc-windows-msvc` file contains `windows-sys`, the
+  `x86_64-unknown-linux-gnu` one does not -- so a single shared file would
+  report the reviewer's operating system as a change in the dependency tree.
+  The numbers quoted above are the Windows reading. Linux is the target that
+  matters for a deployed application and it is the one CI enforces; the
+  counts differ near the leaves and the conclusion does not.
+
+  A host with no baseline yet gets one recorded and the command fails once,
+  saying so. That is the check reporting it had nothing to compare against,
+  which is a different thing from the counts having moved, and it should not
+  be silently accepted as either.
 
 - `cargo-geiger` reads the `#![forbid(unsafe_code)]` *attribute* out of each
   crate root and does not read `[lints]` out of `Cargo.toml`. Under
@@ -308,7 +317,7 @@ carries, across all the targets it supports:
 | Assembly (`.asm`, MASM/NASM) | 39 | 87,956 |
 
 Only the subset for the host target is compiled. On
-`x86_64-pc-windows-msvc`, which is what `unsafe-baseline.txt` was recorded on,
+`x86_64-pc-windows-msvc`, which is what the Windows baseline was recorded on,
 that subset is 254 object files linked into a 16 MB static library, and that
 library is linked into every Arcature binary that talks to a database over
 TLS, sends mail, or makes an outbound HTTPS request. It enters through

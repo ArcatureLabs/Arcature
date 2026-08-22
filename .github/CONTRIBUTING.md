@@ -100,16 +100,19 @@ fixes something that failed quietly, the test is the point of the change.
 and in `Cargo.toml`. There is no exception process.
 
 That covers this crate and not the several hundred beneath it, which is where
-the `unsafe` actually is. `unsafe-baseline.txt` records the count per crate;
-`just geiger` diffs the current graph against it, and `just geiger-accept`
-records a new answer. A pull request that changes a dependency is expected to
+the `unsafe` actually is. `unsafe-baseline.<host-target>.txt` records the count
+per crate; `just geiger` diffs the current graph against the file for this
+host, and `just geiger-accept` records a new answer. A pull request that changes a dependency is expected to
 say what moved and why it is acceptable -- the diff is a question, not a gate.
 `just geiger` checks the whole graph through its own `rustc` wrapper and into
 the ordinary `target/`, so it costs minutes and leaves the next `cargo check`
 rebuilding from cold. It is a before-you-open-the-pull-request command, not a
-before-every-commit one. The reading is also per host target -- the platform
-crates near the leaves differ by OS -- so a diff taken on a different machine
-than the one that recorded the file is noise, not a finding.
+before-every-commit one. The reading is per host target -- the platform crates
+near the leaves differ by OS -- which is why the filename carries the target
+and why a host with no baseline yet gets one recorded rather than a diff full
+of noise. The Linux file is the one CI enforces, because Linux is what the
+generated application deploys to; the others are conveniences for whoever
+works on that host.
 
 ## The roadmap board
 

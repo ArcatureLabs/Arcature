@@ -149,8 +149,8 @@ deny:
 # `cargo geiger` counts what is there: unsafe functions, expressions, impls,
 # traits and methods per crate, each as `used/total` -- what this build's
 # feature set actually reaches, over what the package contains.
-# `unsafe-baseline.txt` is the last accepted answer, and this recipe diffs a
-# fresh report against it.
+# `unsafe-baseline.<host-target>.txt` is the last accepted answer for a given
+# target, and this recipe diffs a fresh report against the one for this host.
 #
 # A difference is not a failure. It is a question for the pull request that
 # caused it: a dependency bump that brings a new `unsafe` block into the graph
@@ -161,18 +161,54 @@ deny:
 # with its own compiler wrapper, so the first run is a cold build and does not
 # share `target/` with anything else here.
 
-# Diff the dependency tree's unsafe-code counts against the recorded baseline.
+# Diff the dependency tree's unsafe-code counts against the recorded baseline
+# for this host target.
+#
+# The baseline is named after the target because the reading is target-shaped:
+# near the leaves the graph is platform-specific, so a Windows report and a
+# Linux report differ by dozens of crates that have nothing to do with anyone's
+# change. One file per target lets each host compare like with like, and lets
+# CI hold a baseline for the target the application actually deploys to
+# without overwriting the one a developer records locally.
+#
+# The report lands in `unsafe-report.txt` (gitignored) and is kept only when
+# the diff fails. Regenerating it is another cold build, so the run that just
+# told you something moved should not also throw away the evidence -- accepting
+# the change is `just geiger-accept`, and CI uploads the same file as an
+# artifact for exactly this reason.
+#
+# A missing baseline for this target is not a failure of the check; it is the
+# check having nothing to compare against. It records one and says so.
 geiger:
     #!/usr/bin/env bash
     set -euo pipefail
-    report="$(mktemp)"
-    trap 'rm -f "$report"' EXIT
-    just _geiger-report > "$report"
-    diff -u unsafe-baseline.txt "$report" && echo "unsafe counts match the baseline"
+    baseline="unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    just _geiger-report > unsafe-report.txt
+    if [ ! -f "$baseline" ]; then
+        mv unsafe-report.txt "$baseline"
+        echo "no baseline for this target yet -- recorded $baseline" >&2
+        echo "review it and commit it; the diff starts meaning something after that" >&2
+        exit 1
+    fi
+    if diff -u "$baseline" unsafe-report.txt; then
+        rm -f unsafe-report.txt
+        echo "unsafe counts match $baseline"
+    else
+        echo "counts moved against $baseline -- fresh report kept at unsafe-report.txt" >&2
+        exit 1
+    fi
 
-# Record the current unsafe-code counts as the accepted baseline.
+# Record the current unsafe-code counts as the accepted baseline for this host.
 geiger-accept:
-    just _geiger-report > unsafe-baseline.txt
+    #!/usr/bin/env bash
+    set -euo pipefail
+    baseline="unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    if [ -f unsafe-report.txt ]; then
+        mv unsafe-report.txt "$baseline"
+    else
+        just _geiger-report > "$baseline"
+    fi
+    echo "recorded $baseline"
 
 # The report itself. One place, so the baseline and the diff cannot drift
 # apart by using different flags.
