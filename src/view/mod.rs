@@ -25,6 +25,9 @@
 //! * [`ViewError`] -- the one failure a compiled template still has, and its
 //!   conversion into [`crate::Error`], which drops the detail into the log
 //!   rather than into the body.
+//! * An `IntoResponse` impl, so a handler can return a view directly and a
+//!   render failure becomes a `500` that names neither the template nor its
+//!   path. `src/view/response.rs` states at length why that matters.
 //! * A re-export of the certified [`askama`] crate, so an application targets
 //!   the version Arcature pins instead of resolving its own.
 //!
@@ -71,6 +74,7 @@
 //! keep in step with the framework's.
 
 mod error;
+mod response;
 
 pub use error::ViewError;
 
@@ -98,10 +102,16 @@ pub use askama::Template;
 /// let view = View::new(Song { n: 99 });
 /// assert_eq!(view.render().unwrap(), "99 bottles");
 /// ```
+///
+/// It also carries the two things a response needs and a compiled template
+/// does not know: the status and the content type. See
+/// [`status`](View::status) and [`content_type`](View::content_type).
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct View<T> {
     template: T,
+    status: axum::http::StatusCode,
+    content_type: axum::http::HeaderValue,
 }
 
 impl<T> View<T> {
@@ -109,9 +119,19 @@ impl<T> View<T> {
     ///
     /// [`view`] is the shorter spelling and reads better in a handler; this
     /// exists because a type with a `new` is easier to name in generic code.
+    ///
+    /// The view starts as a `200 OK` of `text/html; charset=utf-8`. HTML is
+    /// the default rather than a guess from the template's extension because
+    /// askama 0.16 does not keep the extension on the compiled type; a view
+    /// over a `.txt` or `.xml` template says so with
+    /// [`content_type`](View::content_type).
     #[must_use]
     pub fn new(template: T) -> Self {
-        Self { template }
+        Self {
+            template,
+            status: axum::http::StatusCode::OK,
+            content_type: axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
+        }
     }
 
     /// Borrow the wrapped template.

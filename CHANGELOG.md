@@ -408,6 +408,27 @@ therefore its first.
   application renders through Inertia, and a build that never serves a
   server-rendered page has no reason to carry a template compiler.
 
+- **A view is now a response: `View<T>` implements `IntoResponse`, and a
+  render failure tells the client nothing.** A handler returns
+  `view(Page { .. })` and gets a `200 OK` of `text/html; charset=utf-8`;
+  `.status()` and `.content_type()` change either half, which is how a view
+  serves a `404` page or an `.xml` feed. HTML is the default rather than a
+  guess from the template's extension because askama 0.16 does not keep the
+  extension on the compiled type -- there is no `MIME_TYPE` to read. The
+  failure path is the part worth stating. A template that fails to render --
+  a value whose `Display` returns `Err` -- produces the framework's ordinary
+  internal error, and the askama message goes to `tracing`. Three things
+  deliberately do not reach the client: the template's own text, which is
+  application source; the template's path, which maps the source tree and
+  the filesystem the process runs on; and whatever the failing `Display` had
+  already written, which could be a token or a database row. Unlike
+  `Error::into_response` and the `ErrorMapping` layer, this does not offer a
+  chattier development mode, because there is no build in which a template's
+  contents are a reasonable thing to send to a browser. A test renders a
+  deliberately unformattable template and asserts the body contains neither
+  the template text, nor the words `template` or `askama`, nor a source
+  path.
+
 
 ### Changed
 
