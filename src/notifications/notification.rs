@@ -12,7 +12,8 @@ use super::recipient::Recipient;
 /// method behind it, or a method nobody calls because `via()` forgot it.
 ///
 /// Here the channel set is not declared, it is *derived*: a notification goes
-/// to the mail channel exactly when [`Notification::to_mail`] returns `Some`.
+/// to the mail channel exactly when [`Notification::to_mail`] returns `Some`,
+/// and to the in-app inbox exactly when [`Notification::to_database`] does.
 /// There is no second place to keep in sync, so the two cannot drift.
 ///
 /// Each `to_*` method receives the [`Recipient`], so a notification can still
@@ -63,6 +64,19 @@ pub trait Notification: Send + Sync {
     /// Render this notification as an email, or `None` if it should not be
     /// emailed to this recipient.
     fn to_mail(&self, recipient: &Recipient) -> Option<MailContent> {
+        let _ = recipient;
+        None
+    }
+
+    /// Render this notification as a row in the recipient's in-app inbox, or
+    /// `None` if it should not appear there.
+    ///
+    /// This method exists whatever features are on, for the reason given on
+    /// [`Channel::Database`](super::Channel::Database): rendering costs
+    /// nothing, and a notification whose inbox content is compiled out
+    /// depending on a feature flag is a notification that silently changes
+    /// what it does.
+    fn to_database(&self, recipient: &Recipient) -> Option<DatabaseContent> {
         let _ = recipient;
         None
     }
@@ -146,6 +160,104 @@ impl MailContent {
     }
 }
 
+/// One row of an in-app inbox: a name for the shape, and the payload.
+///
+/// # Why the payload is a `Value` and not a generic
+///
+/// An inbox is heterogeneous. The rows one query returns were written by
+/// different notifications with different fields, and a list that could hold
+/// only one shape would not be an inbox. So the payload is JSON, and
+/// [`kind`](Self::kind) is the name a reader matches on before deserialising
+/// into whatever struct that kind means.
+///
+/// # Why `new` cannot fail and `serializing` can
+///
+/// [`Notification::to_database`] returns an `Option`, which has nowhere to put
+/// a serialization error -- so if the constructor serialised, a struct that
+/// failed to serialise would have to become `None`, and a notification would
+/// vanish from the inbox because of a `#[serde(...)]` mistake. [`new`](Self::new)
+/// therefore takes a [`serde_json::Value`] that is already built, which
+/// `serde_json::json!` produces infallibly. [`serializing`](Self::serializing)
+/// is there for the typed case and hands the error back, so the caller decides
+/// what a failure means rather than having it decided as silence.
+///
+/// # Example
+///
+/// ```
+/// use arcature::notifications::{DatabaseContent, Notification, Recipient};
+///
+/// struct InvoicePaid {
+///     amount_cents: i64,
+/// }
+///
+/// impl Notification for InvoicePaid {
+///     fn to_database(&self, _recipient: &Recipient) -> Option<DatabaseContent> {
+///         Some(DatabaseContent::new(
+///             "invoice.paid",
+///             serde_json::json!({ "amount_cents": self.amount_cents }),
+///         ))
+///     }
+/// }
+///
+/// let content = InvoicePaid { amount_cents: 1250 }
+///     .to_database(&Recipient::new("user:42"))
+///     .unwrap();
+/// assert_eq!(content.kind(), "invoice.paid");
+/// assert_eq!(content.data()["amount_cents"], 1250);
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct DatabaseContent {
+    kind: String,
+    data: serde_json::Value,
+}
+
+impl DatabaseContent {
+    /// An inbox row with a kind and a payload.
+    ///
+    /// The kind is the application's own name for what this notification is
+    /// -- `"invoice.paid"`, `"mention"`, whatever vocabulary the front end
+    /// already switches on. It is deliberately not a Rust type path: the
+    /// string is stored, so deriving it from a type name would turn a
+    /// `refactor: rename` into a silent change to rows already written.
+    #[must_use]
+    pub fn new(kind: impl Into<String>, data: serde_json::Value) -> Self {
+        Self {
+            kind: kind.into(),
+            data,
+        }
+    }
+
+    /// An inbox row whose payload is serialised from a value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the `serde_json` error if `data` cannot be serialised -- which
+    /// for a derived `Serialize` means a map with non-string keys, or a
+    /// custom implementation that failed.
+    pub fn serializing<T: serde::Serialize>(
+        kind: impl Into<String>,
+        data: &T,
+    ) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            kind: kind.into(),
+            data: serde_json::to_value(data)?,
+        })
+    }
+
+    /// The application's own name for what this notification is.
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    /// The payload.
+    #[must_use]
+    pub fn data(&self) -> &serde_json::Value {
+        &self.data
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,7 +269,32 @@ mod tests {
     fn a_notification_that_implements_nothing_goes_nowhere() {
         // The default bodies are what make adding a channel additive, so the
         // empty impl has to keep compiling and keep returning nothing.
-        assert!(Silent.to_mail(&Recipient::new("user:1")).is_none());
+        let nobody = Recipient::new("user:1");
+        assert!(Silent.to_mail(&nobody).is_none());
+        assert!(Silent.to_database(&nobody).is_none());
+    }
+
+    #[test]
+    fn database_content_keeps_the_kind_it_was_given() {
+        let content = DatabaseContent::new("invoice.paid", serde_json::json!({ "n": 1 }));
+        assert_eq!(content.kind(), "invoice.paid");
+        assert_eq!(content.data()["n"], 1);
+    }
+
+    #[test]
+    fn serializing_reports_a_failure_instead_of_turning_it_into_silence() {
+        // The reason `new` and `serializing` are separate constructors: a
+        // payload that cannot be serialised has to be an error the caller
+        // sees, not a notification that never appears.
+        #[derive(serde::Serialize)]
+        struct Ok2 {
+            n: i32,
+        }
+        let good = DatabaseContent::serializing("k", &Ok2 { n: 7 }).expect("plain struct");
+        assert_eq!(good.data()["n"], 7);
+
+        let bad: std::collections::BTreeMap<[u8; 2], i32> = std::iter::once(([1, 2], 3)).collect();
+        assert!(DatabaseContent::serializing("k", &bad).is_err());
     }
 
     #[test]

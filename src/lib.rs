@@ -217,9 +217,11 @@ pub use mail::{
 pub mod notifications;
 #[cfg(feature = "notifications")]
 pub use notifications::{
-    Channel, Delivery, MailContent, Notifiable, Notification, NotificationError, Notifier,
-    Recipient,
+    Channel, DatabaseContent, Delivery, MailContent, Notifiable, Notification, NotificationError,
+    Notifier, Recipient,
 };
+#[cfg(feature = "notifications-db")]
+pub use notifications::{DatabaseNotifications, NotificationId, StoredNotification};
 
 #[cfg(feature = "jobs")]
 pub mod jobs;

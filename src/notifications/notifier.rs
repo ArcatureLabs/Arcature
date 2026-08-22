@@ -5,8 +5,10 @@ use std::fmt;
 use crate::mail::{Email, EmailError, Mail, Mailable, lettre::Message};
 
 use super::channel::{Channel, NotificationError};
-use super::notification::{MailContent, Notification};
+use super::notification::{DatabaseContent, MailContent, Notification};
 use super::recipient::Notifiable;
+#[cfg(feature = "notifications-db")]
+use super::store::DatabaseNotifications;
 
 /// Which channels a notification actually reached.
 ///
@@ -92,16 +94,21 @@ impl Delivery {
 #[non_exhaustive]
 pub struct Notifier {
     mail: Option<Mail>,
+    #[cfg(feature = "notifications-db")]
+    database: Option<DatabaseNotifications>,
 }
 
 impl fmt::Debug for Notifier {
     /// Reports which channels are wired, not what is behind them: a
-    /// `Mailer` holds SMTP credentials, and a `Debug` that printed them
-    /// would put them in the first log line that formats application state.
+    /// `Mailer` holds SMTP credentials and a pool holds a database URL, and a
+    /// `Debug` that printed either would put it in the first log line that
+    /// formats application state.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Notifier")
-            .field("mail", &self.mail.is_some())
-            .finish()
+        let mut out = f.debug_struct("Notifier");
+        out.field("mail", &self.mail.is_some());
+        #[cfg(feature = "notifications-db")]
+        out.field("database", &self.database.is_some());
+        out.finish()
     }
 }
 
@@ -126,6 +133,25 @@ impl Notifier {
         self.mail.is_some()
     }
 
+    /// Enable the in-app inbox channel.
+    ///
+    /// The store does not create its own table. Call
+    /// [`DatabaseNotifications::migrate`] once at startup, or run the
+    /// migration alongside the application's own.
+    #[cfg(feature = "notifications-db")]
+    #[must_use]
+    pub fn with_database(mut self, database: DatabaseNotifications) -> Self {
+        self.database = Some(database);
+        self
+    }
+
+    /// Whether the in-app inbox channel is wired.
+    #[cfg(feature = "notifications-db")]
+    #[must_use]
+    pub fn has_database(&self) -> bool {
+        self.database.is_some()
+    }
+
     /// Render `notification` for `to` and deliver it on every channel it
     /// produced content for.
     ///
@@ -136,10 +162,19 @@ impl Notifier {
     /// - [`NotificationError::NoAddress`] if it wants the mail channel for a
     ///   recipient with no email address.
     /// - [`NotificationError::Mail`] if the transport refuses the message.
+    /// - [`NotificationError::Database`] if the inbox row cannot be written.
     ///
-    /// Delivery stops at the first failing channel. With one channel that is
-    /// the only possible behaviour; when there are more, the [`Delivery`] a
-    /// successful call returns is the record of what did go out.
+    /// Delivery stops at the first failing channel, and the order the channels
+    /// run in is therefore part of the contract: the in-app inbox is written
+    /// **before** the mail is sent. The inbox is the durable local record and
+    /// the one that cannot fail for a reason outside this process, so writing
+    /// it first means an SMTP server that is down leaves the notification
+    /// visible in the application rather than losing it along with the email.
+    /// The reverse order would trade a recoverable failure for an
+    /// unrecoverable one.
+    ///
+    /// The [`Delivery`] a successful call returns is the record of what did go
+    /// out.
     pub async fn send<N>(
         &self,
         to: &impl Notifiable,
@@ -150,6 +185,11 @@ impl Notifier {
     {
         let recipient = to.recipient();
         let mut channels = Vec::new();
+
+        if let Some(content) = notification.to_database(&recipient) {
+            self.deliver_database(recipient.key(), &content).await?;
+            channels.push(Channel::Database);
+        }
 
         if let Some(content) = notification.to_mail(&recipient) {
             let mail = self.mail.as_ref().ok_or(NotificationError::NotConfigured {
@@ -167,6 +207,45 @@ impl Notifier {
         }
 
         Ok(Delivery { channels })
+    }
+
+    /// Write one inbox row.
+    #[cfg(feature = "notifications-db")]
+    async fn deliver_database(
+        &self,
+        key: &str,
+        content: &DatabaseContent,
+    ) -> Result<(), NotificationError> {
+        let database = self
+            .database
+            .as_ref()
+            .ok_or(NotificationError::NotConfigured {
+                channel: Channel::Database,
+            })?;
+        database.store(key, content).await?;
+        Ok(())
+    }
+
+    /// Without the `notifications-db` feature there is no store to write to,
+    /// so every attempt is the wiring error -- the same one a notifier built
+    /// without `.with_database(..)` gives. A notification that renders inbox
+    /// content in a build that cannot deliver it is a mistake either way, and
+    /// it says so on the first send instead of on the day somebody notices the
+    /// inbox has been empty.
+    #[cfg(not(feature = "notifications-db"))]
+    #[expect(
+        clippy::unused_async,
+        reason = "matches the feature-on signature, which awaits the database"
+    )]
+    async fn deliver_database(
+        &self,
+        key: &str,
+        content: &DatabaseContent,
+    ) -> Result<(), NotificationError> {
+        let _ = (key, content);
+        Err(NotificationError::NotConfigured {
+            channel: Channel::Database,
+        })
     }
 }
 
@@ -198,6 +277,18 @@ mod tests {
     impl Notification for Mails {
         fn to_mail(&self, _recipient: &Recipient) -> Option<MailContent> {
             Some(MailContent::new("subject", "body"))
+        }
+    }
+
+    /// Renders for both channels, so a test can tell which one ran first.
+    struct Filed;
+    impl Notification for Filed {
+        fn to_mail(&self, _recipient: &Recipient) -> Option<MailContent> {
+            Some(MailContent::new("subject", "body"))
+        }
+
+        fn to_database(&self, _recipient: &Recipient) -> Option<DatabaseContent> {
+            Some(DatabaseContent::new("filed", serde_json::json!({})))
         }
     }
 
@@ -301,16 +392,52 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn an_inbox_notification_without_a_store_is_an_error_and_not_a_skip() {
+        // The same guarantee the mail channel has, and it has to hold in both
+        // builds: with the feature off there is no store to wire, and with it
+        // on the notifier may simply have been built without one. Either way
+        // the notification asked for an inbox row and did not get one, so the
+        // send fails rather than reporting a delivery to nothing.
+        let (mailer, notifier) = wired();
+        let ada = Recipient::new("user:1").email("ada@example.com");
+
+        let error = notifier.send(&ada, &Filed).await.unwrap_err();
+
+        assert!(
+            matches!(
+                error,
+                NotificationError::NotConfigured {
+                    channel: Channel::Database
+                }
+            ),
+            "got {error:?}"
+        );
+        // And it failed before the mail went out: the inbox is written first
+        // so that a mail failure cannot cost the durable record.
+        assert!(mailer.captured().await.unwrap().is_empty());
+    }
+
     #[test]
     fn debug_does_not_print_the_mailer() {
         let (_mailer, notifier) = wired();
         let rendered = format!("{notifier:?}");
+
+        #[cfg(not(feature = "notifications-db"))]
         assert_eq!(rendered, "Notifier { mail: true }");
+        #[cfg(feature = "notifications-db")]
+        assert_eq!(rendered, "Notifier { mail: true, database: false }");
+
+        // Whatever the feature set, what is printed is which channels are
+        // wired -- never a credential from behind one.
+        assert!(!rendered.contains("noreply@example.com"), "{rendered}");
     }
 
     #[test]
     fn a_fresh_notifier_has_no_channels() {
         assert!(!Notifier::new().has_mail());
+        #[cfg(feature = "notifications-db")]
+        assert!(!Notifier::new().has_database());
         assert!(Delivery::default().is_empty());
     }
 }

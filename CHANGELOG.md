@@ -762,6 +762,41 @@ therefore its first.
   which channels are wired and nothing about what is behind them, because a
   `Mailer` holds SMTP credentials and the first log line that formats
   application state should not carry them.
+- **Notifications can be filed to an in-app inbox**, behind a new
+  `notifications-db` feature that adds `notifications` to the `database` the
+  application already has. A notification reaches the inbox exactly when
+  `to_database` returns `Some`, `DatabaseNotifications` writes and reads the
+  rows, and `StoredNotification` is what a read hands back. No new crate
+  enters the dependency graph: the store rides on the `sqlx` that `database`
+  already brings, and the schema ships per dialect for Postgres, SQLite, and
+  MySQL alongside a migrator that takes the same advisory lock the other
+  subsystems do. **Reading someone else's notification is not a rule to
+  remember, it is a query that does not exist**: every statement that touches
+  a row carries the recipient key in its `WHERE`, including the two that
+  already have an id -- marking one read and deleting one. A handler holding
+  an id alone can reach nothing, so the usual identifier-substitution mistake
+  has no statement to make it with. Ids are 16 random bytes rather than
+  sequential, which makes that a second and independent defence instead of
+  the same one written twice: an id in a "dismiss" URL gives away no
+  neighbours. Unread is the absence of a timestamp rather than a boolean, so
+  "how long did this sit unread" is answerable, and marking read carries `AND
+  read_at IS NULL` so a second click cannot overwrite the first receipt.
+  There is no expiry column, because a notification is not a credential --
+  retention is the application's call through `prune_read_before`, which
+  sweeps only rows that have been read. `Channel::Database`,
+  `DatabaseContent`, and `Notification::to_database` are present whatever
+  features are on: rendering an inbox row costs nothing but `serde_json`, and
+  a notification whose content is compiled out by a feature flag is a
+  notification that silently changes what it does. Without the feature the
+  first send answers `NotConfigured`, naming the channel. `DatabaseContent`
+  has two constructors for one reason -- `to_database` returns an `Option`
+  with nowhere to put an error, so `new` takes a `serde_json::Value` that
+  `json!` builds infallibly, and the fallible `serializing` hands a
+  serialization failure back to the caller rather than turning it into a
+  notification that never appears. Delivery writes the inbox row **before**
+  sending the mail: the local record is the one that cannot fail for a reason
+  outside the process, so an SMTP server that is down leaves the notification
+  visible in the application instead of losing it with the email.
 
 ### Changed
 

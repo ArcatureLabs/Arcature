@@ -4,8 +4,20 @@
 //! in-app row, a live push. A [`Notification`] renders itself per channel, a
 //! [`Notifier`] delivers it, and a [`Recipient`] says who to.
 //!
-//! This commit ships the mail channel; the trait is shaped so later channels
-//! arrive without touching a line of application code.
+//! Two channels ship today: mail, and -- behind the `notifications-db`
+//! feature -- an in-app inbox backed by the application's own database. The
+//! trait is shaped so later channels arrive without touching a line of
+//! application code.
+//!
+//! # The inbox cannot be read across recipients
+//!
+//! [`DatabaseNotifications`] takes the recipient key on *every* method,
+//! including the ones that already have an id: marking a notification read and
+//! deleting one both carry `notifiable_key` in their `WHERE` clause. That is
+//! not belt and braces. There is no statement in the store a handler can reach
+//! with an id alone, so reading or dismissing someone else's notification is
+//! not a rule that a handler has to remember to apply -- it is a query that
+//! does not exist.
 //!
 //! # What is different from Laravel
 //!
@@ -81,11 +93,25 @@
 //! ```
 
 mod channel;
+#[cfg(feature = "notifications-db")]
+mod dialect;
+#[cfg(feature = "notifications-db")]
+mod migrate;
 mod notification;
 mod notifier;
 mod recipient;
+#[cfg(feature = "notifications-db")]
+mod store;
+#[cfg(feature = "notifications-db")]
+mod stored;
 
 pub use channel::{Channel, NotificationError};
-pub use notification::{MailContent, Notification};
+#[cfg(feature = "notifications-db")]
+pub use dialect::NotificationPool;
+pub use notification::{DatabaseContent, MailContent, Notification};
 pub use notifier::{Delivery, Notifier};
 pub use recipient::{Notifiable, Recipient};
+#[cfg(feature = "notifications-db")]
+pub use store::DatabaseNotifications;
+#[cfg(feature = "notifications-db")]
+pub use stored::{NotificationId, StoredNotification};

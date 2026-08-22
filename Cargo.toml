@@ -285,6 +285,16 @@ api-tokens = ["database", "dep:sha2", "dep:subtle", "dep:zeroize"]
 # which is unconditional.
 notifications = ["mail"]
 
+# The database notification channel: an in-app inbox, one row per delivered
+# notification, in the application's own database.
+#
+# Its own feature, exactly as the comment above promised: this one brings a
+# table and a migration, and an application that only sends mail should not
+# carry them. It rides on the `sqlx` that `database` already brings, so no new
+# crate enters the graph -- `serde_json` is unconditional and the row ids come
+# from `getrandom`, which is too.
+notifications-db = ["notifications", "database"]
+
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.
 oauth = ["dep:oauth2", "dep:url"]
