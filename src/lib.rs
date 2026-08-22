@@ -174,7 +174,9 @@ pub use cache::{
 #[cfg(feature = "storage-fs")]
 pub mod storage;
 #[cfg(feature = "uploads")]
-pub use storage::{AllowedExtensions, Extension, FilenameError, SafeFilename};
+pub use storage::{
+    AllowedExtensions, ContentAddress, ContentHasher, Extension, FilenameError, SafeFilename,
+};
 #[cfg(feature = "storage-fs")]
 pub use storage::{
     Disk, FsConfig, S3Config, Storage, StorageBuilder, StorageConfig, StorageConfigError,

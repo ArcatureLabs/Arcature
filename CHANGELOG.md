@@ -174,8 +174,24 @@ therefore its first.
   are checked against an `AllowedExtensions` whitelist -- never a blacklist
   -- of lowercase ASCII alphanumerics; `AllowedExtensions::images()`
   deliberately omits `svg`, which is a scriptable XML document. The result is
-  always exactly one path segment. It is still only metadata: the object itself is
-  meant to be stored under a name derived from its own bytes.
+  always exactly one path segment. It is still only metadata: the object
+  itself is meant to be stored under a name derived from its own bytes.
+- **Content-addressed object names, `ContentAddress` and `ContentHasher`
+  (feature `uploads`).** Path traversal is a family of bugs, not one bug --
+  `../`, `..\`, `%2e%2e%2f`, `....//`, `..%c0%af`, a NUL that truncates the
+  name in the C library underneath, an NTFS alternate data stream, a symlink
+  a previous upload planted -- and a sanitizer answers them one at a time,
+  which means it is only ever as complete as the last person who thought
+  about it. Naming an object after `SHA-256(bytes)` plus its whitelisted
+  extension answers all of them at once: no byte of the request reaches the
+  path, so there is nothing left for a payload to be in. The key fans out as
+  `ab/cd/<digest>.<ext>` so a filesystem disk gets 65,536 leaf directories
+  rather than one with a million entries; identical bytes deduplicate and
+  re-uploads become idempotent. `ContentHasher` is fed a chunk at a time, so
+  the digest never requires the object in memory. This does not replace the
+  filename sanitizer -- the sanitizer makes the *metadata* safe to display,
+  content addressing makes the *path* safe to resolve -- and an unguessable
+  key is not authorization: authorize the download.
 
 
 ### Changed

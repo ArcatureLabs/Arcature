@@ -255,7 +255,7 @@ api-docs = ["api", "uag"]
 # It pulls `validation` (the extractor lives beside the other validated
 # extractors and reports RFC 9457 problem details) and `storage-fs` (an upload
 # is written to a storage disk, never to a path the request named).
-uploads = ["axum/multipart", "validation", "storage-fs", "dep:unicode-normalization"]
+uploads = ["axum/multipart", "validation", "storage-fs", "dep:unicode-normalization", "dep:sha2"]
 
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
@@ -365,6 +365,15 @@ futures = { version = "0.3.33", default-features = false, features = ["std"], op
 # rather than an evaluator: there is nothing here for hostile input to drive.
 # No C, no OpenSSL. Already in the lock file, pulled by `idna` via `url`.
 unicode-normalization = { version = "0.1.25", default-features = false, features = ["std"], optional = true }
+#
+# `sha2` names an uploaded object after its own bytes, so that no byte of the
+# request reaches the path at all. Version 0.10 is chosen over 0.11 because
+# `cookie` and `sqlx` already pull it: on a `fullstack` build this adds no
+# crate to the graph, only an edge. RustCrypto, pure Rust, `no_std` here (the
+# `std` feature only adds `io::Write` impls we do not use), and the default
+# backend is the portable software one -- no C, no OpenSSL, no assembly unless
+# the `asm` feature is asked for, and it is not.
+sha2 = { version = "0.10", default-features = false, optional = true }
 
 # Mail.
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "pool", "tokio1", "rustls", "tokio1-rustls", "aws-lc-rs", "webpki-roots", "hostname"], optional = true }

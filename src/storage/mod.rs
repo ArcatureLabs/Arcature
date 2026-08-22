@@ -21,6 +21,9 @@
 //!   client-authored `filename=` parameter into a `SafeFilename` fit to keep
 //!   as metadata, plus `StoragePath::from_filename` for the cases where that
 //!   name is also used as a key.
+//! * With the `uploads` feature, `content` addressing: a `ContentAddress`
+//!   names an object after the SHA-256 of its own bytes, so no byte of the
+//!   request reaches the path.
 //!
 //! # What this module does not own
 //!
@@ -35,6 +38,8 @@
 //! secret access key.
 
 pub mod config;
+#[cfg(feature = "uploads")]
+pub mod content;
 pub mod error;
 #[cfg(feature = "uploads")]
 pub mod filename;
@@ -42,6 +47,8 @@ pub mod path;
 pub mod store;
 
 pub use config::{FsConfig, S3Config, StorageConfig};
+#[cfg(feature = "uploads")]
+pub use content::{ContentAddress, ContentHasher, DIGEST_HEX_LEN};
 #[cfg(feature = "uploads")]
 pub use error::FilenameError;
 pub use error::{StorageConfigError, StorageConnectError, StorageError, StoragePathError};
