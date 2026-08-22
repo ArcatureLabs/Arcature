@@ -331,19 +331,32 @@ impl TestResponse {
         self
     }
 
+    /// What to read when the body is not itself JSON.
+    ///
+    /// Two definitions rather than one `cfg!` inside the caller, because the
+    /// two arms are not the same *kind* of expression: with `inertia` on it is
+    /// a method call that parses the body, and with it off it is the literal
+    /// `None`. Written inline, the second spelling makes the closure look
+    /// pointlessly lazy to clippy, and taking the suggested `or` would make
+    /// the first spelling parse the body on every call whether or not the
+    /// first parse already succeeded.
+    #[cfg(feature = "inertia")]
+    fn fallback_page(&self) -> Option<Value> {
+        self.try_inertia_page()
+    }
+
+    /// No fallback: without `inertia` a body that is not JSON is not a page.
+    #[cfg(not(feature = "inertia"))]
+    fn fallback_page(&self) -> Option<Value> {
+        None
+    }
+
     /// The validation error bag, from wherever this response put it.
     #[must_use]
     pub fn validation_errors(&self) -> Option<Value> {
-        let body: Value = serde_json::from_slice(&self.body).ok().or_else(|| {
-            #[cfg(feature = "inertia")]
-            {
-                self.try_inertia_page()
-            }
-            #[cfg(not(feature = "inertia"))]
-            {
-                None
-            }
-        })?;
+        let body: Value = serde_json::from_slice(&self.body)
+            .ok()
+            .or_else(|| self.fallback_page())?;
         if let Some(errors) = body.get("errors") {
             return Some(errors.clone());
         }
