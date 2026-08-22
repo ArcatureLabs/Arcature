@@ -185,7 +185,12 @@ geiger:
     baseline="unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
     just _geiger-report > unsafe-report.txt
     if [ ! -f "$baseline" ]; then
-        mv unsafe-report.txt "$baseline"
+        # Copy rather than move. The two files are identical here, but a CI
+        # run bootstrapping a new target hands its evidence back by uploading
+        # unsafe-report.txt -- moving it leaves that run with nothing to
+        # upload, so the one run that records a target's first baseline would
+        # be the one that cannot give it to you.
+        cp unsafe-report.txt "$baseline"
         echo "no baseline for this target yet -- recorded $baseline" >&2
         echo "review it and commit it; the diff starts meaning something after that" >&2
         exit 1
