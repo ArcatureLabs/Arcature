@@ -953,6 +953,38 @@ therefore its first.
   password change made before that first stamped request is not detectable.
   `auth` gains `dep:sha2`, which adds no crate to the graph -- `cookie`, which
   `tower-sessions` already pulls in, depends on the same one.
+- `auth::flows::LoginThrottle`: a counter that makes a sign-in form expensive to
+  guess against, behind the same off-by-default `auth-flows` feature. A form
+  that answers in constant time and gives one message away is still a free
+  oracle if it will answer ten thousand times, and the whole question is what
+  the counter counts. Failures, not attempts, so somebody signing in correctly
+  on six devices is not locked out. Two buckets per attempt, not one: a bucket
+  keyed on the address alone hands anybody a way to lock anybody else out of
+  their account by guessing at it, and a bucket keyed on the (address, client)
+  pair catches nothing when the attack is one guess each against ten thousand
+  different accounts. So one bucket is that pair and the other is the client
+  alone, and an attempt has to pass both. A successful sign-in clears the first
+  and deliberately not the second: an attacker who holds one real account would
+  otherwise sign into it every fiftieth request and buy the whole allowance back
+  forever. An address nobody has registered is counted exactly like one that
+  exists -- there is no lookup in the type and no way to do one -- because a
+  throttle that only bites on real accounts answers, by which requests get
+  refused, the question `CredentialChecker` exists to refuse. Keys are SHA-256
+  digests rather than the submitted string: the form field is attacker-supplied
+  and unbounded, so keying the table on it lets a megabyte of "email" become a
+  megabyte of resident memory, and a digest also keeps the table from being a
+  list of who has been trying to sign in. Client addresses go through
+  `IpAddr::to_canonical`, so `::ffff:203.0.113.7` and `203.0.113.7` are one
+  allowance rather than two. It is a handle the handler calls, not a
+  `tower::Layer`, and that is forced rather than chosen: a layer runs before the
+  body has been read and the address being signed in to is in the body. Call
+  `check` before the lookup and before the hash -- the refusal is only free if
+  it happens first -- and `record_failure` on every rejection whether or not the
+  account exists. In-process and unreplicated, like the rest of
+  `routing::rate_limit`'s memory backend: a second instance keeps its own
+  counters and a deploy forgives everybody, which is worth knowing before it is
+  the only thing standing between a password list and an account. The feature
+  adds no dependency; `auth` already brings in `sha2`.
 
 ### Changed
 

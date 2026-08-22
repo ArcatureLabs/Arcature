@@ -21,6 +21,12 @@
 //!   the account verifies whichever address the account holds when it is
 //!   clicked, so registering with your own address, changing it to somebody
 //!   else's, and then clicking gets you a verified address you cannot read.
+//! * [`LoginThrottle`] -- a form that answers in constant time and gives one
+//!   message away is still a free oracle if it will answer ten thousand
+//!   times. Counting failures per account is the obvious guard and it misses
+//!   the actual attack, which is one guess each against ten thousand
+//!   different accounts; counting them per account *only* also hands anybody
+//!   a way to lock anybody else out.
 //! * `PasswordResets` -- a reset link has to be spendable exactly once, and
 //!   the obvious implementation spends it twice. Checking "is this token
 //!   valid?" and then deleting it is two statements with a gap, and two
@@ -37,6 +43,7 @@
 mod credentials;
 #[cfg(feature = "auth-reset")]
 mod reset;
+mod throttle;
 mod verification;
 
 pub use credentials::{CREDENTIAL_REJECTION, CredentialChecker, CredentialOutcome};
@@ -45,4 +52,5 @@ pub use reset::{
     IssuedPasswordReset, PasswordResetError, PasswordResets, PlaintextReset, RESET_TOKEN_PREFIX,
     ResetPool,
 };
+pub use throttle::{LoginThrottle, ThrottleDecision};
 pub use verification::{EmailVerification, EmailVerificationError};
