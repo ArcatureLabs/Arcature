@@ -301,6 +301,25 @@ therefore its first.
   to put the bytes but memory, bounded by `MultipartLimits::field_bytes`. It
   is the convenience for avatars; `BoundedMultipart` plus `UploadWriter`
   stays the load-bearing path for anything larger.
+- **An end-to-end test that a hostile upload is refused *and stores
+  nothing*.** `tests/uploads.rs` drives a real route, a real filesystem
+  disk and hand-rolled `multipart/form-data` bodies that no well-behaved
+  client would write, and every case asks two questions rather than one:
+  the status, and what is on the disk afterwards. The second is the one
+  that matters -- a 4xx with the file written anyway is not a rejection,
+  it is a rejection notice attached to a successful upload. The cases are
+  the ones that show up in a real log: `../../etc/passwd.png` and its
+  backslash twin, a NUL in the name, `CON.png` and `LPT1.png`, `.php`,
+  `.phtml`, `.exe`, `.sh`, `.jsp`, `avatar.php.png`, a PHP web shell
+  renamed to each of the four image extensions with `Content-Type:
+  image/png` on the part, a two-megabyte body against a sixty-four
+  kilobyte cap, and a thousand-part body. `ảnh đại diện.png` is there for
+  the opposite reason: sanitizing a name must not mean ASCII-folding it,
+  and the composed and decomposed spellings of it must land on the same
+  object. A unit test alongside them proves the 413 arrives *early*: a
+  body offering a gigabyte is refused after a few hundred kilobytes were
+  pulled, because a rejection issued after the body is buffered is an
+  out-of-memory waiting for a slightly larger upload.
 
 
 ### Changed

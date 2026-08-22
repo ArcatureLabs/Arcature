@@ -623,6 +623,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_endless_body_is_refused_without_being_read() {
+        // A 413 is the easy half. The half that decides whether a single
+        // request can take the process down is *when* it is refused: a
+        // rejection issued after the body was buffered is an out-of-memory
+        // waiting for a slightly larger upload.
+        //
+        // This body would deliver a gigabyte. The counter says how much of
+        // it the extractor actually asked for.
+        use futures::StreamExt as _;
+
+        const CHUNK: usize = 64 * 1024;
+        const WOULD_SEND: usize = 1024 * 1024 * 1024;
+        let generated = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let head = format!(
+            "--{BOUNDARY}
+Content-Disposition: form-data; name=\"file\";              filename=\"endless.png\"
+
+"
+        );
+        let counter = std::sync::Arc::clone(&generated);
+        let tail = futures::stream::repeat_with(move || {
+            counter.fetch_add(CHUNK, std::sync::atomic::Ordering::Relaxed);
+            Ok::<Bytes, std::io::Error>(Bytes::from_static(&[b'A'; CHUNK]))
+        })
+        .take(WOULD_SEND / CHUNK);
+        let stream =
+            futures::stream::once(async move { Ok::<Bytes, std::io::Error>(Bytes::from(head)) })
+                .chain(tail);
+
+        let mut request = axum::http::Request::builder()
+            .method("POST")
+            .header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={BOUNDARY}"),
+            )
+            .body(Body::from_stream(stream))
+            .expect("a request");
+        request
+            .extensions_mut()
+            .insert(MultipartLimits::new().with_total_bytes(256 * 1024));
+
+        let response = UploadedFile::from_request(request, &())
+            .await
+            .expect_err("a gigabyte is over every cap");
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        // Bounded by the cap plus the chunk that crossed it, not by what the
+        // client offered to send. The margin is generous on purpose -- the
+        // claim is "a constant", not "this exact number".
+        let read = generated.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(read < 4 * 1024 * 1024, "{read} bytes were pulled");
+    }
+
+    #[tokio::test]
     async fn a_body_that_is_not_multipart_is_refused_as_unsupported_media() {
         let request = axum::http::Request::builder()
             .method("POST")
