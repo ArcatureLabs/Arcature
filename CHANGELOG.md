@@ -332,6 +332,23 @@ therefore its first.
   or a Windows named pipe has no peer address to report.
 
 
+- **The client IP behind a proxy is resolved once, on the way in.** A TCP
+  request now also carries a `ClientIp` extension, produced by the same
+  per-connection service that installs `ConnectInfo`. If the immediate peer
+  is a trusted proxy, `X-Forwarded-For` is walked from the right, skipping
+  further trusted hops, and the first untrusted entry wins; otherwise the
+  peer address is used and the header is ignored entirely. The trusted list
+  defaults to empty (`TrustedProxies::none()`), so out of the box no
+  forwarded header is believed -- believing one unconditionally is how
+  rate limits and bans get bypassed. Configure it with
+  `ApplicationBuilder::trusted_proxies`, or call
+  `ServeTarget::serve_with_trusted_proxies` directly. New in
+  `arcature::http`: `ClientIp`, `TrustedProxies`, `ProxyNet`,
+  `ProxyNetError` and `X_FORWARDED_FOR`; `TrustedProxies` and `ProxyNet`
+  parse from CIDR text such as `"10.0.0.0/8, 127.0.0.1"`. The IPC serve
+  path resolves nothing, having no peer address to start from.
+
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

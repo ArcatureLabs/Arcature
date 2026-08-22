@@ -137,6 +137,13 @@ pub struct Application<S: RouterState = ()> {
         expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
     )]
     proxy: Option<crate::proxy::ProxyFn>,
+    // The hops whose `X-Forwarded-For` is believed when resolving
+    // `ClientIp`. Empty by default -- see `ApplicationBuilder::trusted_proxies`.
+    #[cfg_attr(
+        not(feature = "macros"),
+        expect(dead_code, reason = "consumed only by the `macros`-gated serve path")
+    )]
+    trusted_proxies: crate::http::TrustedProxies,
     // The Vite IPC endpoint for the one-port dev proxy (AP2.1-3). `None` →
     // pass-through. Only meaningful with the `dev-proxy` feature.
     #[cfg(feature = "dev-proxy")]
@@ -192,6 +199,9 @@ impl<S: RouterState> Application<S> {
             #[cfg(feature = "mail")]
             mail_config: None,
             proxy: None,
+            // Nothing is trusted until the application says so. See
+            // `trusted_proxies` for why that is the only safe default.
+            trusted_proxies: crate::http::TrustedProxies::none(),
             // Read `ARCATURE_VITE_IPC` once, here. `arc dev` sets it to the
             // path Vite's `middlewareMode` server listens on, and an app that
             // did nothing but `Application::new()` has to pick it up on its
@@ -293,6 +303,7 @@ pub struct ApplicationBuilder<S: RouterState = ()> {
     #[cfg(feature = "mail")]
     mail_config: Option<crate::mail::SmtpConfig>,
     proxy: Option<crate::proxy::ProxyFn>,
+    trusted_proxies: crate::http::TrustedProxies,
     #[cfg(feature = "dev-proxy")]
     dev_proxy_endpoint: Option<crate::dev_proxy::endpoint::IpcEndpoint>,
     // The application graph the dev-only UAG endpoint serves, if one was
@@ -469,6 +480,40 @@ impl<S: RouterState> ApplicationBuilder<S> {
         F: Fn(crate::proxy::ProxyRequest<'_>) -> crate::proxy::ProxyAction + Send + Sync + 'static,
     {
         self.proxy = Some(std::sync::Arc::new(proxy));
+        self
+    }
+
+    /// Name the hops whose `X-Forwarded-For` header is believed.
+    ///
+    /// Behind a load balancer, a CDN, or an ingress controller, the peer
+    /// address of every connection is that proxy. Anything that identifies a
+    /// caller by address -- [`KeySource::Ip`](crate::routing::KeySource::Ip)
+    /// first among them -- then sees one client for the whole internet. This
+    /// is how an application says which hops are entitled to tell it
+    /// otherwise:
+    ///
+    /// ```
+    /// use arcature::application::Application;
+    /// use arcature::http::TrustedProxies;
+    ///
+    /// let trusted: TrustedProxies = "10.0.0.0/8".parse().expect("a literal block");
+    /// let app: Application = Application::new().trusted_proxies(trusted).build();
+    /// # let _ = app;
+    /// ```
+    ///
+    /// The default is [`TrustedProxies::none`](crate::http::TrustedProxies::none)
+    /// and the resolved [`ClientIp`](crate::http::ClientIp) is then always
+    /// the peer address. Widening it is a security decision, in both
+    /// directions: `X-Forwarded-For` is a request header, so trusting a hop
+    /// an attacker can reach directly lets the attacker pick its own
+    /// identity and bypass every per-IP control. Trusting nothing merely
+    /// makes those controls coarse. See [`crate::http::client_ip`].
+    ///
+    /// Only the TCP serve path resolves anything: over IPC there is no peer
+    /// address to start from.
+    #[must_use]
+    pub fn trusted_proxies(mut self, trusted: crate::http::TrustedProxies) -> Self {
+        self.trusted_proxies = trusted;
         self
     }
 
@@ -964,6 +1009,7 @@ impl<S: RouterState> ApplicationBuilder<S> {
             #[cfg(feature = "mail")]
             mail_config: self.mail_config,
             proxy: self.proxy,
+            trusted_proxies: self.trusted_proxies,
             #[cfg(feature = "dev-proxy")]
             dev_proxy_endpoint: self.dev_proxy_endpoint,
         }
@@ -1184,7 +1230,9 @@ impl<S: RouterState> Application<S> {
             self.app_config.base_url()
         );
 
-        listener.serve(service, shutdown_signal()).await?;
+        listener
+            .serve_with_trusted_proxies(service, shutdown_signal(), self.trusted_proxies.clone())
+            .await?;
 
         lifecycle.begin_drain();
 

@@ -322,9 +322,23 @@ fn http_url(addr: SocketAddr) -> String {
 /// `into_make_service`, and a request that arrived over IPC carries no
 /// `ConnectInfo` at all rather than a fabricated one.
 ///
+/// # And the client address with it
+///
+/// The peer is not always the client: behind a load balancer it is the load
+/// balancer, for every request. Resolving the real client from
+/// `X-Forwarded-For` needs the peer address and the operator's
+/// trusted-proxy list in the same place, and this is the only place that
+/// has both -- so [`ClientIp`](crate::http::ClientIp) is resolved here,
+/// once, rather than by each reader out of headers it cannot judge. See
+/// [`crate::http::client_ip`] for the rule and why the trusted list is
+/// empty by default.
+///
 /// [`compose_service`]: crate::application::pipeline
 struct WithPeerAddr<S> {
     inner: S,
+    /// Shared rather than cloned per connection: the list is read on every
+    /// request and written once, at boot.
+    trusted: Arc<crate::http::TrustedProxies>,
 }
 
 impl<S, L> tower::Service<axum::serve::IncomingStream<'_, L>> for WithPeerAddr<S>
@@ -347,20 +361,25 @@ where
         std::future::ready(Ok(PeerAddrService {
             inner: self.inner.clone(),
             peer: *stream.remote_addr(),
+            trusted: Arc::clone(&self.trusted),
         }))
     }
 }
 
 /// The per-connection service [`WithPeerAddr`] produces.
 ///
-/// It inserts one extension and delegates. `ConnectInfo` rather than a type
+/// It inserts two extensions and delegates. `ConnectInfo` rather than a type
 /// of Arcature's own so the extractor an application already knows --
 /// `ConnectInfo<SocketAddr>` in a handler signature -- works unchanged, and
-/// so does any third-party Tower layer that reads it.
+/// so does any third-party Tower layer that reads it. `ClientIp` beside it
+/// because the two answer different questions: `ConnectInfo` is who opened
+/// the socket, `ClientIp` is who the request is attributed to, and code that
+/// wants the second must not have to settle for the first.
 #[derive(Clone)]
 struct PeerAddrService<S> {
     inner: S,
     peer: SocketAddr,
+    trusted: Arc<crate::http::TrustedProxies>,
 }
 
 impl<S> tower::Service<crate::axum::extract::Request> for PeerAddrService<S>
@@ -383,9 +402,11 @@ where
     }
 
     fn call(&mut self, mut request: crate::axum::extract::Request) -> Self::Future {
-        request
-            .extensions_mut()
-            .insert(axum::extract::ConnectInfo(self.peer));
+        let client =
+            crate::http::ClientIp::resolve(self.peer.ip(), request.headers(), &self.trusted);
+        let extensions = request.extensions_mut();
+        extensions.insert(axum::extract::ConnectInfo(self.peer));
+        extensions.insert(client);
         self.inner.call(request)
     }
 }
@@ -464,14 +485,19 @@ impl ServeTarget {
         }
     }
 
-    /// Serve `service` until `shutdown` resolves.
+    /// Serve `service` until `shutdown` resolves, trusting no proxy.
     ///
     /// On TCP every request arrives carrying
     /// [`ConnectInfo<SocketAddr>`](axum::extract::ConnectInfo) for the peer
     /// that opened the connection -- see [`WithPeerAddr`] for why that needs
-    /// a make-service of our own. Over IPC it does not: a Unix socket or a
-    /// named pipe has no peer address, and inventing one would be worse than
-    /// its absence.
+    /// a make-service of our own -- and a [`ClientIp`](crate::http::ClientIp)
+    /// equal to it. Over IPC it does neither: a Unix socket or a named pipe
+    /// has no peer address, and inventing one would be worse than its
+    /// absence.
+    ///
+    /// An application behind a reverse proxy wants
+    /// [`serve_with_trusted_proxies`](Self::serve_with_trusted_proxies)
+    /// instead.
     ///
     /// # Errors
     ///
@@ -488,12 +514,56 @@ impl ServeTarget {
         S::Future: Send,
         F: Future<Output = ()> + Send + 'static,
     {
+        self.serve_with_trusted_proxies(service, shutdown, crate::http::TrustedProxies::none())
+            .await
+    }
+
+    /// Serve `service` until `shutdown` resolves, believing `trusted`.
+    ///
+    /// `trusted` names the hops whose `X-Forwarded-For` is evidence. Every
+    /// request's [`ClientIp`](crate::http::ClientIp) is resolved against it
+    /// once, in the same per-connection layer that installs `ConnectInfo`,
+    /// so nothing downstream has to re-derive it and nothing downstream can
+    /// disagree. An empty list -- what [`serve`](Self::serve) passes --
+    /// means the client IP is always the peer address.
+    ///
+    /// Getting this wrong in the trusting direction is the classic
+    /// rate-limit and ban bypass: `X-Forwarded-For` is a request header, so
+    /// a list that includes a hop an attacker can reach hands the attacker a
+    /// free choice of identity. See [`crate::http::client_ip`].
+    ///
+    /// # Errors
+    ///
+    /// [`EngineError::Serve`] if the accept loop fails terminally.
+    pub async fn serve_with_trusted_proxies<S, F>(
+        self,
+        service: S,
+        shutdown: F,
+        trusted: crate::http::TrustedProxies,
+    ) -> EngineResult<()>
+    where
+        S: tower::Service<
+                crate::axum::extract::Request,
+                Response = crate::axum::response::Response,
+                Error = std::convert::Infallible,
+            > + Clone
+            + Send
+            + 'static,
+        S::Future: Send,
+        F: Future<Output = ()> + Send + 'static,
+    {
         use crate::axum::ServiceExt as _;
         match self {
             Self::Tcp(listener) => {
-                axum::serve(listener, WithPeerAddr { inner: service })
-                    .with_graceful_shutdown(shutdown)
-                    .await
+                axum::serve(
+                    listener,
+                    WithPeerAddr {
+                        inner: service,
+                        trusted: Arc::new(trusted),
+                    },
+                )
+                .with_graceful_shutdown(shutdown)
+                .await
             }
             Self::Ipc(listener) => {
                 axum::serve(listener, service.into_make_service())
@@ -632,7 +702,11 @@ mod tests {
     /// The peer address only exists on a real socket, so the tests that care
     /// about it cannot use `oneshot` against a router the way the rest of the
     /// suite does -- there is no connection to take an address from.
-    async fn with_server<F, Fut, T>(router: axum::Router, body: F) -> T
+    async fn with_server<F, Fut, T>(
+        router: axum::Router,
+        trusted: crate::http::TrustedProxies,
+        body: F,
+    ) -> T
     where
         F: FnOnce(String) -> Fut,
         Fut: Future<Output = T>,
@@ -644,9 +718,13 @@ mod tests {
         let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
         let server = tokio::spawn(async move {
             target
-                .serve(router, async move {
-                    let _ = stopped.await;
-                })
+                .serve_with_trusted_proxies(
+                    router,
+                    async move {
+                        let _ = stopped.await;
+                    },
+                    trusted,
+                )
                 .await
         });
 
@@ -672,19 +750,73 @@ mod tests {
             ),
         );
 
-        let seen = with_server(router, |base| async move {
-            reqwest::get(format!("{base}/peer"))
-                .await
-                .expect("the server should answer")
-                .text()
-                .await
-                .expect("the body should be text")
-        })
+        let seen = with_server(
+            router,
+            crate::http::TrustedProxies::none(),
+            |base| async move {
+                reqwest::get(format!("{base}/peer"))
+                    .await
+                    .expect("the server should answer")
+                    .text()
+                    .await
+                    .expect("the body should be text")
+            },
+        )
         .await;
 
         assert_eq!(
             seen, "127.0.0.1",
             "the handler should have seen the loopback peer, not nothing"
         );
+    }
+
+    /// A router that reports the resolved client address.
+    fn client_ip_router() -> axum::Router {
+        axum::Router::new().route(
+            "/client",
+            axum::routing::get(
+                |axum::Extension(client): axum::Extension<crate::http::ClientIp>| async move {
+                    client.to_string()
+                },
+            ),
+        )
+    }
+
+    /// Ask the running server for the client address it resolved, sending
+    /// `X-Forwarded-For: 203.0.113.9` -- the header an attacker would send.
+    async fn forged_client_ip(trusted: crate::http::TrustedProxies) -> String {
+        with_server(client_ip_router(), trusted, |base| async move {
+            reqwest::Client::new()
+                .get(format!("{base}/client"))
+                .header("x-forwarded-for", "203.0.113.9")
+                .send()
+                .await
+                .expect("the server should answer")
+                .text()
+                .await
+                .expect("the body should be text")
+        })
+        .await
+    }
+
+    /// With no proxy named, the header is a client-controlled string and is
+    /// not evidence of anything.
+    #[tokio::test]
+    async fn a_forwarded_header_from_an_untrusted_peer_is_ignored() {
+        assert_eq!(
+            forged_client_ip(crate::http::TrustedProxies::none()).await,
+            "127.0.0.1",
+            "the default must not let a request choose its own identity"
+        );
+    }
+
+    /// Name the loopback as a proxy and the same header becomes the answer.
+    /// This is the deployment the header exists for, and the reason the list
+    /// is a list rather than a boolean.
+    #[tokio::test]
+    async fn a_forwarded_header_from_a_trusted_peer_is_believed() {
+        let trusted: crate::http::TrustedProxies =
+            "127.0.0.0/8, ::1".parse().expect("two literal entries");
+        assert_eq!(forged_client_ip(trusted).await, "203.0.113.9");
     }
 }
