@@ -470,9 +470,9 @@ pub(crate) struct Resolved {
 
 /// Everything about the request that prop resolution needs, gathered once.
 ///
-/// Passing it as one borrow keeps [`resolve_page`] to five arguments and
-/// means a new protocol input is a field here rather than another parameter
-/// threaded through every call site.
+/// Passing it as one borrow keeps [`plan_page`] to four arguments and means a
+/// new protocol input is a field here rather than another parameter threaded
+/// through every call site.
 struct ResolveContext<'a> {
     is_full: bool,
     partial: Option<&'a PartialSelection>,
@@ -521,42 +521,60 @@ pub(crate) async fn resolve(
     let page_entries = page.into_entries();
     let page_keys: BTreeSet<&str> = page_entries.iter().map(|(k, _)| k.as_ref()).collect();
 
-    let mut props: Map<String, Value> = Map::new();
-    let mut metadata = PageMetadata::default();
+    // Decide first, resolve second, record third.
+    //
+    // The three used to be one pass: a prop was inspected, awaited and
+    // recorded before the next one was looked at. Nothing about the props
+    // required that -- it was the shape of the loop. Deciding every entry up
+    // front leaves resolvers that are independent of one another by
+    // construction, and a recording pass that runs in the declaration order
+    // whatever order they finish in.
+    let mut plans: Vec<Planned<'_>> = Vec::new();
+    let mut resolvers: Vec<PropFuture> = Vec::new();
 
     // Shared props first (lower precedence); page props win on collision.
     for (key, shared_prop) in shared.iter() {
         if page_keys.contains(key.as_ref()) {
             continue;
         }
-        let top_level = top_level_key(key);
-        let included = match shared_prop {
-            SharedProp::Page(prop) => {
-                resolve_page(key, prop, request, &context, &mut props, &mut metadata).await?
-            }
-            SharedProp::Optional(resolver) => {
-                if context.is_full || !context.included(key) {
-                    false
+        let mut planned = match shared_prop {
+            SharedProp::Page(prop) => plan_page(key, prop, request, &context, &mut resolvers),
+            SharedProp::Optional(resolver) => Planned {
+                key: key.as_ref(),
+                prop: None,
+                shared: false,
+                once_key: None,
+                withheld: false,
+                action: if context.is_full || !context.included(key) {
+                    Action::Nothing
                 } else {
-                    let value = (resolver)(request).await.map_err(|source| {
-                        InertiaError::PropResolution {
-                            path: Arc::from(key.as_ref()),
-                            source,
-                        }
-                    })?;
-                    insert_nested(&mut props, key, value);
-                    true
-                }
-            }
+                    Action::Invoke {
+                        at: park(&mut resolvers, (resolver)(request)),
+                        rescue: false,
+                    }
+                },
+            },
         };
-        if included {
-            metadata.record_shared(top_level);
-        }
+        // Both shapes came from the shared set, and that is what decides
+        // whether the key is announced as shared once it ships.
+        planned.shared = true;
+        plans.push(planned);
     }
 
     // Page props overlay shared props (win on collision).
     for (key, prop) in &page_entries {
-        resolve_page(key, prop, request, &context, &mut props, &mut metadata).await?;
+        plans.push(plan_page(key, prop, request, &context, &mut resolvers));
+    }
+
+    let mut props: Map<String, Value> = Map::new();
+    let mut metadata = PageMetadata::default();
+
+    for plan in plans {
+        let outcome = match plan.action {
+            Action::Invoke { at, .. } => Some(resolvers[at].as_mut().await),
+            _ => None,
+        };
+        apply(plan, outcome, &context, &mut props, &mut metadata)?;
     }
 
     // `errors` defaults to `{}` when not provided.
@@ -653,40 +671,63 @@ fn match_path_included(path: &str, only: &[Arc<str>], except: &[Arc<str>]) -> bo
         })
 }
 
-/// Run a resolver, honouring the prop's rescue label.
+/// What a resolver hands back once it finishes.
+type ResolverOutcome = Result<Value, Box<dyn std::error::Error + Send + Sync>>;
+
+/// One entry's decision, taken before any resolver is polled.
 ///
-/// Returns whether the prop made it into `props`.
-async fn resolve_value(
-    resolver: &Resolver,
-    key: &str,
-    rescue: bool,
-    props: &mut Map<String, Value>,
-    metadata: &mut PageMetadata,
-) -> Result<bool, InertiaError> {
-    match (resolver)().await {
-        Ok(value) => {
-            insert_nested(props, key, value);
-            Ok(true)
-        }
-        Err(_) if rescue => {
-            metadata.record_rescued(key);
-            Ok(false)
-        }
-        Err(source) => Err(InertiaError::PropResolution {
-            path: Arc::from(key),
-            source,
-        }),
-    }
+/// The point of writing the decision down instead of acting on it is that a
+/// decision cannot observe another prop's result: the whole set is settled
+/// while `props` and `metadata` are still empty. That is what makes the
+/// resolvers safe to run in any order, and it is also what keeps the recorded
+/// output in declaration order regardless of which one finished first.
+struct Planned<'a> {
+    key: &'a str,
+    /// The prop the trailing labels come from -- once, scroll, merge, match.
+    /// `None` for a shared optional, which carries none of them.
+    prop: Option<&'a Prop>,
+    /// Whether this key is announced as shared when it ships.
+    shared: bool,
+    once_key: Option<String>,
+    withheld: bool,
+    action: Action<'a>,
 }
 
-async fn resolve_page(
-    key: &str,
-    prop: &Prop,
+/// What a planned entry does once its resolver, if it has one, has finished.
+enum Action<'a> {
+    /// Nothing ships for this key.
+    Nothing,
+    /// A value already in hand: eager, always, or an eager one filtered down
+    /// to the paths a partial reload asked for.
+    Ready(Value),
+    /// Serialising an eager or always value failed.
+    ///
+    /// Carried rather than raised on the spot so the failure still surfaces
+    /// at this entry's turn. Raising it during planning would abandon props
+    /// declared before it that the old sequential pass had already run.
+    Failed(InertiaError),
+    /// The resolver parked at this index, and the prop's rescue label.
+    Invoke { at: usize, rescue: bool },
+    /// A deferred prop announced on a full visit rather than resolved.
+    Announce { group: &'a str },
+}
+
+/// Park a resolver's future and return the slot it landed in.
+///
+/// Building the future is not running it: an `async` body does nothing until
+/// it is polled, so planning stays free of the work it is planning.
+fn park(resolvers: &mut Vec<PropFuture>, future: PropFuture) -> usize {
+    resolvers.push(future);
+    resolvers.len() - 1
+}
+
+fn plan_page<'a>(
+    key: &'a str,
+    prop: &'a Prop,
     request: &InertiaRequest,
     context: &ResolveContext<'_>,
-    props: &mut Map<String, Value>,
-    metadata: &mut PageMetadata,
-) -> Result<bool, InertiaError> {
+    resolvers: &mut Vec<PropFuture>,
+) -> Planned<'a> {
     // A once prop the client already holds: the value is withheld, but the
     // entry still ships. The client fills the gap from its own copy, and it
     // only knows to do that for keys the response names.
@@ -698,45 +739,113 @@ async fn resolve_page(
         .as_deref()
         .is_some_and(|held| request.holds_once(held));
 
-    let included = if withheld {
-        false
+    let ready = |result: Result<Value, InertiaError>| match result {
+        Ok(value) => Action::Ready(value),
+        Err(error) => Action::Failed(error),
+    };
+
+    let action = if withheld {
+        Action::Nothing
     } else {
         match prop.base() {
             BaseProp::Eager(value) => {
                 if context.is_full || context.included(key) {
-                    let value = filter_nested_value(key, value.resolve()?, context.partial);
-                    insert_nested(props, key, value);
-                    true
+                    ready(
+                        value
+                            .resolve()
+                            .map(|value| filter_nested_value(key, value, context.partial)),
+                    )
                 } else {
-                    false
+                    Action::Nothing
                 }
             }
-            BaseProp::Always(value) => {
-                insert_nested(props, key, value.resolve()?);
-                true
-            }
+            BaseProp::Always(value) => ready(value.resolve()),
             BaseProp::Lazy(resolver) => {
                 if context.is_full || context.included(key) {
-                    resolve_value(resolver, key, prop.rescue, props, metadata).await?
+                    Action::Invoke {
+                        at: park(resolvers, (resolver)()),
+                        rescue: prop.rescue,
+                    }
                 } else {
-                    false
+                    Action::Nothing
                 }
             }
             BaseProp::Optional(resolver) => {
                 if !context.is_full && context.included(key) {
-                    resolve_value(resolver, key, prop.rescue, props, metadata).await?
+                    Action::Invoke {
+                        at: park(resolvers, (resolver)()),
+                        rescue: prop.rescue,
+                    }
                 } else {
-                    false
+                    Action::Nothing
                 }
             }
             BaseProp::Deferred { resolver, group } => {
                 if context.is_full {
-                    metadata.record_deferred(group.as_deref().unwrap_or("default"), key);
-                    false
+                    Action::Announce {
+                        group: group.as_deref().unwrap_or("default"),
+                    }
                 } else if context.included(key) {
-                    resolve_value(resolver, key, prop.rescue, props, metadata).await?
+                    Action::Invoke {
+                        at: park(resolvers, (resolver)()),
+                        rescue: prop.rescue,
+                    }
                 } else {
+                    Action::Nothing
+                }
+            }
+        }
+    };
+
+    Planned {
+        key,
+        prop: Some(prop),
+        shared: false,
+        once_key,
+        withheld,
+        action,
+    }
+}
+
+/// Carry out one planned entry and record its labels.
+///
+/// `outcome` is the resolver's result for an [`Action::Invoke`], and `None`
+/// for every other action.
+fn apply(
+    plan: Planned<'_>,
+    outcome: Option<ResolverOutcome>,
+    context: &ResolveContext<'_>,
+    props: &mut Map<String, Value>,
+    metadata: &mut PageMetadata,
+) -> Result<(), InertiaError> {
+    let key = plan.key;
+
+    let included = match plan.action {
+        Action::Nothing => false,
+        Action::Ready(value) => {
+            insert_nested(props, key, value);
+            true
+        }
+        Action::Failed(error) => return Err(error),
+        Action::Announce { group } => {
+            metadata.record_deferred(group, key);
+            false
+        }
+        Action::Invoke { rescue, .. } => {
+            match outcome.expect("a planned resolver is awaited before it is applied") {
+                Ok(value) => {
+                    insert_nested(props, key, value);
+                    true
+                }
+                Err(_) if rescue => {
+                    metadata.record_rescued(key);
                     false
+                }
+                Err(source) => {
+                    return Err(InertiaError::PropResolution {
+                        path: Arc::from(key),
+                        source,
+                    });
                 }
             }
         }
@@ -746,28 +855,34 @@ async fn resolve_page(
     // withheld because it was sent last time. A prop that a partial reload
     // simply did not select is not in play, and the client keeps both the
     // value and its own entry for it.
-    if let (Some(spec), Some(once_key)) = (prop.once.as_ref(), once_key.as_deref())
-        && (included || withheld)
+    if let Some(prop) = plan.prop
+        && let (Some(spec), Some(once_key)) = (prop.once.as_ref(), plan.once_key.as_deref())
+        && (included || plan.withheld)
     {
         metadata.record_once(once_key, key, spec.expires_at(context.now_ms));
     }
 
     if included {
-        if let Some(scroll) = prop.scroll.as_ref() {
-            metadata.record_scroll(key, scroll.clone());
+        if let Some(prop) = plan.prop {
+            if let Some(scroll) = prop.scroll.as_ref() {
+                metadata.record_scroll(key, scroll.clone());
+            }
+            if !context.reset_paths.contains(key) {
+                let merge_key = prop.merge_key(key);
+                if let Some(strategy) = prop.strategy_for(context.intent) {
+                    metadata.record_merge(strategy, &merge_key);
+                }
+                if let Some(field) = prop.match_on.as_deref() {
+                    metadata.record_match_on(&format!("{merge_key}.{field}"));
+                }
+            }
         }
-        if !context.reset_paths.contains(key) {
-            let merge_key = prop.merge_key(key);
-            if let Some(strategy) = prop.strategy_for(context.intent) {
-                metadata.record_merge(strategy, &merge_key);
-            }
-            if let Some(field) = prop.match_on.as_deref() {
-                metadata.record_match_on(&format!("{merge_key}.{field}"));
-            }
+        if plan.shared {
+            metadata.record_shared(top_level_key(key));
         }
     }
 
-    Ok(included)
+    Ok(())
 }
 
 fn filter_nested_value(path: &str, value: Value, partial: Option<&PartialSelection>) -> Value {
