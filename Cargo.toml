@@ -222,6 +222,18 @@ uag = ["dx", "inertia"]
 # `[dev-dependencies]`, never under `[dependencies]`.
 test-kit = ["macros", "dep:http-body-util", "dep:tower-sessions-memory-store"]
 
+# Sessions kept in the application's own database instead of in memory.
+#
+# Off by default, and deliberately so: turning it on for everybody would put
+# a table and a migration into builds that never asked for one. An
+# application opts in, and `arc new` opts in for it.
+#
+# It rides on the `sqlx` that `database` already brings, so the only new
+# crates are `sha2` (the session id is stored as a digest) and `async-trait`
+# (what `tower_sessions::SessionStore` is declared with) -- both already in
+# the dependency graph that `auth` and `database` produce.
+session-store-db = ["auth", "database", "dep:sha2", "dep:async-trait"]
+
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.
 oauth = ["dep:oauth2", "dep:url"]
@@ -348,6 +360,16 @@ zeroize = { version = "1.9.0", default-features = false, features = ["alloc"], o
 # including the kernel-only one with no features at all.
 getrandom = { version = "0.4.3", default-features = false }
 time = { version = "0.3.55", default-features = false, optional = true }
+# The database session store (feature `session-store-db`) also uses `sha2`,
+# declared once under "Uploads" below because a dependency can only be named
+# once. It hashes the session id to get the row key, so a dump of the table is
+# not a bag of live cookies.
+#
+# `tower_sessions::SessionStore` is declared with `#[async_trait]`, so an
+# implementation has to be written with the same macro. `tower-sessions`
+# itself depends on it, so this is the same crate the `auth` feature already
+# compiles.
+async-trait = { version = "0.1.92", default-features = false, optional = true }
 
 # Validation.
 validator = { version = "0.21.0", default-features = false, features = ["derive"], optional = true }
@@ -379,7 +401,8 @@ unicode-normalization = { version = "0.1.25", default-features = false, features
 # crate to the graph, only an edge. RustCrypto, pure Rust, `no_std` here (the
 # `std` feature only adds `io::Write` impls we do not use), and the default
 # backend is the portable software one -- no C, no OpenSSL, no assembly unless
-# the `asm` feature is asked for, and it is not.
+# the `asm` feature is asked for, and it is not. `session-store-db` shares it,
+# for the row key described above.
 sha2 = { version = "0.10", default-features = false, optional = true }
 #
 # `infer` answers "what are these bytes" from the leading magic number, and

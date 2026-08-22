@@ -66,6 +66,11 @@ pub mod password_config;
 pub mod policy;
 pub mod session;
 pub mod session_api;
+// Sessions in the application's own database, rather than in a process-local
+// `HashMap` that a deploy empties. Behind `session-store-db`, off by default,
+// because it brings a table and a migration with it.
+#[cfg(feature = "session-store-db")]
+pub mod session_store;
 
 // Re-export the certified tower-sessions crate so downstream code targets the
 // Arcature-pinned version and reaches the certified `cookie` crate through
@@ -91,6 +96,8 @@ pub use password_config::PasswordConfig;
 pub use policy::{AuthzError, Policy};
 pub use session::{SameSite, SessionConfig, SessionKey, SessionLayer};
 pub use session_api::{Session, SessionError};
+#[cfg(feature = "session-store-db")]
+pub use session_store::{DbSessionStore, SessionStoreError};
 
 // The redirect mapper writes the same session key the `Flash` extractor
 // reads, and one spelling of it has to be authoritative.

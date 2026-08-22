@@ -147,6 +147,10 @@ pub use auth::{
     SessionBuildError, SessionConfig, SessionConfigError, SessionError, SessionKey, SessionLayer,
     SigningKeyReason, UserLoader, verify_password,
 };
+// The database-backed session store, so `arcature::DbSessionStore` reads the
+// same way as the rest of the auth surface. Behind `session-store-db`.
+#[cfg(feature = "session-store-db")]
+pub use auth::{DbSessionStore, SessionStoreError};
 
 #[cfg(feature = "validation")]
 pub mod validation;

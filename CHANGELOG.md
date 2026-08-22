@@ -358,6 +358,20 @@ therefore its first.
   adding an address term to the deny-list would withhold it everywhere at
   once. Nothing is added to `DENY_LIST` here -- a log that redacts the
   field by default would be the same no-op the limiter was.
+- **A database-backed session store, behind the new `session-store-db`
+  feature.** Until now the only ready-made store was `tower-sessions`'
+  `MemoryStore`, a `HashMap` in one process: every deploy logged every user
+  out, and a second replica could not see the first one's sessions.
+  `arcature::auth::session_store::DbSessionStore` keeps them in one
+  `arcature_sessions` table in the application's own database, with an
+  embedded per-dialect migration for PostgreSQL, SQLite and MySQL. Two
+  properties are deliberate. The row key is the SHA-256 digest of the session
+  id, never the id, because a session id is a bearer credential and a table of
+  them is a table of logins that every backup and replica carries; and every
+  read carries `expires_at > now()`, evaluated by the database, so an expired
+  session stops working the instant it expires whether or not
+  `sweep_expired` has run. The feature is off by default, so an existing build
+  is unchanged.
 
 
 ### Changed
