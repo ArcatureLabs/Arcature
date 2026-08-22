@@ -44,11 +44,18 @@
 //!   one stores an expiry. Nothing outside it names a driver.
 //! * `migrate.rs` -- the embedded per-dialect migration and its runner.
 //! * `store.rs` -- [`DbSessionStore`] and its `tower_sessions` impls.
+//! * `tests.rs` -- the round-trip tests, which need a live database and so
+//!   are gated on `test-kit` as well.
 
 mod dialect;
 mod error;
 mod migrate;
 mod store;
+
+// Needs `test-kit` for the "is a test database configured, and is it safe to
+// write to" decision, which lives there and must have exactly one spelling.
+#[cfg(all(test, feature = "test-kit"))]
+mod tests;
 
 pub use error::SessionStoreError;
 pub use store::DbSessionStore;

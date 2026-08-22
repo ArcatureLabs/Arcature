@@ -372,6 +372,21 @@ therefore its first.
   session stops working the instant it expires whether or not
   `sweep_expired` has run. The feature is off by default, so an existing build
   is unchanged.
+- **Round-trip tests for the session store against a real database.** Every
+  property the store claims is a property of its SQL, so a mock would only
+  agree with whatever the Rust already believes. The tests save, load, delete,
+  overwrite and sweep against a live server, and two of them exist to pin the
+  security decisions rather than the happy path: one saves an already-expired
+  session, checks the row is still on disk, and checks it does not load --
+  which is the difference between expiry enforced by the query and expiry
+  enforced by a cleanup task -- and one reads the stored key back to prove it
+  is a thirty-two byte digest and not the session id. They are gated on
+  `test-kit`, which already owns the "is a test database configured, and is it
+  safe to write to" decision, and skip when no database is configured --
+  `ARCATURE_REQUIRE_TEST_DB=1` turns that skip into a failure, and `just
+  db-test` now builds `session-store-db` alongside `jobs` so CI's `Database`
+  matrix runs them on all three dialects. SQLite needs no server, so one of
+  the three is always runnable on a laptop.
 
 
 ### Changed

@@ -51,7 +51,7 @@ db-test:
         fi
         echo "== $driver =="
         ARCATURE_TEST_DB_URL="$url" ARCATURE_REQUIRE_TEST_DB=1 \
-            cargo test --no-default-features --features "jobs,test-kit,$driver" --lib --test test_kit
+            cargo test --no-default-features --features "jobs,session-store-db,test-kit,$driver" --lib --test test_kit
     done
 
 # The feature matrix. `--each-feature` fails fast and names the culprit;
