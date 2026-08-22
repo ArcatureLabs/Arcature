@@ -1,5 +1,7 @@
 //! HTTP response vocabulary and helpers shared by all subsystems.
 
+#[cfg(feature = "uploads")]
+pub mod download;
 pub mod error_mapping;
 pub mod maintenance;
 #[cfg(feature = "uploads")]
@@ -7,6 +9,8 @@ pub mod multipart;
 pub mod response;
 pub mod security;
 
+#[cfg(feature = "uploads")]
+pub use download::Attachment;
 pub use error_mapping::{ErrorMapping, Mapper};
 pub use maintenance::Maintenance;
 #[cfg(feature = "uploads")]

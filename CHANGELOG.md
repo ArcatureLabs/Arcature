@@ -259,6 +259,29 @@ therefore its first.
   against `infer`'s table and never an image parse, because a decoder is an
   interpreter for attacker-controlled input and the densest source of memory
   CVEs in any web stack. This is a statement about format, not about safety.
+- **Downloads are attachments, `http::download::Attachment` (feature
+  `uploads`).** Accepting an upload safely and serving it safely are two
+  different jobs, and doing the first perfectly buys nothing if the second
+  hands the file to a browser as a document: a stored file served inline is
+  content the attacker wrote, on the application's own origin, with the
+  application's cookies attached. `Attachment` closes that by construction
+  rather than by asking a handler to remember, sending
+  `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: default-src 'none'; sandbox` on every response,
+  and refusing to emit a scriptable media type (`text/html`,
+  `image/svg+xml`, the XML family) even when the bytes really are one -- the
+  honest `Content-Type` for an HTML file handed back as a download is
+  "bytes", not "document". The type is sniffed from the object's own leading
+  bytes and never read from the request; `with_content_type` takes a
+  `SniffedType` rather than a string, so there is no way to put a
+  client-authored media type on a response. `from_disk` reads only the first
+  512 bytes to decide the type and streams the rest, so serving a large
+  object costs one buffer. The suggested filename takes a `SafeFilename`
+  rather than a `&str` for the same reason -- a string parameter there is a
+  header-injection hole waiting for the one caller who forgets -- and is
+  emitted twice per RFC 6266, quoted ASCII plus an RFC 5987
+  `filename*=UTF-8''`, because `báo-cáo.pdf` is not representable in the
+  first form and silently mangling it is worse than sending both.
 
 
 ### Changed
