@@ -195,9 +195,13 @@ Arcature uses semantic versioning, currently `0.1.0`.
 So under `0.x` the release that breaks something is a minor bump, and it needs
 a `### Removed` or `### Changed` entry naming the replacement.
 
-The crate is **not yet published to crates.io**. When it is, `arcature-macros`
-publishes first and `arcature` second — the standard `serde` / `serde_derive`
-ordering, because `arcature` depends on an exact version of the macro crate.
+`arcature` and `arcature-macros` are on crates.io and publish together, the
+macro crate first — the standard `serde` / `serde_derive` ordering, because
+`arcature` depends on an exact version of it. Nothing publishes from a laptop:
+a version tag starts `.github/workflows/release.yml`, which mints a
+short-lived credential through crates.io Trusted Publishing. The operator's
+walkthrough, including what to do when a step fails between the two crates, is
+[`docs/RELEASING.md`](../docs/RELEASING.md).
 
 Record every user-visible change in `CHANGELOG.md` under `## [Unreleased]` as
 part of the pull request that makes it.
