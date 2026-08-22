@@ -263,6 +263,16 @@ pub use view::{View, ViewError, view};
 #[cfg(feature = "views")]
 pub use askama;
 
+// Fluent translation catalogs. Off by default: an application that ships one
+// language should not carry a message parser and a plural-rule table to say
+// so. `src/i18n/mod.rs` states why a runtime parser is acceptable for
+// developer-authored `.ftl` files when `views` rejected one for templates,
+// and discloses the `unsafe` the dependency subtree adds.
+#[cfg(feature = "i18n")]
+pub mod i18n;
+#[cfg(feature = "i18n")]
+pub use i18n::{Catalog, Catalogs, I18nError, LocaleId};
+
 #[cfg(feature = "cli")]
 pub mod cli;
 

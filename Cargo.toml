@@ -294,6 +294,31 @@ uploads = ["axum/multipart", "validation", "storage-fs", "dep:tokio", "dep:unico
 # carrying a template compiler.
 views = ["dep:askama"]
 
+# Localization: Fluent translation catalogs (feature `i18n`).
+#
+# Off by default. An application that ships one language should not carry a
+# message parser, a plural-rule table and a formatter to say so.
+#
+# The engine is Mozilla Fluent (`fluent-bundle`) rather than a
+# `HashMap<String, String>`, because the map is wrong the moment a language
+# has more than two plural forms. Fluent carries the CLDR plural categories,
+# gender-agreeing selectors, and locale-aware number formatting; a key/value
+# map carries none of them and cannot be taught to.
+#
+# The trade, stated plainly: Fluent parses `.ftl` text at runtime, and a
+# runtime parser is what `views` picked askama specifically to avoid. The
+# difference is who writes the input. A template renders attacker-supplied
+# values; a catalog is a file the developer wrote, that lives in the
+# repository, and that a request never names, supplies or selects by path.
+# `src/i18n/mod.rs` states that boundary and what has to stay true for it to
+# hold.
+#
+# `default-features = false` on both: `fluent-bundle`'s only optional feature
+# is `all-benchmarks`, and `unic-langid`'s are `macros`, `likelysubtags` and
+# `serde` -- a proc-macro, a data table, and a derive none of which this
+# crate needs.
+i18n = ["dep:fluent-bundle", "dep:unic-langid"]
+
 # Application-level authenticated encryption: `crypt::Encrypter`, which turns
 # bytes into a versioned, self-describing token and refuses to hand back a
 # single byte of a token that has been altered.
@@ -569,6 +594,22 @@ askama = { version = "0.16.0", default-features = false, features = [
     "derive",
     "std",
 ], optional = true }
+
+# Localization (feature `i18n`).
+#
+# `fluent-bundle` is the reference Rust implementation of Mozilla Fluent: the
+# `.ftl` parser, the message formatter, and the CLDR plural-rule selection
+# that is the whole reason a catalog here is not a `HashMap`. `unic-langid`
+# is the BCP-47 language-identifier type that API is written in; it is named
+# explicitly because `fluent-bundle` does not re-export it and a locale has
+# to be parsed before a bundle can be built.
+#
+# Both are pure Rust, MIT OR Apache-2.0, and neither opens a socket, spawns a
+# process, or touches the filesystem. What the subtree does add is
+# `self_cell`, which contains `unsafe`. `src/i18n/mod.rs` says so, and says
+# why that is accepted here.
+fluent-bundle = { version = "0.16.0", default-features = false, optional = true }
+unic-langid = { version = "0.9.6", default-features = false, optional = true }
 
 # Error handling.
 thiserror = { version = "2.0", default-features = false }

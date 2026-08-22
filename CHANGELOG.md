@@ -591,6 +591,30 @@ therefore its first.
   port inside the test process -- so it behaves identically on a pull
   request from a fork. `observe_prometheus` is deliberately not in it:
   `observe` is a default feature, so that binary already runs in `Test`.
+- **Fluent translation catalogs, behind the new off-by-default `i18n`
+  feature.** `i18n::Catalogs` holds one `i18n::Catalog` per locale, parsed
+  from the `.ftl` files an application keeps in its repository, and formats a
+  message in a named locale with `i18n::TranslationArgs`. The engine is
+  Mozilla Fluent rather than a `HashMap<String, String>` because the map is
+  wrong the moment a language has more than two plural forms: Polish has
+  four, Arabic six, Japanese one, and the rule is a CLDR table rather than an
+  `if n == 1` that calling code could write. Fluent puts the selection in the
+  catalog, where the translator can see it, and brings gender agreement and
+  locale-aware number formatting with it. Locales are `i18n::LocaleId`, a
+  validated canonical BCP-47 tag with one fallible constructor, so a raw
+  request string cannot be passed where a locale is expected; the registry is
+  an in-memory map built at startup and nothing in the module opens a file,
+  so a hostile tag has no path to traverse. A key the chosen locale has not
+  translated falls back to the default catalog per key, which is what makes a
+  half-translated locale ship a readable page instead of a `500`. `.ftl`
+  parsing is a runtime parser, which `views` chose askama specifically to
+  avoid -- `src/i18n/mod.rs` states the difference (a catalog is
+  developer-authored and never named by a request, and Fluent interpolates
+  arguments without re-parsing them) and the rule that keeps it true. The
+  dependency subtree adds `self_cell`, which contains `unsafe`; the
+  `cargo geiger` baseline is recorded over the default feature set and `i18n`
+  is not in it, so the baseline file is unchanged and that is a measurement
+  gap rather than an absence of cost.
 
 - **The generated route helper is type-checked against a parameterised
   route.** `routes.ts` emits a conditional rest-argument tuple, so that
