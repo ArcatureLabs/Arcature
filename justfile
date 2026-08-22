@@ -74,18 +74,19 @@ db-test:
 #                            are covered by `just drivers` instead, which
 #                            gives each a full-breadth build of its own.
 #   --exclude-all-features   `--all-features` is all three drivers at once.
-#   --depth 2                the crate has 29 features. An uncapped powerset
-#                            is 292,672 builds -- not slow, unrunnable, and
-#                            the recipe never returned. Depth 2 is 263, and
-#                            pairwise is where feature-interaction bugs
-#                            actually live: a feature that fails alone is
-#                            caught by --each-feature above, and one that
-#                            fails only in a specific trio is rare enough not
-#                            to be worth three orders of magnitude. Raise it
-#                            to 3 (1,599 builds) when chasing one.
+#   --depth 2                the crate has 30 features. An uncapped powerset
+#                            is a six-figure number of builds -- not slow,
+#                            unrunnable, and the recipe never returned.
+#                            Depth 2 is 286, and pairwise is where
+#                            feature-interaction bugs actually live: a
+#                            feature that fails alone is caught by
+#                            --each-feature above, and one that fails only
+#                            in a specific trio is rare enough not to be
+#                            worth three orders of magnitude. Raise it to 3
+#                            (1,812 builds) when chasing one.
 
 # In CI the two lines below are separate jobs: `--each-feature` runs on every
-# pull request, the powerset runs on a nightly schedule. 263 builds is too much
+# pull request, the powerset runs on a nightly schedule. 286 builds is too much
 # to put in front of a pull request but cheap enough to run once a night.
 
 # Check every feature on its own, then all pairs. Needs cargo-hack.
@@ -106,7 +107,7 @@ drivers:
     #!/usr/bin/env bash
     set -euo pipefail
     feats=api,api-docs,auth,cache,cli,database,dev-proxy,dx,events,inertia,jobs,macros,mail
-    feats=$feats,oauth,observe,otel,pages,realtime,storage-fs,storage-s3,templates,test-kit,uag,validation
+    feats=$feats,oauth,observe,otel,pages,realtime,storage-fs,storage-s3,templates,test-kit,uag,uploads,validation
     for driver in db-postgres db-sqlite db-mysql; do
         echo "== $driver =="
         cargo check --no-default-features --features "$feats,$driver" --all-targets

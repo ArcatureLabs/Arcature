@@ -242,6 +242,21 @@ otel = [
 # builds by default -- an API description is a map of the attack surface.
 api-docs = ["api", "uag"]
 
+# File uploads: `multipart/form-data` request bodies, bounded, sanitized and
+# streamed to a storage disk.
+#
+# Off by default, and that is the security decision, not a packaging one. An
+# upload endpoint is the largest attacker-authored surface a web application
+# has -- the filename, the declared content type and the byte count all come
+# from the client -- and a build with no upload route has no business carrying
+# a multipart parser for one. Enabling `uploads` is the moment an application
+# accepts that surface, so it is spelled out in the manifest.
+#
+# It pulls `validation` (the extractor lives beside the other validated
+# extractors and reports RFC 9457 problem details) and `storage-fs` (an upload
+# is written to a storage disk, never to a path the request named).
+uploads = ["axum/multipart", "validation", "storage-fs"]
+
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
     "macros",
@@ -265,6 +280,7 @@ fullstack = [
     "templates",
     "dev-proxy",
     "uag",
+    "uploads",
 ]
 
 [lints.rust]

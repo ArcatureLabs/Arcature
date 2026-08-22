@@ -145,6 +145,16 @@ therefore its first.
   and it is escaped on the way out even though it comes from configuration.
   A page with no head renders exactly the document these functions rendered
   before.
+- **A `uploads` feature, off by default.** It turns on axum's
+  `multipart/form-data` body parser, and nothing else in the crate reads a
+  multipart body without it. The default stays off because an upload
+  endpoint is the largest attacker-authored surface a web application has --
+  the filename, the declared content type and the byte count are all written
+  by the client -- and a build with no upload route should not carry the
+  parser for one. `uploads` implies `validation` and `storage-fs`: an upload
+  reports RFC 9457 problem details like every other extractor, and it is
+  written to a storage disk rather than to a path the request named.
+
 
 ### Changed
 
