@@ -243,9 +243,13 @@ session-store-db = ["auth", "database", "dep:sha2", "dep:async-trait"]
 # unknown, and so turns the response time into a list of who has an account.
 #
 # Off by default, and for the ordinary reason: an application with no login
-# screen should not carry a login screen's code. It adds no dependency of its
-# own -- everything it needs is already in the graph `auth` produces.
-auth-flows = ["auth"]
+# screen should not carry a login screen's code.
+#
+# `signed-urls` rather than `crypt`, and the difference matters. Both would
+# supply the HMAC an email-verification link needs, but `crypt` also drags in
+# `chacha20poly1305` -- an AEAD, for a flow that encrypts nothing. The narrower
+# of two features that would both work is the one to depend on.
+auth-flows = ["auth", "signed-urls"]
 
 # Hashed personal access tokens: an opaque bearer credential for clients that
 # have no cookie and no session -- a CLI, a CI job, another service.

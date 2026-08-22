@@ -16,6 +16,11 @@
 //!   answer, and must cost the same. An `if let Some(user)` that skips the
 //!   Argon2 verification when the address is unknown turns the *response
 //!   time* into a working list of who has an account.
+//! * [`EmailVerification`] -- a verification link has to be bound to the
+//!   address it was mailed to, not just to the account. A link that only names
+//!   the account verifies whichever address the account holds when it is
+//!   clicked, so registering with your own address, changing it to somebody
+//!   else's, and then clicking gets you a verified address you cannot read.
 //!
 //! # What does not live here
 //!
@@ -24,5 +29,7 @@
 //! the part that has to be right rather than the part that has to be yours.
 
 mod credentials;
+mod verification;
 
 pub use credentials::{CREDENTIAL_REJECTION, CredentialChecker, CredentialOutcome};
+pub use verification::{EmailVerification, EmailVerificationError};

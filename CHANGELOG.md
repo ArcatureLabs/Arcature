@@ -881,6 +881,26 @@ therefore its first.
   the property is something a test can assert rather than something a comment
   claims. The feature adds no dependency: everything it needs is already in the
   graph `auth` produces.
+- `auth::flows::EmailVerification`: signed, expiring email-verification links
+  that are bound to the address they were mailed to. A link that names only the
+  account verifies whichever address the account holds at the moment it is
+  clicked, and that is an account-takeover path made entirely of legitimate
+  steps -- register with your own address, keep the unclicked link, change the
+  address to somebody else's, click. So the link carries a keyed digest over
+  the user key *and* the address, and `confirm` recomputes it from the address
+  the account holds now: changing the address invalidates every outstanding
+  link against the old one without a row being deleted. Keyed rather than a
+  bare hash, because links leak into access logs, `Referer` headers and browser
+  history, and the space of real email addresses is small enough to enumerate
+  offline against a plain digest. The two values ride as path segments rather
+  than query parameters so a handler can take them from axum's `Path` extractor
+  instead of the crate growing a second URL parser. Documented with it, because
+  it is the property most likely to be assumed away: a signed link holds no
+  state and therefore cannot be spent, so it is replayable until it expires --
+  fine for an assertion that repeats harmlessly, wrong for anything whose second
+  use is a fresh grant. `auth-flows` now enables `signed-urls`, and not `crypt`:
+  both would supply the HMAC, but only one of them also pulls an AEAD into a
+  flow that encrypts nothing.
 
 ### Changed
 

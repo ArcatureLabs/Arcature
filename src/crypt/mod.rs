@@ -52,7 +52,11 @@
 //! # Ok::<(), arcature::crypt::AppKeyError>(())
 //! ```
 
-mod base64url;
+// `pub(crate)` rather than private: `auth::flows` encodes a binding digest
+// into a verification link with it. One base64url implementation in the
+// crate, not two -- a second decoder is a second place for a padding bug
+// that makes two spellings of one token both valid.
+pub(crate) mod base64url;
 #[cfg(feature = "crypt")]
 mod encrypter;
 mod key;
