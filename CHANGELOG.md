@@ -730,6 +730,21 @@ therefore its first.
   `SECURITY.md` explains how to read the file and `CONTRIBUTING.md` explains
   when to re-record it.
 
+- **The `unsafe` count is now checked on a clock, not on somebody
+  remembering.** A baseline nobody recomputes is a number that was true
+  once. The new `Geiger` workflow runs `just geiger` on every push to `main`
+  that touches `Cargo.lock`, the baselines, the `justfile` or the workflow
+  itself -- so a dependency bump gets its answer in the same push that
+  caused it -- and weekly as a backstop for the changes a path trigger
+  cannot see, such as a `cargo-geiger` release that counts differently. It
+  is deliberately not a job in `ci.yml`: cargo-geiger rebuilds the whole
+  graph through its own compiler wrapper, which is a ten-minute cold build
+  bought on every pull request in exchange for a signal that can only change
+  when the lockfile does. A run that finds a difference uploads the fresh
+  report as an artifact, so accepting it is reading a diff rather than
+  reproducing a cold build locally. It writes nothing back: a moved count
+  becomes a red run and a human commit, never a silent re-baseline.
+
 - **A scaffolded project's release build is pinned by a test.** The
   generated `Cargo.toml` already took `arcature` with
   `default-features = false` and an explicit list, so `cli`, `templates`

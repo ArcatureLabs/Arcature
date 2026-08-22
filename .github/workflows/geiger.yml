@@ -1,0 +1,113 @@
+# cargo geiger: how much `unsafe` this build can actually reach, on a clock.
+#
+# `#![forbid(unsafe_code)]` at the top of src/lib.rs is a statement about this
+# crate and nothing else. The dependency graph underneath it writes plenty of
+# `unsafe`, and that is where a memory-safety CVE would come from. A security
+# posture that quotes the `forbid` attribute without ever counting the graph is
+# telling itself a story; `unsafe-baseline.<host-target>.txt` is the number
+# that keeps it honest.
+#
+# `just geiger` diffs a fresh report against that baseline. A difference is not
+# a failure -- it is a question for whoever changed the lockfile. A dependency
+# bump that pulls a new `unsafe` block into the graph should be seen by a
+# person rather than averaged into a total. When the answer is "yes, that is
+# fine", `just geiger-accept` records the new number and it gets committed.
+#
+# ## Why this is not a job in ci.yml
+#
+# cargo-geiger rebuilds the entire graph through its own compiler wrapper. It
+# shares `target/` with nothing, so every run is a cold build in the ten-minute
+# range. Putting that in front of every pull request buys a signal that can
+# only change when `Cargo.lock` changes, at the cost of ten minutes on every
+# pull request that does not touch it. The trade is bad in both directions.
+#
+# ## Why weekly, when audit.yml is daily
+#
+# They answer different questions and the answers move on different clocks.
+# audit.yml asks "has anyone published an advisory against a crate we ship",
+# which can become true overnight with no commit from us -- hence daily. This
+# file asks "how much unsafe code is reachable from our build", which can only
+# change when the graph changes. The graph changing is an event we can trigger
+# on directly, and the lockfile trigger below does exactly that. The weekly
+# cron is the backstop for the case the trigger cannot see: a crate whose
+# published contents are re-audited, a geiger release that counts differently,
+# or simply a trigger path that stopped matching after someone moved a file.
+#
+# Division of labour, so neither grows into the other:
+#
+#   audit.yml    advisories against the lockfile, daily.
+#   this file    reachable `unsafe` in the graph, on lockfile change and
+#                weekly. No advisory logic, ever.
+
+name: Geiger
+
+on:
+  push:
+    branches: [main]
+    # The lockfile is the only input that can move the count. Landing a change
+    # to it and getting the answer within the same push is the whole point:
+    # the weekly cron would otherwise attribute the change to whatever commit
+    # happened to be at the head six days later.
+    paths:
+      - "Cargo.lock"
+      - "unsafe-baseline.*.txt"
+      - "justfile"
+      - ".github/workflows/geiger.yml"
+  schedule:
+    # Weekly, Sunday. Minute is not :00, and 05:23 sits clear of audit.yml's
+    # 03:38 and ci.yml's 04:17 powerset so the three are not competing for
+    # runners.
+    - cron: "23 5 * * 0"
+  workflow_dispatch:
+
+# Reading the graph is the whole job. Nothing is written back: a drifted
+# baseline surfaces as a failed run plus the fresh report as an artifact, and
+# accepting it is a human decision that belongs in a commit.
+permissions:
+  contents: read
+
+concurrency:
+  group: geiger-${{ github.ref }}
+  # Never on the scheduled run, for the same reason audit.yml does not: a
+  # cancelled backstop is a week with no answer, which is precisely the gap
+  # the backstop exists to close.
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  geiger:
+    name: Unsafe in the dependency graph
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      # `just` runs the report so the flags live in exactly one place. The
+      # baseline was recorded by `just geiger-accept`, and a CI job that spelt
+      # the same command out by hand would drift from it the first time either
+      # side changed -- producing a diff that reports a flag difference as an
+      # `unsafe` difference. `just` is a convenience everywhere else in this
+      # repository and a contract here.
+      - uses: taiki-e/install-action@a2a5f6e99e1a31540baa0468acfa302cff0f359f # v2.86.4
+        with:
+          tool: just,cargo-geiger
+
+      - name: Diff the graph against the accepted baseline
+        run: just geiger
+
+      # Only on failure, and only because the alternative is worse. Rerunning
+      # geiger locally to see what moved is another cold build on a developer
+      # machine; the run that just failed already has the answer. Committing
+      # this file is what `just geiger-accept` would have produced, so the
+      # remediation is: read the diff in the log, decide whether the new
+      # `unsafe` is acceptable, and if it is, commit this artifact as the new
+      # baseline for this runner's target.
+      - name: Upload the fresh report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsafe-report
+          path: unsafe-report.txt
+          if-no-files-found: warn
