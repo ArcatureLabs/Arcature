@@ -57,6 +57,76 @@ impl StoragePath {
     }
 }
 
+#[cfg(feature = "uploads")]
+impl StoragePath {
+    /// Sanitize a client-authored filename into a single-segment object key.
+    ///
+    /// [`StoragePath::new`] validates and rejects: it has no opinion about how
+    /// to *repair* a name, so `Ảnh chụp màn hình.png` -- an entirely ordinary
+    /// filename -- passes it, while `photo (1).jpg:stream` does not, and a
+    /// sanitizer that rejects real names teaches applications to bypass the
+    /// sanitizer. This constructor runs the full
+    /// [`SafeFilename`](crate::storage::SafeFilename) pipeline first: it
+    /// discards directory components, normalizes to NFC, refuses control and
+    /// bidi characters and Windows device names outright, replaces the
+    /// characters that are merely dangerous downstream, and checks the
+    /// extension against `allowed`.
+    ///
+    /// The result is always exactly one path segment. Nothing the client wrote
+    /// can add a second one.
+    ///
+    /// # Prefer a content address
+    ///
+    /// A sanitized name is safe to *store*, but it is still a name the client
+    /// chose, which means two users can collide on it and one can overwrite
+    /// the other's object. Where the key does not have to be human-readable,
+    /// derive it from the object's own bytes instead and keep the sanitized
+    /// filename as metadata for the download header.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FilenameError`](crate::storage::FilenameError) if the name
+    /// cannot be repaired into something safe: it is empty, over-long, holds a
+    /// control or invisible formatting character, is a traversal component, is
+    /// a reserved device name, or its extension is missing, malformed or not
+    /// on the whitelist.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use arcature::storage::{AllowedExtensions, FilenameError, StoragePath};
+    ///
+    /// let images = AllowedExtensions::images();
+    ///
+    /// // An ordinary name survives, diacritics and spaces included.
+    /// let key = StoragePath::from_filename("Ảnh chụp màn hình.PNG", &images)?;
+    /// assert_eq!(key.as_str(), "Ảnh chụp màn hình.png");
+    ///
+    /// // A traversal payload loses its directory components, and what is left
+    /// // still has to pass the whitelist.
+    /// let key = StoragePath::from_filename("../../etc/passwd.png", &images)?;
+    /// assert_eq!(key.as_str(), "passwd.png");
+    ///
+    /// // Executables are not on the whitelist, whatever they are called.
+    /// assert_eq!(
+    ///     StoragePath::from_filename("shell.php", &images),
+    ///     Err(FilenameError::ExtensionNotAllowed)
+    /// );
+    /// # Ok::<(), FilenameError>(())
+    /// ```
+    pub fn from_filename(
+        filename: &str,
+        allowed: &crate::storage::filename::AllowedExtensions,
+    ) -> Result<Self, crate::storage::error::FilenameError> {
+        let safe = crate::storage::filename::SafeFilename::parse(filename, allowed)?;
+        // `SafeFilename` is one segment of NFC text with no separator, no
+        // control character and a non-empty stem, so the key checks below
+        // cannot fail. The call is kept rather than asserted away so that the
+        // two validators can never silently drift apart.
+        Self::new(&safe.to_string()).map_err(|_| crate::storage::error::FilenameError::Empty)
+    }
+}
+
 impl fmt::Display for StoragePath {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.key)

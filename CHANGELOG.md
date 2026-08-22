@@ -154,6 +154,28 @@ therefore its first.
   parser for one. `uploads` implies `validation` and `storage-fs`: an upload
   reports RFC 9457 problem details like every other extractor, and it is
   written to a storage disk rather than to a path the request named.
+- **A filename sanitizer, `SafeFilename` and `StoragePath::from_filename`
+  (feature `uploads`).** A `filename=` parameter is not a name, it is an
+  argument to whatever opens it next. `StoragePath::new` validates and
+  rejects, so `Ảnh chụp màn hình.png` -- an ordinary filename -- failed a
+  check that was never aimed at it, and a sanitizer that rejects real names
+  teaches applications to bypass the sanitizer. The new path discards
+  directory components before anything else runs, normalizes to NFC, and
+  then splits the input two ways: characters a human plausibly typed that
+  are only dangerous downstream (`:`, `*`, `?`, `<`, `>`, `|`, `"`, and the
+  inner dot of `shell.php.jpg`) are repaired to `_`, while characters whose
+  presence *is* the attack (NUL and the other C0/C1 controls, DEL, the bidi
+  overrides that make `invoice<U+202E>gpj.exe` render as a `.jpg`, the
+  zero-width joiners, the byte-order mark, the blank-rendering separators and
+  the whole U+E0000-U+E007F tag block) are fatal. Variation selectors are
+  deliberately kept: they occur beside an emoji in names people really have.
+  Windows device names are refused with any extension and with trailing dots
+  or spaces, so `CON.txt` and `CON.foo.txt. ` are both rejected. Extensions
+  are checked against an `AllowedExtensions` whitelist -- never a blacklist
+  -- of lowercase ASCII alphanumerics; `AllowedExtensions::images()`
+  deliberately omits `svg`, which is a scriptable XML document. The result is
+  always exactly one path segment. It is still only metadata: the object itself is
+  meant to be stored under a name derived from its own bytes.
 
 
 ### Changed

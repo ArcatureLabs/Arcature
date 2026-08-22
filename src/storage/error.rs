@@ -108,6 +108,73 @@ impl fmt::Display for StoragePathError {
 
 impl std::error::Error for StoragePathError {}
 
+/// Filename sanitization failure for
+/// [`SafeFilename::parse`](crate::storage::SafeFilename::parse) and its
+/// helpers.
+///
+/// This is deliberately a separate enum from [`StoragePathError`] rather than
+/// more variants on it. The two answer different questions -- "is this key
+/// safe to resolve?" versus "is this client-authored label safe to keep?" --
+/// and a caller that wants to tell an uploader *why* their file was refused
+/// needs the second vocabulary, not the first.
+#[cfg(feature = "uploads")]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilenameError {
+    /// The filename was empty, whitespace-only, or nothing but directory
+    /// components.
+    Empty,
+    /// The filename was longer than the sanitizer is willing to look at.
+    TooLong,
+    /// The filename contained a control, bidi or other invisible format
+    /// character. These are never repaired: their presence is the attack.
+    ControlChar,
+    /// The filename was `.` or `..` once its directory components were
+    /// discarded.
+    Traversal,
+    /// The filename had no extension, and the extension is what the whitelist
+    /// is checked against.
+    MissingExtension,
+    /// The extension was empty, over-long, or not ASCII alphanumeric.
+    InvalidExtension,
+    /// The extension is well-formed but not on the caller's whitelist.
+    ExtensionNotAllowed,
+    /// Everything before the extension was removed by sanitization, leaving no
+    /// name at all.
+    EmptyStem,
+    /// The name is a Windows reserved device name such as `CON` or `NUL`.
+    /// Opening it opens a device, not a file.
+    ReservedName,
+}
+
+#[cfg(feature = "uploads")]
+impl fmt::Display for FilenameError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(formatter, "filename must not be empty"),
+            Self::TooLong => write!(formatter, "filename is too long"),
+            Self::ControlChar => write!(
+                formatter,
+                "filename must not contain control or invisible formatting characters"
+            ),
+            Self::Traversal => {
+                write!(formatter, "filename must not be a path traversal component")
+            }
+            Self::MissingExtension => write!(formatter, "filename must have a file extension"),
+            Self::InvalidExtension => write!(
+                formatter,
+                "file extension must be 1 to 16 ASCII alphanumeric characters"
+            ),
+            Self::ExtensionNotAllowed => write!(formatter, "file extension is not allowed"),
+            Self::EmptyStem => write!(formatter, "filename must have a name before its extension"),
+            Self::ReservedName => write!(formatter, "filename is a reserved device name"),
+        }
+    }
+}
+
+#[cfg(feature = "uploads")]
+impl std::error::Error for FilenameError {}
+
 /// Failure from [`crate::storage::Storage::connect`].
 #[derive(Debug)]
 pub enum StorageConnectError {

@@ -17,6 +17,10 @@
 //!   *before* any storage work runs.
 //! * Resolved configuration: [`StorageConfig`] (selecting [`FsConfig`] or
 //!   [`S3Config`]) -- accepted explicitly, credentials redacted.
+//! * With the `uploads` feature, a `filename` sanitizer that turns a
+//!   client-authored `filename=` parameter into a `SafeFilename` fit to keep
+//!   as metadata, plus `StoragePath::from_filename` for the cases where that
+//!   name is also used as a key.
 //!
 //! # What this module does not own
 //!
@@ -32,11 +36,17 @@
 
 pub mod config;
 pub mod error;
+#[cfg(feature = "uploads")]
+pub mod filename;
 pub mod path;
 pub mod store;
 
 pub use config::{FsConfig, S3Config, StorageConfig};
+#[cfg(feature = "uploads")]
+pub use error::FilenameError;
 pub use error::{StorageConfigError, StorageConnectError, StorageError, StoragePathError};
+#[cfg(feature = "uploads")]
+pub use filename::{AllowedExtensions, Extension, MAX_FILENAME_BYTES, SafeFilename};
 pub use path::StoragePath;
 pub use store::{Disk, Storage, StorageBuilder};
 

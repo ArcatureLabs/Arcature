@@ -255,7 +255,7 @@ api-docs = ["api", "uag"]
 # It pulls `validation` (the extractor lives beside the other validated
 # extractors and reports RFC 9457 problem details) and `storage-fs` (an upload
 # is written to a storage disk, never to a path the request named).
-uploads = ["axum/multipart", "validation", "storage-fs"]
+uploads = ["axum/multipart", "validation", "storage-fs", "dep:unicode-normalization"]
 
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
@@ -352,6 +352,19 @@ redis = { version = "1.5.0", default-features = false, features = ["tokio-comp"]
 opendal = { version = "0.58.1", default-features = false, optional = true }
 bytes = { version = "1.12.1", default-features = false, optional = true }
 futures = { version = "0.3.33", default-features = false, features = ["std"], optional = true }
+
+# Uploads (feature `uploads`).
+#
+# `unicode-normalization` puts an attacker-authored filename into NFC before
+# anything else looks at it. Without it, a name written with combining marks
+# and the same name written precomposed are different strings to the
+# reserved-name check and to the extension whitelist, while a filesystem and a
+# browser render them identically -- a whitelist that compares strings the
+# rest of the stack does not is a whitelist with a hole in it. Pure Rust,
+# `#![deny(unsafe_code)]`, one dependency (`tinyvec`), and a table lookup
+# rather than an evaluator: there is nothing here for hostile input to drive.
+# No C, no OpenSSL. Already in the lock file, pulled by `idna` via `url`.
+unicode-normalization = { version = "0.1.25", default-features = false, features = ["std"], optional = true }
 
 # Mail.
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "pool", "tokio1", "rustls", "tokio1-rustls", "aws-lc-rs", "webpki-roots", "hostname"], optional = true }
