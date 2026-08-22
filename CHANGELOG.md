@@ -146,6 +146,26 @@ therefore its first.
   A page with no head renders exactly the document these functions rendered
   before.
 
+### Changed
+
+- **A page rendered through a `PageContract` now titles itself.** Where every
+  such page previously emitted the one application title passed to
+  `default_root_document` or `vite_root_document`, `Inertia::render_page` now
+  fills in a title humanised from the contract's component name when the
+  handler set no head of its own. An application that wants the old document
+  sets the head it wants explicitly, and one that never used a `PageContract`,
+  or that renders through `Inertia::render`, or that builds its own root
+  document from a `Fn(ScriptBody) -> String` closure, is unaffected -- such a
+  closure ignores a head it was never written to read.
+
+  This is listed separately because it changes bytes an existing 0.1.0
+  application already serves, which nothing else in this release does. It is
+  kept because one title shared by every route is a defect in a search result
+  rather than a default worth preserving, and because a patch release is the
+  cheapest moment to correct it. No signature changed and no build breaks; the
+  visible difference is the `<title>` element and the `og:title` that falls
+  back to it.
+
 ### Deprecated
 
 - **The auth extractors have a module that names them.** `Auth<U>`,
