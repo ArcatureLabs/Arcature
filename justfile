@@ -74,16 +74,16 @@ db-test:
 #                            are covered by `just drivers` instead, which
 #                            gives each a full-breadth build of its own.
 #   --exclude-all-features   `--all-features` is all three drivers at once.
-#   --depth 2                the crate has 34 features. An uncapped powerset
+#   --depth 2                the crate has 35 features. An uncapped powerset
 #                            is a six-figure number of builds -- not slow,
 #                            unrunnable, and the recipe never returned.
-#                            Depth 2 is 398, and pairwise is where
+#                            Depth 2 is 429, and pairwise is where
 #                            feature-interaction bugs actually live: a
 #                            feature that fails alone is caught by
 #                            --each-feature above, and one that fails only
 #                            in a specific trio is rare enough not to be
 #                            worth three orders of magnitude. Raise it to 3
-#                            (3,086 builds) when chasing one.
+#                            (3,484 builds) when chasing one.
 #
 # The two counts are measured, never arithmetic. cargo-hack drops a
 # combination in which one feature already enables another, so the powerset is
@@ -94,7 +94,7 @@ db-test:
 # enumerates without compiling and answers in seconds.
 
 # In CI the two lines below are separate jobs: `--each-feature` runs on every
-# pull request, the powerset runs on a nightly schedule. 398 builds is too much
+# pull request, the powerset runs on a nightly schedule. 429 builds is too much
 # to put in front of a pull request but cheap enough to run once a night.
 
 # Check every feature on its own, then all pairs. Needs cargo-hack.
