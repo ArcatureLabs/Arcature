@@ -348,6 +348,17 @@ therefore its first.
   parse from CIDR text such as `"10.0.0.0/8, 127.0.0.1"`. The IPC serve
   path resolves nothing, having no peer address to start from.
 
+- **The access log records the client address.** `AccessLogLayer` adds a
+  `client_ip` field to the request span and the access line, taken from
+  the `ClientIp` extension; it is empty when nothing resolved an address,
+  the way `request_id` already is. The address is a structured field and
+  never part of the rendered message: redaction decides per field name, so
+  an address interpolated into the message would sit past the only
+  checkpoint there is. It goes through `redact::apply` on the way out, so
+  adding an address term to the deny-list would withhold it everywhere at
+  once. Nothing is added to `DENY_LIST` here -- a log that redacts the
+  field by default would be the same no-op the limiter was.
+
 
 ### Changed
 
