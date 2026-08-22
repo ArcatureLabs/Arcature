@@ -96,3 +96,100 @@ developer laptop would show:
 Treat the absolute figures as an upper bound and the *shape* -- 5% frontend,
 95% codegen and link, nothing spurious rebuilt -- as the finding. The shape is
 what any change has to move.
+
+Because the load varied, only measurements taken under `--timings` are
+compared against each other below: those report per-unit compile time rather
+than wall clock, and both the before and the after run reported the same
+`Max concurrency: 1 (jobs=4 ncpu=4)`. Plain wall-clock series taken minutes
+apart on this machine differ by more than any change being measured, and are
+not used as evidence for anything.
+
+## What was cut
+
+The baseline points at one thing: debug information. Not the application's
+own -- the scaffold has always built it with `line-tables-only` -- but its
+dependencies'.
+
+The instinct is that a dependency compiles once and then sits in `target/`,
+so its profile is a one-time cost. That is wrong for generic code. Every
+`Vec<MyThing>`, every `tokio` combinator, every `sea-orm` query builder used
+with the application's own types is monomorphised *into the application's
+crate*, and its debug information is emitted by rustc and merged by the
+linker there -- on every save, for as long as the project exists. Nobody
+steps through `tokio` while debugging a controller, so the scaffold now sets:
+
+```toml
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.dev.build-override]
+opt-level = 2
+debug = false
+```
+
+Same machine, same application, same one-line change, both runs under
+`--timings`:
+
+| | Before | After |
+|---|---|---|
+| `demo` lib | 50.6s (frontend 6.9s, codegen 43.7s) | **25.5s** (frontend 4.9s, codegen 20.6s) |
+| `demo` bin | 39.4s | **19.8s** |
+| Both dirty units | 90.0s | **45.3s** |
+| `demo.pdb` | 71.2 MB | **29.5 MB** |
+| `demo.exe` | 18.8 MB | 18.8 MB |
+
+Half, and the executable is byte-for-byte the same size, because none of this
+was ever in it. Backtraces still carry file and line: the application's own
+crates were never touched. A developer who wants a step debugger through a
+dependency can have it for one run with
+`CARGO_PROFILE_DEV_PACKAGE_tokio_DEBUG=2`.
+
+Three levers that look obvious are not taken, and the manifests say why:
+
+- `opt-level = 0` and a high `codegen-units` are Cargo's dev defaults.
+  Writing them down changes nothing.
+- `split-debuginfo` is target-specific. `rustc --print split-debuginfo`
+  reports `packed` as the only stable value on `*-pc-windows-msvc`, which is
+  what MSVC already does by writing a `.pdb`. A fixed value in the manifest
+  would be a no-op for some developers and a hard error for others.
+- A fast linker is already configured. `.cargo/config.toml` puts Windows on
+  the toolchain's own `rust-lld.exe`, and leaves Linux and macOS on the
+  system linker with `mold` and `wild` as commented opt-ins -- a config that
+  fails on a machine without the tool is worse than a slow link.
+
+## What is left
+
+**The 2.5 second target is not met on this machine, and halving the cost was
+not enough to meet it.** What remains, in order:
+
+1. **Linking the executable.** Even with a third of the debug information,
+   the `demo` bin unit is 19.8s for a `main.rs` of nine lines. Almost all of
+   that is `rust-lld` pulling every rlib in the graph together. It is
+   proportional to the size of the program, not to the size of the change,
+   so it does not shrink as the diff shrinks.
+2. **Code generation for the application crate**, 20.6s. This is
+   monomorphisation: the application instantiates a large amount of generic
+   machinery from `axum`, `tokio` and `sea-orm`, and each instantiation is
+   compiled into this crate.
+
+Type-checking -- 4.9s, and the only part proportional to what was actually
+edited -- is already inside the budget. The loop is not slow because the
+compiler is slow at understanding the change; it is slow because the whole
+program is rebuilt around it.
+
+Getting to 2.5s therefore needs a structural change rather than another
+profile flag, and the candidates all have real costs:
+
+- **Fewer generics crossing the boundary.** `-Zshare-generics` is nightly.
+  Doing it by hand means erasing types at the framework's public edges, which
+  trades compile time against the type safety the framework exists to
+  provide.
+- **A different codegen backend.** `rustc_codegen_cranelift` is dramatically
+  faster at `-O0` and is nightly-only, x86-64 Linux first.
+- **Not relinking at all.** Hot-patching the running process, as `subsecond`
+  does, skips both remaining costs. It is a large piece of machinery and it
+  does not survive every kind of change.
+
+None of these is a patch-release change, so none of them is here. Issue #8
+stays open with a measured number against it instead of a quoted one.

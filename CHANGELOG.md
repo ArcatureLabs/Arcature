@@ -451,6 +451,20 @@ therefore its first.
   linking rather than type-checking. Issue #8 quoted a figure with no
   method behind it; this is the method, so the next change to the loop can
   be shown to have worked rather than asserted to have.
+- **The dev loop page carries the after-numbers, and says the target is
+  missed.** `The dev loop` gained a `What was cut` section with the
+  before-and-after table for the profile change, and a `What is left`
+  section naming the two costs that remain -- linking the executable, and
+  monomorphising the application crate -- with the reason each is
+  proportional to the size of the program rather than the size of the
+  change. Only `cargo build --timings` runs at equal reported concurrency
+  are compared; the page says outright that wall-clock series taken minutes
+  apart on the measuring machine differ by more than the effect being
+  measured and are not offered as evidence. Issue #8's 2.5s target is not
+  met -- the measured cost halved, and halving was not enough -- so the
+  three candidates that could close the rest (`-Zshare-generics`, a
+  Cranelift backend, hot-patching) are listed with what each would cost,
+  and the issue stays open.
 
 ## [0.1.0]
 
