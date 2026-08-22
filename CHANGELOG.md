@@ -1163,6 +1163,13 @@ therefore its first.
   asset stage undoes the reason the stages were split -- and names the
   condition under which it should be reopened.
 
+- The scaffold's layout now says, at the `href="/"` it would replace, that
+  `route('home')` is the typed alternative and that `just check-ts` is the
+  command that makes it work -- it runs `arc typegen` before `tsc`, so route
+  names are checked against the live graph rather than a stale file. The
+  guidance sits at the call site in all three stacks, because that is where
+  someone deciding between the two is reading.
+
 
 
 ## [0.1.0]
