@@ -408,6 +408,20 @@ therefore its first.
   cheapest moment to correct it. No signature changed and no build breaks; the
   visible difference is the `<title>` element and the `og:title` that falls
   back to it.
+- **`arc new` scaffolds a persistent session store.** The generated
+  `bootstrap/app.rs` wired `tower-sessions`' `MemoryStore` and carried a
+  comment admitting it had to be replaced before running more than one
+  instance -- which is a defect handed to the user with instructions, not a
+  default. It now builds `DbSessionStore` from the same `DATABASE_URL` the
+  rest of the application uses, so a deploy is a deploy rather than a mass
+  logout and a second replica is a replica. `arcature_sessions` is created by
+  `--migrate` alongside the application's own migrations, not on boot, for the
+  reason the generated `Mode` documentation already gives: a schema change
+  made as a side effect of starting is one every replica races to make. The
+  `session-store-db` feature joins the generated `Cargo.toml`'s list and the
+  `tower-sessions-memory-store` dependency leaves it. This is generator
+  output rather than Arcature's own API: an application already generated
+  keeps compiling and keeps its old behaviour until its author changes it.
 
 ### Deprecated
 

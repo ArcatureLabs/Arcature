@@ -10,12 +10,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arcature::assets::{Assets, AssetsConfig};
-use arcature::auth::{CsrfConfig, PasswordConfig, PasswordHasher, SessionConfig};
+use arcature::auth::{CsrfConfig, DbSessionStore, PasswordConfig, PasswordHasher, SessionConfig};
 use arcature::http::{ErrorMapping, SecurityHeaders};
 use arcature::inertia::{InertiaConfig, vite_root_document};
 use arcature::jobs::Scheduler;
 use arcature::prelude::*;
-use tower_sessions_memory_store::MemoryStore;
 
 /// The Vite entry point. Must match `build.rollupOptions.input` in
 /// `vite.config.ts`, because that string is the manifest key.
@@ -89,6 +88,22 @@ pub fn app(options: BootOptions) -> Result<Bootstrapped> {
     .map_err(|e| Error::Config(e.to_string()))?;
     session = session.with_max_age(Duration::from_secs(60 * 60 * 8));
 
+    // Sessions go in the application's own database, in `arcature_sessions`.
+    // The alternative -- a process-local `HashMap` -- makes every deploy a
+    // mass logout and makes a second replica a coin flip on every request,
+    // which is a property to discover before production rather than during
+    // it.
+    //
+    // Built here, before `.database(..)` takes the config, because the
+    // builder wants the store while the application is still being described
+    // and there is no pool yet. Nothing connects on this line: the pool is
+    // lazy and opens its first connection when the first request needs one.
+    //
+    // The table is created by `--migrate`, not on boot. See `Mode` in
+    // `src/lib.rs`: a deploy that migrates as a side effect of starting has
+    // every replica racing to do it.
+    let sessions = DbSessionStore::connect_lazy(&config.database);
+
     let state_fn = crate::bootstrap::state_fn(&config, hasher);
 
     let mut builder = Application::new()
@@ -108,7 +123,7 @@ pub fn app(options: BootOptions) -> Result<Bootstrapped> {
         .body_limit(2 * 1024 * 1024)
         .timeout(Duration::from_secs(30))
         .inertia(inertia)
-        .session(session, MemoryStore::default())
+        .session(session, sessions)
         .map_err(|e| Error::Config(e.to_string()))?
         // The axios-compatible preset: cookie `XSRF-TOKEN`, header
         // `X-XSRF-TOKEN`, readable by JavaScript. Inertia's client reads the

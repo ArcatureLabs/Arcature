@@ -38,6 +38,9 @@ arcature = { version = "__ARCATURE_VERSION__", default-features = false, feature
     "database",
     "__DB_DRIVER__",
     "auth",
+    # Sessions live in the application's database, so a deploy is a deploy and
+    # a second replica sees the first one's logins. See `bootstrap/app.rs`.
+    "session-store-db",
     "validation",
     "cache",
     "storage-fs",
@@ -53,11 +56,6 @@ serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.53", features = ["macros", "rt-multi-thread"] }
 dotenvy = "0.15"
 async-trait = "0.1"
-# The session store. In-memory is correct for development and for a
-# single-process deployment that may lose sessions on restart; swap it for a
-# database- or Redis-backed `SessionStore` before running more than one
-# instance. See `bootstrap/app.rs`.
-tower-sessions-memory-store = { version = "0.15", default-features = false }
 
 [dev-dependencies]
 arcature = { version = "__ARCATURE_VERSION__", default-features = false, features = ["test-kit"] }

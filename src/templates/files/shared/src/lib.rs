@@ -93,15 +93,29 @@ async fn database_command(mode: Mode) -> Result<()> {
 
     dotenvy::dotenv().ok();
     let config = config::load()?;
+    // `arcature_sessions` is the framework's table, not one of ours, so it is
+    // not in `database::Migrator` and has its own idempotent migration. It is
+    // applied here rather than at boot for the reason `Mode` gives: a schema
+    // change that happens as a side effect of starting is a schema change
+    // every replica races to make.
+    let sessions = arcature::auth::DbSessionStore::connect_lazy(&config.database);
     let db = Db::connect(config.database).await?;
 
     match mode {
         Mode::Migrate => {
             arcature::database::migration::up::<database::Migrator>(&db).await?;
+            sessions
+                .migrate()
+                .await
+                .map_err(|e| Error::Config(e.to_string()))?;
             println!("Migrations applied.");
         }
         Mode::Fresh => {
             arcature::database::migration::fresh::<database::Migrator>(&db).await?;
+            sessions
+                .migrate()
+                .await
+                .map_err(|e| Error::Config(e.to_string()))?;
             println!("Database rebuilt from scratch.");
         }
         Mode::Reset => {
