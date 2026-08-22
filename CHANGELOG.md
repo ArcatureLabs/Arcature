@@ -901,6 +901,30 @@ therefore its first.
   use is a fresh grant. `auth-flows` now enables `signed-urls`, and not `crypt`:
   both would supply the HMAC, but only one of them also pulls an AEAD into a
   flow that encrypts nothing.
+- `auth::flows::PasswordResets`, behind the new `auth-reset` feature: reset
+  links that can be spent exactly once. Unlike the verification links above,
+  this one is stateful, and deliberately: a signed link holds no state and so
+  cannot be spent, which is fine for confirming an address and wrong for
+  granting a password change. The property that is hard to get right is
+  single-use, because the obvious implementation is not. Checking "is this
+  token live?" and then deleting it is two statements with a gap, and two
+  requests carrying the same link both pass the check before either deletes --
+  so the spend here *is* the delete, one statement whose affected-row count is
+  the compare-and-swap, and the loser of the race is told the link is gone
+  rather than handed a second password change. The delete runs only after the
+  digest comparison succeeds, which is the other half: the id is the public
+  half of the token and travels in the clear, so spending on a failed guess
+  would let anyone who has seen half a link burn every reset its owner
+  requests. The row stores a SHA-256 of the secret half and never the secret,
+  comparison is `subtle::ConstantTimeEq`, expiry is a predicate the database
+  evaluates rather than a check the caller makes afterwards, and the plaintext
+  is handed back exactly once in a type that refuses to `Clone`, prints
+  redacted, and zeroizes on drop. `subject` is an opaque string the application
+  chooses, so the store never learns what a user is, which column holds an
+  address, or whether a disabled account may be reset -- all application
+  decisions. Off by default because it needs a database; the feature adds no
+  crate to the graph. Spending a link does not sign anybody out: session
+  invalidation on a password change is a separate mechanism.
 
 ### Changed
 

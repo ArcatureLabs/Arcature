@@ -283,6 +283,32 @@ auth-flows = ["auth", "signed-urls"]
 # comes from `getrandom`, which is unconditional.
 api-tokens = ["database", "dep:sha2", "dep:subtle", "dep:zeroize"]
 
+# One-time password-reset links: a short-lived credential that is mailed once,
+# redeems once, and is stored as a digest.
+#
+# Off by default. It brings a table and a migration, and it is genuinely
+# optional even for applications that have passwords -- one whose accounts are
+# provisioned by an administrator, or that resets through a support desk, has
+# no use for it and should not carry the schema.
+#
+# It implies `auth-flows` rather than standing alone, because the flow it
+# belongs to is the one `auth-flows` already documents: a reset form must
+# answer identically for a known and an unknown address, which is
+# `CredentialChecker`'s argument applied to a different form. Splitting them
+# would let an application take the store without the reasoning that makes it
+# safe to expose.
+#
+# `database` for the same reason `api-tokens` needs it: a credential that must
+# be revocable, and must be spendable exactly once, has to live somewhere two
+# processes can agree about.
+#
+# The three crypto dependencies carry the same load they carry for
+# `api-tokens`, and the arguments are not repeated here: `dep:sha2` is what the
+# row stores instead of the secret, `dep:subtle` compares the presented digest
+# in constant time, and `dep:zeroize` wipes the single plaintext copy on drop.
+# No new crates enter the graph.
+auth-reset = ["auth-flows", "database", "dep:sha2", "dep:subtle", "dep:zeroize"]
+
 # Multi-channel notifications: one event, told to one person, over whichever
 # channels apply.
 #

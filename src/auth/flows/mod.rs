@@ -21,6 +21,12 @@
 //!   the account verifies whichever address the account holds when it is
 //!   clicked, so registering with your own address, changing it to somebody
 //!   else's, and then clicking gets you a verified address you cannot read.
+//! * `PasswordResets` -- a reset link has to be spendable exactly once, and
+//!   the obvious implementation spends it twice. Checking "is this token
+//!   valid?" and then deleting it is two statements with a gap, and two
+//!   requests carrying the same link both pass the check before either
+//!   deletes. Behind the `auth-reset` feature, which is off by default because
+//!   it needs a database.
 //!
 //! # What does not live here
 //!
@@ -29,7 +35,14 @@
 //! the part that has to be right rather than the part that has to be yours.
 
 mod credentials;
+#[cfg(feature = "auth-reset")]
+mod reset;
 mod verification;
 
 pub use credentials::{CREDENTIAL_REJECTION, CredentialChecker, CredentialOutcome};
+#[cfg(feature = "auth-reset")]
+pub use reset::{
+    IssuedPasswordReset, PasswordResetError, PasswordResets, PlaintextReset, RESET_TOKEN_PREFIX,
+    ResetPool,
+};
 pub use verification::{EmailVerification, EmailVerificationError};
