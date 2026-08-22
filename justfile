@@ -74,16 +74,16 @@ db-test:
 #                            are covered by `just drivers` instead, which
 #                            gives each a full-breadth build of its own.
 #   --exclude-all-features   `--all-features` is all three drivers at once.
-#   --depth 2                the crate has 40 features. An uncapped powerset
+#   --depth 2                the crate has 41 features. An uncapped powerset
 #                            is a six-figure number of builds -- not slow,
 #                            unrunnable, and the recipe never returned.
-#                            Depth 2 is 660, and pairwise is where
+#                            Depth 2 is 696, and pairwise is where
 #                            feature-interaction bugs actually live: a
 #                            feature that fails alone is caught by
 #                            --each-feature above, and one that fails only
 #                            in a specific trio is rare enough not to be
 #                            worth three orders of magnitude. Raise it to 3
-#                            (6,720 builds) when chasing one.
+#                            (7,277 builds) when chasing one.
 #
 # The two counts are measured, never arithmetic. cargo-hack drops a
 # combination in which one feature already enables another, so the powerset is
@@ -94,7 +94,7 @@ db-test:
 # enumerates without compiling and answers in seconds.
 
 # In CI the two lines below are separate jobs: `--each-feature` runs on every
-# pull request, the powerset runs on a nightly schedule. 660 builds is too much
+# pull request, the powerset runs on a nightly schedule. 696 builds is too much
 # to put in front of a pull request but cheap enough to run once a night.
 
 # Check every feature on its own, then all pairs. Needs cargo-hack.
@@ -114,7 +114,7 @@ features:
 drivers:
     #!/usr/bin/env bash
     set -euo pipefail
-    feats=api,api-docs,api-tokens,auth,auth-flows,auth-reset,cache,cli,crypt,database,dev-proxy,dx,events,i18n,inertia,jobs,macros,mail
+    feats=api,api-docs,api-tokens,auth,auth-flows,auth-remember,auth-reset,cache,cli,crypt,database,dev-proxy,dx,events,i18n,inertia,jobs,macros,mail
     feats=$feats,notifications,notifications-broadcast,notifications-db,notifications-queue,oauth,observe,otel,pages,realtime
     feats=$feats,session-store-db,signed-urls,storage-fs,storage-s3,templates,test-kit,uag,uploads,validation,views
     for driver in db-postgres db-sqlite db-mysql; do

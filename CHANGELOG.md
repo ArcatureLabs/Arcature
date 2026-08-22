@@ -986,6 +986,47 @@ therefore its first.
   the only thing standing between a password list and an account. The feature
   adds no dependency; `auth` already brings in `sha2`.
 
+- **Remember-me tokens that rotate on every use, behind the new `auth-remember`
+  feature.** `RememberTokens` mints a cookie made of a 16-byte series and a
+  32-byte secret, and spends the secret every time it is presented: the row
+  holds a SHA-256 of the current secret and of the one just retired, and each
+  accepted presentation writes a fresh secret and hands it back as the
+  `replacement` on `RememberOutcome::Accepted` for the caller to set. That buys
+  the property a static cookie cannot have. A copy stops working as soon as the
+  real browser makes a request, and a copy that is used *announces itself*,
+  because whichever party goes second presents a secret that has already been
+  retired twice over -- which comes back as `RememberOutcome::Theft`, with every
+  token for that subject already deleted by the time it is returned. Ending
+  their sessions and telling them are the application's half, for the reason the
+  password-reset store gives: sessions are keyed by session id and are not
+  indexed by user, so no portable statement here could reach them. A one-minute
+  grace window, adjustable with `grace` and switched off with `Duration::ZERO`,
+  keeps a browser opening twenty tabs at once from looking like a thief -- a
+  secret one rotation stale is accepted without a replacement inside the window
+  and reported as theft after it. The denial of service this accepts is real,
+  and is written down in the type's own documentation rather than left to be
+  discovered: anybody who knows a live series can sign its subject out
+  everywhere by presenting any wrong secret at all. That is inherent in
+  detecting theft, not a defect in this implementation. The rotation is a
+  compare-and-swap in a `WHERE` clause and not a read followed by a write, so
+  two requests carrying one cookie both sign in and exactly one of them rotates.
+  Both digest comparisons run on every presentation through
+  `subtle::ConstantTimeEq`, and against a 32-byte zero stand-in when nothing has
+  been retired yet, because that crate's slice comparison short-circuits on a
+  length mismatch and an empty `Vec` would leak whether a token had ever
+  rotated. SHA-256 and deliberately not Argon2: the secret is 256 bits of
+  `getrandom` output rather than something a person chose, so there is no
+  dictionary to slow down, and this digest is computed on ordinary authenticated
+  requests, where a deliberately slow hash would be a denial of service the
+  application inflicts on itself. `migrate` creates `arcature_remember_tokens`
+  on PostgreSQL, MySQL and SQLite; `sweep_expired` reclaims lapsed rows;
+  `revoke` and `revoke_all_for` sign out one device or all of them, and `revoke`
+  deliberately does not check the secret, because refusing there would make
+  sign-out fail for exactly the client most likely to be signing out because
+  something looks wrong. A stolen backup of the table signs nobody in. Off by
+  default because it needs a database, and it adds no dependency beyond what
+  `auth-flows` and `database` already bring in.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

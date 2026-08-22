@@ -33,6 +33,13 @@
 //!   requests carrying the same link both pass the check before either
 //!   deletes. Behind the `auth-reset` feature, which is off by default because
 //!   it needs a database.
+//! * `RememberTokens` -- a "stay signed in" cookie is a bearer credential
+//!   that lives for weeks, and the obvious implementation cannot tell that one
+//!   was copied. Rotating the secret on every use turns a stolen cookie into
+//!   something that both stops working and *announces itself*, because
+//!   whichever party goes second presents a secret that is already retired.
+//!   Behind the `auth-remember` feature, which is off by default because it
+//!   needs a database.
 //!
 //! # What does not live here
 //!
@@ -41,12 +48,19 @@
 //! the part that has to be right rather than the part that has to be yours.
 
 mod credentials;
+#[cfg(feature = "auth-remember")]
+mod remember;
 #[cfg(feature = "auth-reset")]
 mod reset;
 mod throttle;
 mod verification;
 
 pub use credentials::{CREDENTIAL_REJECTION, CredentialChecker, CredentialOutcome};
+#[cfg(feature = "auth-remember")]
+pub use remember::{
+    IssuedRememberToken, PlaintextRememberToken, REMEMBER_TOKEN_PREFIX, RememberOutcome,
+    RememberPool, RememberTokenError, RememberTokens,
+};
 #[cfg(feature = "auth-reset")]
 pub use reset::{
     IssuedPasswordReset, PasswordResetError, PasswordResets, PlaintextReset, RESET_TOKEN_PREFIX,

@@ -314,6 +314,27 @@ api-tokens = ["database", "dep:sha2", "dep:subtle", "dep:zeroize"]
 # No new crates enter the graph.
 auth-reset = ["auth-flows", "database", "dep:sha2", "dep:subtle", "dep:zeroize"]
 
+# Rotating remember-me tokens: the credential that signs somebody back in
+# weeks after their session cookie expired, and the theft detection that makes
+# a long-lived credential defensible.
+#
+# Off by default. It brings a table and a migration, and "stay signed in" is a
+# product decision -- an application whose sessions are meant to end when the
+# browser does should not carry the schema for one that does not.
+#
+# It implies `auth-flows` for the reason `auth-reset` does: the box on the
+# login form is part of the login form, and the store is only safe to expose
+# alongside the reasoning that governs the rest of that screen. `database`
+# because a credential that must be revocable, and that must be *detectably*
+# stolen, has to live somewhere two processes can agree about.
+#
+# The three crypto dependencies carry the same load they carry for
+# `auth-reset` and `api-tokens`, and the arguments are not repeated: `dep:sha2`
+# is what the row stores instead of the secret, `dep:subtle` compares the
+# presented digest in constant time, and `dep:zeroize` wipes the single
+# plaintext copy on drop. No new crates enter the graph.
+auth-remember = ["auth-flows", "database", "dep:sha2", "dep:subtle", "dep:zeroize"]
+
 # Multi-channel notifications: one event, told to one person, over whichever
 # channels apply.
 #
