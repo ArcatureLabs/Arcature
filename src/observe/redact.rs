@@ -14,6 +14,13 @@
 //! the same mistake, and a deny-list that only catches the spelling someone
 //! thought of is not a deny-list. False positives cost a debugging session;
 //! false negatives cost a credential.
+//!
+//! Substring matching alone is not enough, because the separator moves with
+//! the convention. An HTTP header is `x-api-key`, an OpenTelemetry attribute
+//! is `http.request.header.authorization`, a struct field is `api_key` -- one
+//! secret, three spellings, and a needle written with `_` is a substring of
+//! only the third. So `-` and `.` are folded to `_` before the test, and the
+//! list is written in one convention rather than three.
 
 /// What a redacted value is replaced with.
 ///
@@ -62,9 +69,20 @@ pub const DENY_LIST: &[&str] = &[
 /// The comparison is ASCII case-insensitive; a field name is not expected to
 /// contain non-ASCII, and folding Unicode here would only widen the surface
 /// without widening the protection.
+///
+/// `-` and `.` are folded to `_` first, so one needle covers every spelling
+/// of the same name. Every needle above uses `_`, and none contains `-` or
+/// `.`, so the fold can only ever match more -- there is no name that was
+/// redacted before this ran and is not redacted after it.
 #[must_use]
 pub fn is_sensitive(field: &str) -> bool {
-    let lowered = field.to_ascii_lowercase();
+    let lowered: String = field
+        .chars()
+        .map(|character| match character {
+            '-' | '.' => '_',
+            other => other.to_ascii_lowercase(),
+        })
+        .collect();
     DENY_LIST.iter().any(|needle| lowered.contains(needle))
 }
 
@@ -105,8 +123,41 @@ mod tests {
     }
 
     #[test]
+    fn the_same_secret_is_caught_in_every_separator_convention() {
+        // One secret spelled three ways -- header, OpenTelemetry attribute,
+        // struct field -- against a list written only in the third. Before
+        // the separators were folded, every hyphenated name here was logged
+        // in full, which is the spelling a header map actually uses.
+        for name in [
+            "x-api-key",
+            "X-Api-Key",
+            "x-session-id",
+            "x-private-key",
+            "x-pin-code",
+            "x-cache-value",
+            "http.request.header.authorization",
+            "oauth.access-token",
+        ] {
+            assert!(is_sensitive(name), "{name} should be redacted");
+        }
+    }
+
+    #[test]
     fn ordinary_field_names_pass_through() {
-        for name in ["method", "path", "status", "duration_ms", "request_id"] {
+        // The hyphenated names matter as much as the rest: folding `-` to `_`
+        // must widen what is caught without inventing a needle. `user-agent`
+        // and `content-length` belong in an access log.
+        for name in [
+            "method",
+            "path",
+            "status",
+            "duration_ms",
+            "request_id",
+            "user-agent",
+            "content-length",
+            "x-request-id",
+            "http.route",
+        ] {
             assert!(!is_sensitive(name), "{name} should not be redacted");
         }
     }

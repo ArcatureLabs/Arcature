@@ -816,6 +816,22 @@ therefore its first.
   header from an untrusted peer is ignored, so a caller cannot mint a
   fresh bucket per request.
 
+- **The redaction deny-list now catches a header's own spelling.**
+  `observe::is_sensitive` lowercased a field name and searched it for a
+  needle, and every multi-word needle is written with `_`. So `x-api-key`,
+  `x-session-id`, `x-private-key`, `x-pin-code` and `x-cache-value` matched
+  nothing and were written to the log in full -- an application that records
+  a header map field-by-field under each header's own name got no redaction
+  for precisely the headers worth redacting. `authorization` and `set-cookie`
+  escaped this only by accident, because `auth` and `cookie` carry no
+  separator. `-` and `.` are now folded to `_` before the test, which covers
+  the header spelling and the OpenTelemetry one
+  (`http.request.header.authorization`) at the same time. **This can only
+  redact more:** no needle contains `-` or `.`, so every name redacted before
+  is still redacted, and some names that were logged are now withheld. A
+  camelCase spelling of a multi-word needle (`privateKey`, `sessionId`) is
+  still missed and is pinned as such in `tests/observe_redaction.rs`.
+
 
 ### Security
 

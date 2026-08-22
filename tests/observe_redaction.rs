@@ -540,20 +540,29 @@ async fn a_secret_under_a_field_name_nobody_denied_is_logged_in_full() {
 }
 
 #[test]
-fn the_deny_list_matches_on_substrings_and_therefore_misses_hyphenated_header_names() {
-    // A consequence of the substring rule worth writing down, because it
-    // reads like a false negative and is one. `api_key` and `apikey` are
-    // both on the list; the header is spelled `x-api-key`, and neither
-    // needle is a substring of it. An application that records a header map
-    // field-by-field under the header's own name gets no redaction for that
-    // one, while `authorization` is caught by `auth`.
+fn the_deny_list_is_written_in_snake_case_and_therefore_misses_camel_case_spellings() {
+    // `-` and `.` are folded to `_` before the substring test, so the header
+    // and attribute spellings are caught. camelCase has no separator to fold:
+    // `privateKey` lowercases to `privatekey`, and the needle is
+    // `private_key`.
+    //
+    // Narrower than it looks, and worth saying why rather than leaving a
+    // reader to work it out. Only the multi-word needles are exposed --
+    // `apiKey` is still caught by `apikey`, `accessToken` by `token` -- and
+    // Rust field names are snake_case, so what is left is an application
+    // that records a JSON body's keys under the names the client chose.
     assert!(is_sensitive("x_api_key"));
     assert!(is_sensitive("apikey"));
     assert!(is_sensitive("authorization"));
     assert!(is_sensitive("set-cookie"));
+    assert!(is_sensitive("x-api-key"));
+    assert!(is_sensitive("http.request.header.authorization"));
+    assert!(is_sensitive("apiKey"));
+    assert!(is_sensitive("accessToken"));
     assert!(
-        !is_sensitive("x-api-key"),
-        "the hyphenated spelling is now covered, which is a fix -- narrow this test to \
-         whatever spelling is still missed, or delete it"
+        !is_sensitive("privateKey"),
+        "camelCase is now covered, which is a fix -- narrow this test to whatever spelling \
+         is still missed, or delete it"
     );
+    assert!(!is_sensitive("sessionId"));
 }
