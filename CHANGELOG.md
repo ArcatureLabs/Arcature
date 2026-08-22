@@ -649,6 +649,30 @@ therefore its first.
   the runner image already ships Node, and `typescript` declares no
   dependencies, so the job adds exactly one package and no new pinned action.
 
+- **The request's locale is negotiated, and it is negotiated against a
+  whitelist.** `i18n::LocaleLayer` picks one registered locale per request
+  and puts it in the request's extensions; `i18n::Locale` is the extractor
+  that reads it, and carries `translate` and `message` so a handler asks for
+  a locale rather than for a catalog and a tag. The order is an explicit
+  `?lang=` (only when the application names the parameter), then a session
+  entry (only when it names the key, and only under `auth`), then
+  `Accept-Language`, then the default -- `i18n::LocaleSource` says which one
+  answered. **A proposed tag is matched, never resolved.** It goes through
+  `LocaleId::parse` and then a lookup in `Catalogs`, and a tag that fails
+  either is discarded and the next candidate tried, so `../../etc/passwd`, a
+  NUL, a CRLF and a 64 KiB string all yield the default and none of them ever
+  becomes a `LocaleId`; nothing in `i18n` opens a file, so there is no path
+  for one to traverse in the first place. `fr-CA` falls back to a registered
+  `fr` and `pt` to a registered `pt-BR`, matched on the language subtag of an
+  already-validated identifier rather than on a prefix of the raw bytes. The
+  `Accept-Language` parse is bounded at 512 bytes and 16 candidates, honours
+  `q=0` as a refusal, and is stable so equal weights keep the client's order.
+  Responses get `Content-Language` and gain `Accept-Language` in `Vary` --
+  merged into whatever was already there, because without it a shared cache
+  serves the French page to the next English reader. A handler that asks for
+  a `Locale` on a route without the layer gets a `500` that names neither the
+  layer nor the catalog, rather than a language nobody negotiated.
+
 
 ### Changed
 

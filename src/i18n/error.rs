@@ -83,6 +83,15 @@ pub enum I18nError {
         /// for. Both come from the application's own source.
         key: String,
     },
+    /// A handler asked for the request's [`Locale`](super::Locale) on a
+    /// route that
+    /// [`LocaleLayer`](super::LocaleLayer) is not installed on.
+    ///
+    /// Wiring, not input: it is the same for every request that reaches that
+    /// route and it is fixed in one line of the router. The alternative --
+    /// negotiating a locale inside the extractor -- would answer in whatever
+    /// language a default guessed and never say the wiring was missing.
+    NotNegotiated,
     /// The message exists but could not be formatted: a placeable named an
     /// argument that was not supplied, a selector had no matching variant, a
     /// referenced term is absent.
@@ -109,6 +118,9 @@ impl fmt::Display for I18nError {
                 formatter,
                 "no message `{key}` in the `{locale}` catalog or the default one"
             ),
+            Self::NotNegotiated => {
+                formatter.write_str("no locale on this request: the route is missing `LocaleLayer`")
+            }
             Self::Format {
                 locale,
                 key,

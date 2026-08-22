@@ -271,7 +271,7 @@ pub use askama;
 #[cfg(feature = "i18n")]
 pub mod i18n;
 #[cfg(feature = "i18n")]
-pub use i18n::{Catalog, Catalogs, I18nError, LocaleId};
+pub use i18n::{Catalog, Catalogs, I18nError, Locale, LocaleId, LocaleLayer};
 
 #[cfg(feature = "cli")]
 pub mod cli;

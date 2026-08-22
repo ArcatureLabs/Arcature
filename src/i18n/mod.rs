@@ -139,19 +139,25 @@
 //! An application that turns `i18n` on takes on `self_cell`'s `unsafe`, and
 //! that is not visible in the recorded numbers.
 //!
-//! # What this module does not do
+//! # Choosing a locale for a request
 //!
-//! Locale negotiation -- deciding *which* registered locale a given request
-//! is in -- is not here. This module owns the catalogs and the whitelist;
-//! choosing from that whitelist is a separate concern with its own security
-//! properties.
+//! [`LocaleLayer`] negotiates one per request out of `Accept-Language`, an
+//! optional `?lang=` and an optional session entry, and puts the result in
+//! the request's extensions where the [`Locale`] extractor finds it.
+//!
+//! The two halves are deliberately separate. This half owns the catalogs and
+//! therefore the whitelist; `negotiate.rs` owns the only code that a
+//! request's own bytes reach, and its whole job is to turn those bytes into
+//! either a locale that is already in the whitelist or nothing at all.
 
 mod args;
 mod catalog;
 mod error;
 mod locale;
+mod negotiate;
 
 pub use args::{ArgValue, TranslationArgs};
 pub use catalog::{Catalog, Catalogs};
 pub use error::{I18nError, LocaleRejection};
 pub use locale::LocaleId;
+pub use negotiate::{Locale, LocaleLayer, LocaleMiddleware, LocaleNegotiator, LocaleSource};
