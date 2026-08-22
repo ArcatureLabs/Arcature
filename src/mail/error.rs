@@ -161,3 +161,66 @@ impl std::error::Error for EmailError {
         }
     }
 }
+
+/// Failure from building an email whose bodies come from templates.
+///
+/// A separate type rather than a new [`EmailError`] variant: `EmailError` is
+/// not `#[non_exhaustive]`, so growing it would break every downstream match.
+#[cfg(feature = "views")]
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum MailViewError {
+    /// A template failed to render.
+    Render { source: crate::view::ViewError },
+    /// The rendered halves could not be assembled into a message.
+    Build { source: EmailError },
+}
+
+#[cfg(feature = "views")]
+impl From<crate::view::ViewError> for MailViewError {
+    fn from(source: crate::view::ViewError) -> Self {
+        Self::Render { source }
+    }
+}
+
+#[cfg(feature = "views")]
+impl From<EmailError> for MailViewError {
+    fn from(source: EmailError) -> Self {
+        Self::Build { source }
+    }
+}
+
+#[cfg(feature = "views")]
+impl fmt::Display for MailViewError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Render { source } => write!(formatter, "email template failed: {source}"),
+            Self::Build { source } => write!(formatter, "email build failed: {source}"),
+        }
+    }
+}
+
+#[cfg(feature = "views")]
+impl std::error::Error for MailViewError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Render { source } => Some(source),
+            Self::Build { source } => Some(source),
+        }
+    }
+}
+
+#[cfg(feature = "views")]
+impl From<MailViewError> for crate::Error {
+    /// A render failure goes through `From<ViewError>`, which logs the askama
+    /// message and returns a constant string; the template's text must not
+    /// reach a response body by way of the mail path either. A build failure
+    /// is lettre's and carries no template detail, so it is reported as the
+    /// mail error it is.
+    fn from(error: MailViewError) -> Self {
+        match error {
+            MailViewError::Render { source } => source.into(),
+            MailViewError::Build { source } => crate::Error::Mail(source.to_string()),
+        }
+    }
+}

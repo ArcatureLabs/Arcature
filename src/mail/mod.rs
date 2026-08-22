@@ -16,6 +16,9 @@
 //!   with `from`/`to`/`cc`/`bcc`/`subject` chainers and `plain`/`html`/
 //!   `alternative`/`plain_with_attachments`/`alternative_with_attachments` body
 //!   terminators.
+//! * With the `views` feature, an `Email::templated` terminator that
+//!   renders the plain and HTML halves of one message from a pair of
+//!   compiled templates.
 //! * An [`EmailAttachment`] type with a redacting `Debug` (never body bytes).
 //! * A [`Mailable`] trait implemented by application message types.
 //! * The [`Mail`] facade: `Mail::new(mailer, from)` then
@@ -42,6 +45,8 @@ pub mod message;
 pub mod transport;
 
 pub use config::{SmtpConfig, SmtpCredentials, TlsMode};
+#[cfg(feature = "views")]
+pub use error::MailViewError;
 pub use error::{EmailError, MailConfigError, MailSendError};
 pub use message::{Email, EmailAttachment};
 pub use transport::{Mail, MailBuilder, Mailable, Mailer, hello_name, parse_mailbox};

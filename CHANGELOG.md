@@ -429,6 +429,24 @@ therefore its first.
   the template text, nor the words `template` or `askama`, nor a source
   path.
 
+- **Mail bodies can be rendered from a pair of compiled templates:
+  `Email::templated` and `Email::templated_with_attachments`, behind the
+  `views` feature.** A `multipart/alternative` mail carries the same message
+  twice, and the two copies drifting apart is the ordinary way mail
+  templating goes wrong -- the HTML half gets the new wording, the plain half
+  keeps the old, and only the readers on a text client ever see it. These
+  terminators take both templates in one call, so changing a message means
+  changing a pair. They stay two templates rather than one because askama
+  picks its escaper from the extension: the `.html` half escapes its values
+  and the `.txt` half does not, and rendering a text body through an HTML
+  template would post `&#38;` to someone reading plain text. Argument order
+  matches the existing `Email::alternative`, plain first. Failures land in a
+  new `#[non_exhaustive]` `MailViewError` rather than a new `EmailError`
+  variant, because `EmailError` is not `#[non_exhaustive]` and growing it
+  would break every downstream match; its conversion into the framework error
+  routes a render failure through `ViewError`, so the template text does not
+  reach a response body by way of the mail path either.
+
 
 ### Changed
 
