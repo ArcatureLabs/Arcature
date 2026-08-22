@@ -909,6 +909,22 @@ therefore its first.
   `tokio-native-tls` and `hyper-tls` are now denied by name, so the check
   points at the crate that made the choice.
 
+- **The observability documentation no longer overstates what the deny-list
+  covers.** `src/observe/mod.rs` said that credentials never reach "a log
+  line, a metric label, or a span attribute", and `src/observe/otel.rs` said
+  that "the same deny-list applies" to exported spans. The first clause is
+  true of the framework's own layers and the second is not true at all:
+  `redact::is_sensitive` is consulted by the JSON log layer and by nothing
+  else, so a field an application records under a deny-listed name is
+  written as `[redacted]` to the log and exported to an OTLP collector in
+  full, and a label an application chooses is rendered into the exposition
+  in full. A reader following the old wording would reasonably have put a
+  password in a span field and expected it to be redacted. The docs now say
+  which mechanism covers which destination, name the two that are
+  unenforced, and point at `tests/observe_redaction.rs`, which pins both.
+  No behaviour changed; closing the gaps means changing what `otel.rs` and
+  `metrics.rs` do, which is not a patch-release change.
+
 ### Performance
 
 - **A test now holds the frontend out of the Rust build.** A generated

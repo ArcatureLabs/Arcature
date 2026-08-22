@@ -9,9 +9,14 @@
 //! batch processor gets a chance to flush.
 //!
 //! Spans exported here carry the same field names the JSON log layer writes,
-//! and the same deny-list applies: a field the log layer redacts is a field
-//! that must not be recorded on a span either, because an OTLP collector is
-//! just another log sink with a different wire format.
+//! and the same deny-list ought to apply -- but this module does not apply
+//! it. The layer handed back by [`Telemetry::tracing_layer`] is
+//! `tracing_opentelemetry`'s, which has a field visitor of its own and never
+//! consults [`redact`](super::redact); a field the JSON layer writes as
+//! `[redacted]` is exported to the collector in full. An OTLP collector is
+//! just another log sink with a different wire format, so the rule stands --
+//! as a rule for the caller, unenforced, until the layer implements it.
+//! `tests/observe_redaction.rs` pins the current behaviour.
 //!
 //! The exporter needs a Tokio runtime to be running when it is built, since
 //! the batch processor spawns a background task. Build the pipeline inside

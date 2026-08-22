@@ -159,6 +159,15 @@ struct Registry {
 /// Cloning shares the registry, so the copy handed to a middleware and the
 /// copy handed to the `/metrics` route are the same set of counters.
 ///
+/// Label values are escaped for the exposition format and are **not**
+/// redacted: the deny-list in [`redact`](super::redact) is consulted by the
+/// JSON log layer and by nothing here. Nothing [`MetricsLayer`] writes can
+/// carry a secret, since its label values are a method, a status and a
+/// `&'static str` route, but a caller choosing its own labels is choosing
+/// what a scrape endpoint publishes. A label value is also a series
+/// dimension, so a secret used as one is usually an unbounded-cardinality
+/// bug as well.
+///
 /// ```
 /// use arcature::observe::Metrics;
 ///

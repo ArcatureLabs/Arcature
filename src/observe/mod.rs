@@ -25,7 +25,8 @@
 //! Telemetry is the most common way a secret leaves a process, so the list
 //! is written down here and enforced by [`redact::is_sensitive`], which the
 //! JSON layer consults for every field it is about to serialise. None of the
-//! following ever reaches a log line, a metric label, or a span attribute:
+//! following is ever recorded by the framework's own layers -- not in a log
+//! line, not in a metric label, not in a span attribute:
 //!
 //! - **Request and response bodies.** The access log records method, path,
 //!   status and duration; never the payload.
@@ -43,9 +44,32 @@
 //! structured fields and never format a secret into a message string.
 //! Second, [`JsonLog`] redacts by field name on the way out, so a field an
 //! application adds is covered by the same rule without the application
-//! having to remember it. What no formatter can undo is a secret a caller
-//! has already interpolated into a message; the deny-list catches the field,
-//! not the sentence.
+//! having to remember it -- in a log line. What no formatter can undo is a
+//! secret a caller has already interpolated into a message; the deny-list
+//! catches the field, not the sentence.
+//!
+//! # Where the deny-list does not reach
+//!
+//! The second mechanism is narrower than the first, and the difference is
+//! worth knowing before an application relies on it. [`JsonLog`] is the only
+//! layer that consults the deny-list. A field an application records is
+//! redacted on its way to a log line and **not** on its way anywhere else:
+//!
+//! - The layer from `Telemetry::tracing_layer` (behind the `otel` feature)
+//!   is `tracing_opentelemetry`'s, which brings its own field visitor and
+//!   copies span fields onto the exported span verbatim. A span field named
+//!   `password` is written as `[redacted]` to the log and exported to the
+//!   collector in full.
+//! - [`Metrics`] escapes label values and does not redact them. No label the
+//!   framework itself writes can carry a secret -- the values are a method,
+//!   a status and a `&'static str` route -- but an application that labels a
+//!   series of its own is unprotected.
+//!
+//! Both are pinned by `tests/observe_redaction.rs`, which asserts today's
+//! behaviour so that closing either gap is a visible change rather than a
+//! silent one. Until then, treat a span attribute and a metric label as
+//! unredacted channels: keep the value out of them, or record it as a type
+//! whose own `Debug` renders redacted.
 
 mod access_log;
 pub mod init;
