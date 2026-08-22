@@ -542,6 +542,23 @@ therefore its first.
   (`arcature_test_release` in the release workflow) and both variables are
   set.
 
+- **`KeySource::Ip` actually keys on the client.** It read
+  `ConnectInfo<SocketAddr>`, which nothing installed, so every request
+  fell into the shared `UNIDENTIFIED_KEY` bucket and IP rate limiting was
+  a no-op -- one global quota shared by every caller, which is a security
+  defect and not a missing nicety. It now reads the `ClientIp` extension,
+  falls back to `ConnectInfo`, and only then to `UNIDENTIFIED_KEY`. **This
+  changes behaviour by design:** an application using `KeySource::Ip` over
+  TCP goes from one bucket for the whole world to one bucket per client
+  address, so callers that were previously sharing an allowance now each
+  get their own -- and a limiter tuned around the collapsed behaviour will
+  admit more traffic than before. Behind a reverse proxy, set
+  `ApplicationBuilder::trusted_proxies`; without it the peer address is
+  the proxy and every client behind it still shares a bucket. A forwarded
+  header from an untrusted peer is ignored, so a caller cannot mint a
+  fresh bucket per request.
+
+
 ### Security
 
 - **`SECURITY.md` says that the largest memory-safety surface here is not

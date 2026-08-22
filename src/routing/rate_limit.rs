@@ -82,19 +82,25 @@ const SWEEP_AT: usize = 8192;
 /// What a request is bucketed by.
 #[derive(Clone)]
 pub enum KeySource {
-    /// The peer address, read from
+    /// The client address: [`ClientIp`](crate::http::ClientIp) if the serve
+    /// path resolved one, else the peer address from
     /// [`ConnectInfo`](axum::extract::ConnectInfo).
     ///
-    /// The extension is only present when the server was started with
-    /// `into_make_service_with_connect_info::<SocketAddr>()`. Without it
-    /// every request falls into the shared [`UNIDENTIFIED_KEY`] bucket, which
-    /// is safe but useless -- so check that first if a limiter seems to be
-    /// refusing far too eagerly.
+    /// The TCP serve path installs both, so this works without any setup.
+    /// `ClientIp` is preferred because it is the already-decided answer:
+    /// behind a reverse proxy the peer address is the proxy, and every
+    /// client behind it would otherwise share one bucket. What `ClientIp`
+    /// resolves to is governed by the trusted-proxy list configured with
+    /// [`trusted_proxies`](crate::application::ApplicationBuilder::trusted_proxies),
+    /// which is empty by default: a forwarding header from an untrusted hop
+    /// is client-controlled, and believing it would let a caller pick a
+    /// fresh bucket per request and turn the limiter off.
     ///
-    /// Behind a reverse proxy the peer address is the proxy. Use
-    /// [`KeySource::Header`] with whichever header the proxy is *trusted* to
-    /// set; a forwarding header from an untrusted hop is client-controlled
-    /// and turns the limiter off.
+    /// Neither extension exists on the IPC serve path -- a Unix domain
+    /// socket or a named pipe has no peer address -- nor under a server
+    /// that installs neither. There every request falls into the shared
+    /// [`UNIDENTIFIED_KEY`] bucket, which is safe but useless, so check
+    /// that first if a limiter seems to be refusing far too eagerly.
     Ip,
     /// A request header's value -- an API key, a tenant id, or a forwarding
     /// header set by a trusted proxy.
@@ -133,8 +139,14 @@ impl KeySource {
         let resolved = match self {
             Self::Ip => request
                 .extensions()
-                .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-                .map(|info| info.0.ip().to_string()),
+                .get::<crate::http::ClientIp>()
+                .map(|client| client.addr().to_string())
+                .or_else(|| {
+                    request
+                        .extensions()
+                        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                        .map(|info| info.0.ip().to_canonical().to_string())
+                }),
             Self::Header(name) => request
                 .headers()
                 .get(name)
@@ -799,5 +811,91 @@ mod tests {
             KeySource::Header(HeaderName::from_static("x-api-key")).key_for(&request),
             "abc"
         );
+    }
+
+    /// A request as the TCP serve path hands it over: a peer address, and a
+    /// `ClientIp` resolved from that peer, the headers and a trusted list.
+    fn served(peer: &str, forwarded: Option<&str>, trusted: &str) -> Request<axum::body::Body> {
+        let peer: std::net::SocketAddr = peer.parse().expect("a literal peer address");
+        let trusted: crate::http::TrustedProxies = trusted.parse().expect("a literal proxy list");
+        let mut builder = Request::builder().uri("/");
+        if let Some(forwarded) = forwarded {
+            builder = builder.header(crate::http::X_FORWARDED_FOR, forwarded);
+        }
+        let mut request = builder
+            .body(axum::body::Body::empty())
+            .expect("request builds");
+        let client = crate::http::ClientIp::resolve(peer.ip(), request.headers(), &trusted);
+        let extensions = request.extensions_mut();
+        extensions.insert(axum::extract::ConnectInfo(peer));
+        extensions.insert(client);
+        request
+    }
+
+    #[test]
+    fn two_addresses_get_two_buckets() {
+        let one = served("203.0.113.7:40000", None, "");
+        let two = served("203.0.113.8:40000", None, "");
+        assert_eq!(KeySource::Ip.key_for(&one), "203.0.113.7");
+        assert_eq!(KeySource::Ip.key_for(&two), "203.0.113.8");
+
+        // And the keys are actually separate buckets, not just separate
+        // strings: one client emptying its bucket must not refuse the other.
+        let buckets = MemoryBuckets::default();
+        let quota = RateLimit::per_second(1).quota;
+        let now = Instant::now();
+        assert!(
+            buckets
+                .check(&KeySource::Ip.key_for(&one), quota, now)
+                .allowed
+        );
+        assert!(
+            !buckets
+                .check(&KeySource::Ip.key_for(&one), quota, now)
+                .allowed
+        );
+        assert!(
+            buckets
+                .check(&KeySource::Ip.key_for(&two), quota, now)
+                .allowed
+        );
+    }
+
+    #[test]
+    fn a_forged_forwarded_header_from_an_untrusted_peer_is_ignored() {
+        // Nothing is trusted, so the client's own claim buys it nothing: it
+        // keys on the address it is actually connecting from. Were it
+        // believed, a caller could mint a fresh bucket per request.
+        let request = served("203.0.113.7:40000", Some("198.51.100.23"), "");
+        assert_eq!(KeySource::Ip.key_for(&request), "203.0.113.7");
+
+        let rotated = served("203.0.113.7:40000", Some("198.51.100.24"), "");
+        assert_eq!(
+            KeySource::Ip.key_for(&request),
+            KeySource::Ip.key_for(&rotated)
+        );
+    }
+
+    #[test]
+    fn a_forwarded_header_from_a_trusted_peer_is_believed() {
+        // The other half: behind a proxy that *is* trusted, every client
+        // would otherwise share the proxy's single bucket.
+        let request = served("10.0.0.4:40000", Some("198.51.100.23"), "10.0.0.0/8");
+        assert_eq!(KeySource::Ip.key_for(&request), "198.51.100.23");
+    }
+
+    #[test]
+    fn the_peer_address_is_the_fallback_when_nothing_resolved_a_client() {
+        // A server that installs `ConnectInfo` but no `ClientIp` still keys
+        // per peer rather than collapsing into the shared bucket.
+        let peer: std::net::SocketAddr = "203.0.113.7:40000".parse().expect("a literal address");
+        let mut request = Request::builder()
+            .uri("/")
+            .body(axum::body::Body::empty())
+            .expect("request builds");
+        request
+            .extensions_mut()
+            .insert(axum::extract::ConnectInfo(peer));
+        assert_eq!(KeySource::Ip.key_for(&request), "203.0.113.7");
     }
 }
