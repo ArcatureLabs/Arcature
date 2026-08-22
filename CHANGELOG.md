@@ -511,6 +511,16 @@ therefore its first.
   test's own SHA-256, which is pinned against the FIPS 180-4 and RFC 7636
   vectors -- a dependency not taken is a dependency nobody has to watch for
   advisories.
+- **CI runs the OAuth suite, which it never did before.** `oauth` is not a
+  default feature, so the `Test` job compiled none of `src/oauth/` and ran
+  none of its tests; the `Full features, per driver` job named the feature
+  but only `cargo check`ed it. Twenty-nine property tests and the new round
+  trip were therefore invisible on the pull-request path. A new `OAuth
+  round-trip` job builds `--no-default-features --features oauth` and runs
+  both test binaries, and the `CI success` gate requires it. It needs no
+  secret and no network -- the authorization server is an axum router on a
+  loopback port inside the test process -- so it behaves identically on a
+  pull request from a fork.
 
 
 ### Changed

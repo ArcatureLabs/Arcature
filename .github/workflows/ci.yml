@@ -246,6 +246,44 @@ jobs:
       - name: Every feature on its own
         run: cargo hack check --each-feature --no-dev-deps --features db-postgres --skip db-sqlite,db-mysql --exclude-all-features
 
+  oauth:
+    name: OAuth round-trip
+    runs-on: ubuntu-latest
+
+    # `oauth` is not a default feature, so the `Test` job above never
+    # compiles `src/oauth/` and never runs a single line of it. `drivers`
+    # names the feature but only `cargo check`s it. Until this job existed,
+    # the whole authorization code flow was covered on the pull-request path
+    # by nothing at all.
+    #
+    # It needs no secret and no network. The authorization server is an axum
+    # router the test starts on a kernel-assigned `127.0.0.1` port inside the
+    # test process, so this job behaves identically on a pull request from a
+    # fork -- which is the only kind of OAuth test worth having in CI. One
+    # that needs a real client secret is one that goes red on every outside
+    # contribution and teaches everybody to ignore it.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      # `--no-default-features` on purpose: the default set is a database, a
+      # job runner, a template engine and a CLI, none of which an OAuth flow
+      # touches. Building only what the test needs also proves the feature
+      # stands on its own, which `--features oauth` on top of the defaults
+      # would not.
+      - name: Round-trip the authorization code flow against a mock provider
+        run: cargo test --no-default-features --features oauth --test oauth_round_trip
+
+      # The property tests that were already there, on the same feature set
+      # so the build above is reused. A green round trip sitting next to a
+      # red property test would otherwise still never be seen on a pull
+      # request.
+      - name: The OAuth property tests
+        run: cargo test --no-default-features --features oauth --test oauth
+
   powerset:
     name: Feature powerset (nightly)
     runs-on: ubuntu-latest
@@ -447,6 +485,7 @@ jobs:
       - database
       - drivers
       - features
+      - oauth
       - scaffold
       - deny
       - book
