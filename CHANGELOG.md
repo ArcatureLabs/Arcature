@@ -127,6 +127,15 @@ therefore its first.
   travels beside the markup rather than inside it because only the root
   document knows where its own `<head>` element is. `RootDocument::render`
   keeps its signature and every existing closure keeps compiling.
+- **A handler can set the page head: `Inertia::with_head`.** Also
+  `Inertia::set_head` for `&mut` and branch-by-branch construction, and
+  `Inertia::head` to read back what is set. The head is rendered on a first
+  visit, where the server writes the document; an Inertia visit is JSON for a
+  client-side router that already owns the document, so a head set there is
+  inert rather than wrong. `render_page` fills in a title humanised from the
+  page contract's component name when the handler set none -- a change in the
+  `<title>` such pages emit, on the view that every route in an application
+  sharing one title is a defect, not a default.
 
 ### Deprecated
 

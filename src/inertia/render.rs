@@ -14,6 +14,7 @@ use tower::{Layer, Service};
 
 use super::config::InertiaConfig;
 use super::error::InertiaError;
+use super::head::Head;
 use super::headers::Headers;
 use super::page::{Component, Page, PageOptions};
 use super::props::Props;
@@ -22,13 +23,15 @@ use super::response::{ensure_vary_x_inertia, html, json_response, serialize};
 use crate::http::security::CspNonce;
 
 /// The Inertia adapter entry point extracted in a handler. Carries the
-/// request context, the resolved configuration, and this request's
-/// Content-Security-Policy nonce when one was minted.
+/// request context, the resolved configuration, this request's
+/// Content-Security-Policy nonce when one was minted, and the [`Head`] this
+/// response should advertise.
 #[derive(Clone)]
 pub struct Inertia {
     request: Arc<InertiaRequest>,
     config: InertiaConfig,
     nonce: Option<CspNonce>,
+    head: Option<Head>,
 }
 
 impl Inertia {
@@ -51,6 +54,84 @@ impl Inertia {
     /// [`SecurityHeaders::with_csp_nonce`]: crate::http::security::SecurityHeaders::with_csp_nonce
     pub fn nonce(&self) -> Option<&CspNonce> {
         self.nonce.as_ref()
+    }
+
+    /// The [`Head`] this response will advertise, if one is set.
+    ///
+    /// `None` until a handler calls [`with_head`](Self::with_head) or
+    /// [`set_head`](Self::set_head), except on the
+    /// [`render_page`](Self::render_page) path, which fills a default in from
+    /// the page contract.
+    #[must_use]
+    pub fn head(&self) -> Option<&Head> {
+        self.head.as_ref()
+    }
+
+    /// Set the [`Head`] for this response and return the extractor, for the
+    /// usual `inertia.with_head(...).render(...)` chain.
+    ///
+    /// The head reaches the root document on the first-visit HTML render. An
+    /// Inertia visit is JSON handled by the client-side router, which owns the
+    /// document by then, so the head is simply not part of that response --
+    /// setting one is never wrong, it is just inert there.
+    ///
+    /// Escaping already happened: every `Head` setter escapes what it stores,
+    /// so a title straight out of the database is safe here.
+    ///
+    /// ```
+    /// use arcature::axum::body::{Body, to_bytes};
+    /// use arcature::axum::http::Request;
+    /// use arcature::axum::routing::get;
+    /// use arcature::axum::Router;
+    /// use arcature::inertia::{Head, Inertia, InertiaConfig, InertiaLayer, ScriptBody};
+    /// use tower::ServiceExt as _;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let config = InertiaConfig::versionless(|body: ScriptBody| {
+    ///     let head = body.head().map(Head::to_html).unwrap_or_default();
+    ///     format!("<!doctype html><html><head>{head}</head><body>{body}</body></html>")
+    /// });
+    ///
+    /// let app = Router::new()
+    ///     .route(
+    ///         "/posts/1",
+    ///         get(|inertia: Inertia| async move {
+    ///             let head = Head::new()
+    ///                 .with_title("How we shipped it")
+    ///                 .with_description("A short account of a long week.")
+    ///                 .with_og_image("https://example.com/og/1.png");
+    ///             inertia
+    ///                 .with_head(head)
+    ///                 .render("posts/show", arcature::serde_json::json!({}))
+    ///                 .await
+    ///                 .unwrap()
+    ///         }),
+    ///     )
+    ///     .layer(InertiaLayer::new(config));
+    ///
+    /// let response = app
+    ///     .oneshot(Request::get("/posts/1").body(Body::empty()).unwrap())
+    ///     .await
+    ///     .unwrap();
+    /// let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    /// let html = String::from_utf8(bytes.to_vec()).unwrap();
+    ///
+    /// // In the bytes, before a single line of JavaScript runs.
+    /// assert!(html.contains("<title>How we shipped it</title>"), "{html}");
+    /// assert!(html.contains(r#"property="og:title""#), "{html}");
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_head(mut self, head: Head) -> Self {
+        self.head = Some(head);
+        self
+    }
+
+    /// Set the [`Head`] in place, for a handler holding `&mut Inertia` or
+    /// building one up across branches.
+    pub fn set_head(&mut self, head: Head) {
+        self.head = Some(head);
     }
 
     /// Render a page from any serializable props. The normal path: serializes
@@ -85,7 +166,20 @@ impl Inertia {
     where
         P: crate::inertia::contracts::ClientData,
     {
-        self.render(contract.name(), props).await
+        let name = contract.name();
+        if self.head.is_some() {
+            return self.render(name, props).await;
+        }
+        // A contract knows its component name, which is the only thing about
+        // the page the framework can honestly title. One title shared by every
+        // route is a real defect in search results, and a humanised component
+        // name beats it; a handler that cares sets its own head and this never
+        // runs.
+        let default = Head::for_component(name);
+        if default.is_empty() {
+            return self.render(name, props).await;
+        }
+        self.clone().with_head(default).render(name, props).await
     }
 
     /// Render with page-level options (history flags, flash data).
@@ -145,7 +239,13 @@ impl Inertia {
             let json = serialize(&page)?;
             Ok(json_response(json, status))
         } else {
-            html(&page, &self.config, self.nonce.clone(), None, status)
+            html(
+                &page,
+                &self.config,
+                self.nonce.clone(),
+                self.head.clone(),
+                status,
+            )
         }
     }
 
@@ -186,6 +286,7 @@ where
             request,
             config,
             nonce,
+            head: None,
         })
     }
 }
@@ -298,6 +399,7 @@ async fn render_pending(
         request: Arc::new(request.clone()),
         config: config.clone(),
         nonce,
+        head: None,
     };
     let mut rendered = match inertia.render(component, props).await {
         Ok(rendered) => rendered,
@@ -452,10 +554,139 @@ mod tests {
             request: Arc::new(request),
             config: config(Some("v1")),
             nonce: None,
+            head: None,
         }
         .render_advanced_with_options("users/index", Props::new(), options)
         .await
         .expect("render succeeds")
+    }
+
+    /// A root document that emits whatever head it is handed, so a test can
+    /// see what actually reached it.
+    fn head_echoing_config() -> InertiaConfig {
+        InertiaConfig::versionless(|body: super::super::config::ScriptBody| {
+            let head = body.head().map(Head::to_html).unwrap_or_default();
+            format!("<!doctype html><html><head>{head}</head><body>{body}</body></html>")
+        })
+    }
+
+    fn browser_get() -> InertiaRequest {
+        request(Method::GET, &[])
+    }
+
+    fn extractor(config: InertiaConfig, request: InertiaRequest) -> Inertia {
+        Inertia {
+            request: Arc::new(request),
+            config,
+            nonce: None,
+            head: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_head_a_handler_set_reaches_the_root_document() {
+        let response = extractor(head_echoing_config(), browser_get())
+            .with_head(Head::new().with_title("Quarterly report"))
+            .render_advanced("reports/show", Props::new())
+            .await
+            .expect("render succeeds");
+        let body = body_of(response).await;
+        assert!(body.contains("<title>Quarterly report</title>"), "{body}");
+        assert!(body.contains("property=\"og:title\""), "{body}");
+    }
+
+    #[tokio::test]
+    async fn a_hostile_title_reaches_the_browser_escaped() {
+        // A page title is routinely a database row. If the escape were the
+        // renderer's job instead of the setter's, this is the render that
+        // would ship stored XSS.
+        let response = extractor(head_echoing_config(), browser_get())
+            .with_head(Head::new().with_title("<script>alert(1)</script>"))
+            .render_advanced("reports/show", Props::new())
+            .await
+            .expect("render succeeds");
+        let body = body_of(response).await;
+        assert!(!body.contains("<script>alert(1)</script>"), "{body}");
+        assert!(
+            body.contains("<title>&lt;script&gt;alert(1)&lt;/script&gt;</title>"),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_handler_that_sets_no_head_renders_exactly_what_it_did_before() {
+        let response = extractor(head_echoing_config(), browser_get())
+            .render_advanced("reports/show", Props::new())
+            .await
+            .expect("render succeeds");
+        let body = body_of(response).await;
+        assert!(body.contains("<head></head>"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn a_head_is_not_part_of_an_inertia_visit() {
+        // The client-side router owns the document by then; the head would be
+        // a field the protocol has no place for.
+        let response = extractor(head_echoing_config(), inertia_get())
+            .with_head(Head::new().with_title("Quarterly report"))
+            .render_advanced("reports/show", Props::new())
+            .await
+            .expect("render succeeds");
+        let body = body_of(response).await;
+        assert!(!body.contains("Quarterly report"), "{body}");
+        let page: serde_json::Value = serde_json::from_str(&body).expect("json page");
+        assert_eq!(page["component"], "reports/show");
+    }
+
+    #[test]
+    fn set_head_and_with_head_agree() {
+        let mut inertia = extractor(head_echoing_config(), browser_get());
+        assert!(inertia.head().is_none());
+        inertia.set_head(Head::new().with_title("Home"));
+        assert_eq!(inertia.head().and_then(Head::title), Some("Home"));
+
+        let chained = extractor(head_echoing_config(), browser_get())
+            .with_head(Head::new().with_title("Home"));
+        assert_eq!(chained.head(), inertia.head());
+    }
+
+    #[tokio::test]
+    async fn render_page_titles_a_page_from_its_contract_when_the_handler_did_not() {
+        // Not a guess at the page's subject -- just better than every route in
+        // the application sharing one title, which is a real search defect.
+        let response = extractor(head_echoing_config(), browser_get())
+            .render_page(
+                crate::inertia::contracts::PageContract::<Report>::new("reports/quarterly-report"),
+                Report {},
+            )
+            .await
+            .expect("render succeeds");
+        let body = body_of(response).await;
+        assert!(body.contains("<title>Quarterly Report</title>"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn a_head_the_handler_set_beats_the_contract_default() {
+        let response = extractor(head_echoing_config(), browser_get())
+            .with_head(Head::new().with_title("Q3, in full"))
+            .render_page(
+                crate::inertia::contracts::PageContract::<Report>::new("reports/quarterly-report"),
+                Report {},
+            )
+            .await
+            .expect("render succeeds");
+        let body = body_of(response).await;
+        assert!(body.contains("<title>Q3, in full</title>"), "{body}");
+        assert!(!body.contains("Quarterly Report"), "{body}");
+    }
+
+    #[derive(serde::Serialize)]
+    struct Report {}
+
+    impl crate::inertia::contracts::ClientData for Report {
+        fn exposure_schema() -> crate::inertia::contracts::PropsSchema {
+            crate::inertia::contracts::PropsSchema::new()
+        }
     }
 
     async fn body_of(response: Response) -> String {
@@ -513,6 +744,7 @@ mod tests {
             request: Arc::new(inertia_get()),
             config: config(None),
             nonce: None,
+            head: None,
         }
         .render_advanced("users/index", Props::new())
         .await
