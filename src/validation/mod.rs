@@ -11,6 +11,9 @@
 //! * [`rejection`] -- maps Axum extractor rejections (`JsonRejection`,
 //!   `QueryRejection`, `FormRejection`, `PathRejection`) to
 //!   [`Problem`](crate::Problem).
+//! * `upload` (feature `uploads`) -- the `UploadedFile` extractor, which
+//!   bounds, sanitizes and content-checks one uploaded file before a handler
+//!   is called.
 //!
 //! ## Validation is the trust boundary
 //!
@@ -24,12 +27,18 @@
 pub mod errors;
 pub mod extractor;
 pub mod rejection;
+#[cfg(feature = "uploads")]
+pub mod upload;
 
 pub use errors::{validate_or_problem, validation_problem};
 pub use extractor::{ValidatedForm, ValidatedJson, ValidatedPath, ValidatedQuery};
+#[cfg(feature = "uploads")]
+pub use rejection::from_multipart_rejection;
 pub use rejection::{
     from_form_rejection, from_json_rejection, from_path_rejection, from_query_rejection,
 };
+#[cfg(feature = "uploads")]
+pub use upload::{UPLOAD_FIELD, UploadPolicy, UploadedFile};
 
 /// A request body that has passed validation.
 ///

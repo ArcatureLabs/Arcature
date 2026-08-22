@@ -12,6 +12,8 @@
 //! code that already owns the rejection (server-side), never in the response
 //! body.
 
+#[cfg(feature = "uploads")]
+use axum::extract::multipart::MultipartRejection;
 use axum::extract::rejection::{FormRejection, JsonRejection, PathRejection, QueryRejection};
 
 use crate::api::{Problem, ProblemKind};
@@ -79,5 +81,26 @@ pub fn from_form_rejection(rejection: &FormRejection) -> Problem {
             Problem::of(ProblemKind::PayloadTooLarge).with_detail("Form body could not be read")
         }
         _ => Problem::of(ProblemKind::BadRequest).with_detail("Form body is malformed"),
+    }
+}
+
+/// Map a multipart rejection to a [`Problem`].
+///
+/// This is the rejection axum raises *before* any part is read -- the request
+/// was not a `multipart/form-data` body it could start parsing. Failures
+/// during the body, including every bound in
+/// [`MultipartLimits`](crate::http::MultipartLimits), are
+/// [`MultipartError`](crate::http::MultipartError)'s to report, not this
+/// one's.
+#[cfg(feature = "uploads")]
+#[must_use]
+pub fn from_multipart_rejection(rejection: &MultipartRejection) -> Problem {
+    match rejection {
+        MultipartRejection::InvalidBoundary(_) => Problem::of(ProblemKind::UnsupportedMediaType)
+            .with_detail("Request body must be multipart/form-data with a boundary"),
+        // `MultipartRejection` is `#[non_exhaustive]`; a future axum variant
+        // maps to a generic bad request.
+        _ => Problem::of(ProblemKind::BadRequest)
+            .with_detail("Request body could not be read as multipart/form-data"),
     }
 }

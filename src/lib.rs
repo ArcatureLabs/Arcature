@@ -162,6 +162,8 @@ pub use validation::{
 pub use validation::rejection::{
     from_form_rejection, from_json_rejection, from_path_rejection, from_query_rejection,
 };
+#[cfg(feature = "uploads")]
+pub use validation::{UPLOAD_FIELD, UploadPolicy, UploadedFile, from_multipart_rejection};
 #[cfg(feature = "validation")]
 pub use validator;
 

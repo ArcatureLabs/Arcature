@@ -282,6 +282,25 @@ therefore its first.
   emitted twice per RFC 6266, quoted ASCII plus an RFC 5987
   `filename*=UTF-8''`, because `báo-cáo.pdf` is not representable in the
   first form and silently mangling it is worse than sending both.
+- **An uploaded-file extractor, `validation::upload::UploadedFile` (feature
+  `uploads`).** An upload endpoint has to get five separate things right --
+  bounds, a whitelisted extension, a sanitized filename, bytes that match
+  that extension, and a rejection that does not quote the request back --
+  and the failure mode of forgetting any one of them is a stored file that
+  is not what it looks like. `UploadedFile` makes all five a condition of
+  extraction, so a handler that compiles has them, and it reports every
+  refusal as an RFC 9457 problem through `validation_problem` under a fixed
+  `file` key -- never the part's own name, never the filename, and never the
+  sniffed type, which would turn the endpoint into a free file-type oracle.
+  `UploadPolicy` is the per-route `tower::Layer` carrying the whitelist and,
+  optionally, the required part name; a route that forgot the layer gets the
+  image whitelist rather than "anything goes", exactly as a route that forgot
+  `MultipartLimits` still runs bounded. `from_multipart_rejection` joins its
+  siblings in `validation::rejection`. This extractor buffers the part, and
+  says so: an extractor completes before the handler runs, so it has nowhere
+  to put the bytes but memory, bounded by `MultipartLimits::field_bytes`. It
+  is the convenience for avatars; `BoundedMultipart` plus `UploadWriter`
+  stays the load-bearing path for anything larger.
 
 
 ### Changed
