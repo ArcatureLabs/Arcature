@@ -29,3 +29,8 @@ dist/
 /arcature_test_*.db
 /arcature_test_*.db-wal
 /arcature_test_*.db-shm
+
+# Agent worktrees. `git worktree add .claude/worktrees/<name>` puts a whole
+# checkout in here, and an unignored one turns `git add -A` into a commit
+# containing a gitlink to a branch that exists on nobody else's machine.
+/.claude/
