@@ -32,6 +32,15 @@ pub struct Inertia {
     config: InertiaConfig,
     nonce: Option<CspNonce>,
     head: Option<Head>,
+    /// The locale
+    /// [`LocaleLayer`](crate::i18n::LocaleLayer) negotiated for this request,
+    /// when the application installed it.
+    ///
+    /// `None` is the ordinary state, not a failure: an application that has
+    /// not enabled `i18n` cannot reach this field at all, and one that has
+    /// may still not have put the layer in front of this route.
+    #[cfg(feature = "i18n")]
+    locale: Option<crate::i18n::Locale>,
 }
 
 impl Inertia {
@@ -54,6 +63,17 @@ impl Inertia {
     /// [`SecurityHeaders::with_csp_nonce`]: crate::http::security::SecurityHeaders::with_csp_nonce
     pub fn nonce(&self) -> Option<&CspNonce> {
         self.nonce.as_ref()
+    }
+
+    /// The locale negotiated for this request, if
+    /// [`LocaleLayer`](crate::i18n::LocaleLayer) is installed.
+    ///
+    /// The same value the renderer puts in the `locale` prop, for a handler
+    /// that wants to translate something itself before it renders.
+    #[cfg(feature = "i18n")]
+    #[must_use]
+    pub fn locale(&self) -> Option<&crate::i18n::Locale> {
+        self.locale.as_ref()
     }
 
     /// The [`Head`] this response will advertise, if one is set.
@@ -224,9 +244,21 @@ impl Inertia {
         let status = options.resolved_status();
         let mut metadata = resolved.metadata;
         metadata.apply_options(options);
+        #[cfg(not(feature = "i18n"))]
+        let props = resolved.props;
+        #[cfg(feature = "i18n")]
+        let props = {
+            let mut props = resolved.props;
+            add_locale_prop(
+                &mut props,
+                self.locale.as_ref(),
+                self.request.partial_for(component.as_str()).as_ref(),
+            );
+            props
+        };
         let page = Page {
             component: component.to_string(),
-            props: serde_json::Value::Object(resolved.props),
+            props: serde_json::Value::Object(props),
             url: self.request.url().to_string(),
             version: self.config.version().map(|v| v.as_str().to_string()),
             metadata,
@@ -282,11 +314,19 @@ where
         // long before this extractor runs. Absent whenever the application did
         // not ask for a nonce, which is the common case.
         let nonce = parts.extensions.get::<CspNonce>().cloned();
+        // Put there by `LocaleLayer`, wherever the application installed it.
+        // An extractor runs after every layer on the route, so this sees the
+        // locale regardless of where in the stack the layer sits -- unlike
+        // the deferred-render path in the middleware below.
+        #[cfg(feature = "i18n")]
+        let locale = parts.extensions.get::<crate::i18n::Locale>().cloned();
         Ok(Inertia {
             request,
             config,
             nonce,
             head: None,
+            #[cfg(feature = "i18n")]
+            locale,
         })
     }
 }
@@ -361,6 +401,13 @@ where
         // after the request has been consumed, so the value has to be taken
         // out while the parts are still in hand.
         let nonce = parts.extensions.get::<CspNonce>().cloned();
+        // Same reason, and the same timing caveat: this reads what is in the
+        // extensions *when this layer runs*, so a deferred `Page<T>` sees the
+        // locale only when `LocaleLayer` is installed outside `InertiaLayer`.
+        // The `Inertia` extractor has no such constraint. A missing locale
+        // costs the deferred page its `locale` prop and nothing else.
+        #[cfg(feature = "i18n")]
+        let locale = parts.extensions.get::<crate::i18n::Locale>().cloned();
         req = Request::from_parts(parts, body);
 
         let mut inner = self.inner.clone();
@@ -371,10 +418,85 @@ where
             // This is the first point that holds both halves. It must happen
             // before `post_process`, whose empty-body rule would otherwise
             // read the placeholder as "handler returned nothing".
-            let resp = render_pending(resp, &request_context, &config, nonce).await;
+            let resp = render_pending(
+                resp,
+                &request_context,
+                &config,
+                nonce,
+                #[cfg(feature = "i18n")]
+                locale,
+            )
+            .await;
             Ok(post_process(resp, &request_context))
         })
     }
+}
+
+/// The name of the prop the negotiated locale is published under.
+#[cfg(feature = "i18n")]
+const LOCALE_PROP: &str = "locale";
+
+/// Publish the negotiated locale to the client as a `locale` prop.
+///
+/// Three rules, and each of them is a rule about *not* acting:
+///
+/// * **A prop the application defined wins.** An application that already
+///   shares a `locale` -- with a different shape, from a user record, from
+///   somewhere this layer has never heard of -- keeps it. A framework that
+///   silently overwrote it would break a working page on a feature flag.
+/// * **A partial reload sends only what it asked for.** `locale` goes out on
+///   a full visit, and on a partial one only when the client named it in
+///   `X-Inertia-Partial-Data`. Adding an unrequested prop to a partial
+///   response is exactly the payload growth partial reloads exist to avoid.
+/// * **No layer, no prop.** Nothing is invented when the locale is `None`;
+///   the page renders as it did before, which is what keeps this additive.
+///
+/// The value is an object rather than a bare string because a language
+/// switcher needs the list to switch between, and because an object leaves
+/// room to grow without changing the shape a client already destructures.
+#[cfg(feature = "i18n")]
+fn add_locale_prop(
+    props: &mut serde_json::Map<String, serde_json::Value>,
+    locale: Option<&crate::i18n::Locale>,
+    partial: Option<&super::request::PartialSelection>,
+) {
+    use crate::i18n::LocaleSource;
+
+    let Some(locale) = locale else {
+        return;
+    };
+    if props.contains_key(LOCALE_PROP) {
+        return;
+    }
+    if let Some(partial) = partial
+        && !partial.only.iter().any(|key| &**key == LOCALE_PROP)
+    {
+        return;
+    }
+
+    let source = match locale.source() {
+        LocaleSource::Url => "url",
+        LocaleSource::Session => "session",
+        LocaleSource::Header => "header",
+        // `LocaleSource` is `#[non_exhaustive]`, so a variant added upstream
+        // has to land somewhere. "default" is the honest answer for "not one
+        // of the explicit choices above" and keeps the prop's shape stable.
+        _ => "default",
+    };
+    let available: Vec<serde_json::Value> = locale
+        .catalogs()
+        .locales()
+        .map(|id| serde_json::Value::String(id.as_str().to_owned()))
+        .collect();
+
+    props.insert(
+        LOCALE_PROP.to_owned(),
+        serde_json::json!({
+            "id": locale.id().as_str(),
+            "source": source,
+            "available": available,
+        }),
+    );
 }
 
 /// Perform a render a `Page<T>` deferred to this layer, if there is one.
@@ -387,6 +509,7 @@ async fn render_pending(
     request: &InertiaRequest,
     config: &InertiaConfig,
     nonce: Option<CspNonce>,
+    #[cfg(feature = "i18n")] locale: Option<crate::i18n::Locale>,
 ) -> Response {
     let Some(pending) = resp
         .extensions_mut()
@@ -400,6 +523,8 @@ async fn render_pending(
         config: config.clone(),
         nonce,
         head: None,
+        #[cfg(feature = "i18n")]
+        locale,
     };
     let mut rendered = match inertia.render(component, props).await {
         Ok(rendered) => rendered,
@@ -555,6 +680,8 @@ mod tests {
             config: config(Some("v1")),
             nonce: None,
             head: None,
+            #[cfg(feature = "i18n")]
+            locale: None,
         }
         .render_advanced_with_options("users/index", Props::new(), options)
         .await
@@ -580,6 +707,8 @@ mod tests {
             config,
             nonce: None,
             head: None,
+            #[cfg(feature = "i18n")]
+            locale: None,
         }
     }
 
@@ -745,6 +874,8 @@ mod tests {
             config: config(None),
             nonce: None,
             head: None,
+            #[cfg(feature = "i18n")]
+            locale: None,
         }
         .render_advanced("users/index", Props::new())
         .await
@@ -920,5 +1051,136 @@ mod tests {
         headers.insert(REFERER, HeaderValue::from_static("/back"));
         let parsed = InertiaRequest::parse(&headers, &Method::GET, &Uri::from_static("/users"));
         assert_eq!(parsed.referer(), Some("/back"));
+    }
+
+    // --- The `locale` prop --------------------------------------------------
+
+    #[cfg(feature = "i18n")]
+    mod locale_prop {
+        use super::*;
+        use serde_json::Value;
+
+        use crate::i18n::{Catalog, Catalogs, Locale, LocaleId, LocaleNegotiator};
+
+        fn locale() -> Locale {
+            let catalogs = Catalogs::new(
+                Catalog::parse(LocaleId::parse("en").unwrap(), "hi = Hello").unwrap(),
+            )
+            .with(Catalog::parse(LocaleId::parse("fr").unwrap(), "hi = Bonjour").unwrap());
+            LocaleNegotiator::new(catalogs).resolve(None, None, Some("fr"))
+        }
+
+        async fn page(request: InertiaRequest, locale: Option<Locale>, props: Props) -> Value {
+            let response = Inertia {
+                request: Arc::new(request),
+                config: config(Some("v1")),
+                nonce: None,
+                head: None,
+                locale,
+            }
+            .render_advanced("users/index", props)
+            .await
+            .expect("render succeeds");
+            serde_json::from_str(&body_of(response).await).expect("json page")
+        }
+
+        #[tokio::test]
+        async fn the_negotiated_locale_reaches_the_client() {
+            let page = page(inertia_get(), Some(locale()), Props::new()).await;
+            assert_eq!(page["props"]["locale"]["id"], "fr");
+            assert_eq!(page["props"]["locale"]["source"], "header");
+            assert_eq!(
+                page["props"]["locale"]["available"],
+                serde_json::json!(["en", "fr"])
+            );
+        }
+
+        /// The additive half: no layer, no prop, and a page that rendered
+        /// before renders identically.
+        #[tokio::test]
+        async fn without_the_layer_there_is_no_locale_prop() {
+            let page = page(inertia_get(), None, Props::new()).await;
+            assert!(page["props"].get("locale").is_none(), "{page}");
+        }
+
+        /// An application that already shares a `locale` keeps its own shape.
+        /// Overwriting it would break a working page on a feature flag.
+        #[tokio::test]
+        async fn a_prop_the_application_set_wins() {
+            let props = Props::new().with("locale", super::super::super::props::eager("klingon"));
+            let page = page(inertia_get(), Some(locale()), props).await;
+            assert_eq!(page["props"]["locale"], "klingon");
+        }
+
+        /// A partial reload sends what the client asked for and nothing else;
+        /// an unrequested prop is the payload growth partial reloads exist to
+        /// avoid.
+        #[tokio::test]
+        async fn a_partial_reload_does_not_get_an_unrequested_locale() {
+            let partial = request(
+                Method::GET,
+                &[
+                    ("x-inertia", "true"),
+                    ("x-inertia-partial-component", "users/index"),
+                    ("x-inertia-partial-data", "users"),
+                ],
+            );
+            let page = page(partial, Some(locale()), Props::new()).await;
+            assert!(page["props"].get("locale").is_none(), "{page}");
+        }
+
+        #[tokio::test]
+        async fn a_partial_reload_that_asks_for_the_locale_gets_it() {
+            let partial = request(
+                Method::GET,
+                &[
+                    ("x-inertia", "true"),
+                    ("x-inertia-partial-component", "users/index"),
+                    ("x-inertia-partial-data", "locale"),
+                ],
+            );
+            let page = page(partial, Some(locale()), Props::new()).await;
+            assert_eq!(page["props"]["locale"]["id"], "fr");
+        }
+
+        /// The extractor picks the locale up wherever the layer sits, because
+        /// an extractor runs after every layer on the route.
+        #[tokio::test]
+        async fn the_extractor_reads_the_locale_out_of_the_extensions() {
+            use axum::Router;
+            use axum::routing::get;
+            use tower::ServiceExt as _;
+
+            let app: Router = Router::new()
+                .route(
+                    "/users",
+                    get(|inertia: Inertia| async move {
+                        inertia
+                            .render("users/index", serde_json::json!({}))
+                            .await
+                            .unwrap()
+                    }),
+                )
+                .layer(crate::i18n::LocaleLayer::new(LocaleNegotiator::new(
+                    Catalogs::new(
+                        Catalog::parse(LocaleId::parse("fr").unwrap(), "hi = Bonjour").unwrap(),
+                    ),
+                )))
+                .layer(InertiaLayer::new(config(Some("v1"))));
+
+            let response = app
+                .oneshot(
+                    Request::get("/users")
+                        .header("x-inertia", "true")
+                        .header("x-inertia-version", "v1")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            let page: Value = serde_json::from_str(&body_of(response).await).expect("json page");
+            assert_eq!(page["props"]["locale"]["id"], "fr");
+        }
     }
 }

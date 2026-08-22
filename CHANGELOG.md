@@ -673,6 +673,25 @@ therefore its first.
   a `Locale` on a route without the layer gets a `500` that names neither the
   layer nor the catalog, rather than a language nobody negotiated.
 
+- **The active locale reaches Inertia props and askama views.** With `i18n`
+  on and `LocaleLayer` installed, every Inertia page gains a `locale` prop --
+  `{ id, source, available }`, an object rather than a bare string because a
+  language switcher needs the list to switch between -- and `Inertia::locale`
+  hands a handler the same value for translating something itself. Three
+  things it deliberately does not do: it never overwrites a `locale` prop the
+  application already shares, it sends nothing on a partial reload that did
+  not name `locale` in `X-Inertia-Partial-Data`, and it invents nothing when
+  no layer negotiated one. On the view side, `View::in_locale` declares the
+  language a view was rendered in and sends `Content-Language`; the framework
+  does not infer it, because a compiled template carries no language and the
+  locale the request *asked* for is not a claim about the bytes in the
+  response. Translation itself stays in the template -- give the template
+  struct a `Locale` field and call it -- rather than arriving as a `t("key")`
+  filter, which would be exactly the runtime lookup askama was chosen to
+  avoid. All of it is gated on `i18n`: an application that has not enabled
+  the feature cannot reach any of these names, and its pages and views render
+  byte for byte as before.
+
 
 ### Changed
 

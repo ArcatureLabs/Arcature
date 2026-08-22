@@ -112,6 +112,15 @@ pub struct View<T> {
     template: T,
     status: axum::http::StatusCode,
     content_type: axum::http::HeaderValue,
+    /// The `Content-Language` this view will send, if
+    /// [`in_locale`](View::in_locale) was called.
+    ///
+    /// Not derived from the template and not derived from the request: a
+    /// compiled template says nothing about what language it is in, and the
+    /// language the response *was rendered in* is the handler's answer, not
+    /// the browser's question.
+    #[cfg(feature = "i18n")]
+    content_language: Option<axum::http::HeaderValue>,
 }
 
 impl<T> View<T> {
@@ -131,6 +140,8 @@ impl<T> View<T> {
             template,
             status: axum::http::StatusCode::OK,
             content_type: axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
+            #[cfg(feature = "i18n")]
+            content_language: None,
         }
     }
 

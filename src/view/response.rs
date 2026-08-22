@@ -94,6 +94,73 @@ impl<T> View<T> {
         self.content_type = content_type;
         self
     }
+
+    /// Declare the language this view was rendered in, sending
+    /// `Content-Language`.
+    ///
+    /// The framework does not infer this. A compiled template carries no
+    /// language -- askama resolved it to `write!` calls -- and the locale
+    /// [`LocaleLayer`](crate::i18n::LocaleLayer) negotiated is what the
+    /// request *asked* for, which is not the same claim as what the bytes in
+    /// this response are actually in. A handler that renders a French
+    /// template says so here; one that renders a template it did not
+    /// translate says nothing, which is better than an untrue header.
+    ///
+    /// Translation itself stays in the template, where askama already has
+    /// it: give the template struct a [`Locale`](crate::i18n::Locale) field
+    /// and call it. There is no filter and no `{{ t("key") }}` syntax here,
+    /// because adding one would mean a lookup the compiler cannot check --
+    /// the opposite of the reason this module exists.
+    ///
+    /// ```
+    /// use arcature::i18n::{Catalog, Catalogs, LocaleId, LocaleNegotiator};
+    /// use arcature::prelude::*;
+    /// use arcature::view::{Template, view};
+    ///
+    /// #[derive(Template)]
+    /// #[template(
+    ///     source = "<h1>{{ locale.message(\"hi\").unwrap_or_default() }}</h1>",
+    ///     ext = "html",
+    ///     askama = arcature::askama
+    /// )]
+    /// struct Greeting {
+    ///     locale: arcature::i18n::Locale,
+    /// }
+    ///
+    /// let catalogs = Catalogs::new(
+    ///     Catalog::parse(LocaleId::parse("fr").unwrap(), "hi = Bonjour").unwrap(),
+    /// );
+    /// let locale = LocaleNegotiator::new(catalogs).fallback();
+    ///
+    /// let response = view(Greeting { locale: locale.clone() })
+    ///     .in_locale(&locale)
+    ///     .into_response();
+    ///
+    /// assert_eq!(response.headers()["content-language"], "fr");
+    /// ```
+    #[cfg(feature = "i18n")]
+    #[must_use]
+    pub fn in_locale(mut self, locale: &crate::i18n::Locale) -> Self {
+        // A `LocaleId` is a canonical BCP-47 tag -- ASCII alphanumerics and
+        // dashes -- so this never fails. The fallible constructor is used
+        // anyway rather than asserting that from a distance.
+        self.content_language = HeaderValue::from_str(locale.id().as_str()).ok();
+        self
+    }
+}
+
+/// Attach the `Content-Language` a handler declared, if it declared one.
+///
+/// A free function rather than three lines inline, so the non-`i18n` build
+/// does not need a `mut` binding it never mutates.
+#[cfg(feature = "i18n")]
+fn with_content_language(mut response: Response, language: Option<HeaderValue>) -> Response {
+    if let Some(language) = language {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_LANGUAGE, language);
+    }
+    response
 }
 
 /// Render the view, or answer a failure with a `500` that says nothing.
@@ -118,13 +185,20 @@ impl<T> View<T> {
 /// ```
 impl<T: Template> IntoResponse for View<T> {
     fn into_response(self) -> Response {
+        #[cfg(feature = "i18n")]
+        let content_language = self.content_language.clone();
         match self.template.render() {
-            Ok(body) => (
-                self.status,
-                [(header::CONTENT_TYPE, self.content_type)],
-                Body::from(body),
-            )
-                .into_response(),
+            Ok(body) => {
+                let response = (
+                    self.status,
+                    [(header::CONTENT_TYPE, self.content_type)],
+                    Body::from(body),
+                )
+                    .into_response();
+                #[cfg(feature = "i18n")]
+                let response = with_content_language(response, content_language);
+                response
+            }
             // `From<ViewError> for Error` is where the detail is logged and
             // dropped; going through it keeps that decision in one place
             // instead of two that can drift apart.
@@ -176,6 +250,55 @@ mod tests {
             response.headers()[header::CONTENT_TYPE],
             "application/xhtml+xml"
         );
+    }
+
+    /// The additive half: a view that says nothing about its language sends
+    /// no `Content-Language`, in every build.
+    #[tokio::test]
+    async fn a_view_declares_no_language_by_default() {
+        let response = view(Page { value: "hello" }).into_response();
+        assert!(!response.headers().contains_key(header::CONTENT_LANGUAGE));
+    }
+
+    #[cfg(feature = "i18n")]
+    #[tokio::test]
+    async fn a_view_that_declares_a_locale_says_so_in_the_headers() {
+        use crate::i18n::{Catalog, Catalogs, LocaleId, LocaleNegotiator};
+
+        let catalogs =
+            Catalogs::new(Catalog::parse(LocaleId::parse("pt-BR").unwrap(), "hi = Ola").unwrap());
+        let locale = LocaleNegotiator::new(catalogs).fallback();
+
+        let response = view(Page { value: "ola" })
+            .in_locale(&locale)
+            .into_response();
+
+        assert_eq!(response.headers()[header::CONTENT_LANGUAGE], "pt-BR");
+        // And it did not disturb what the view already sent.
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+    }
+
+    /// A render failure is a `500` that says nothing, and a declared language
+    /// does not survive onto it: the body is the framework's error document,
+    /// not the page that failed.
+    #[cfg(feature = "i18n")]
+    #[tokio::test]
+    async fn a_failed_render_does_not_claim_a_language() {
+        use crate::i18n::{Catalog, Catalogs, LocaleId, LocaleNegotiator};
+
+        let catalogs =
+            Catalogs::new(Catalog::parse(LocaleId::parse("fr").unwrap(), "hi = Salut").unwrap());
+        let locale = LocaleNegotiator::new(catalogs).fallback();
+
+        let response = view(Unformattable::default())
+            .in_locale(&locale)
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(!response.headers().contains_key(header::CONTENT_LANGUAGE));
     }
 
     /// The point of the whole module: a render failure tells the client
