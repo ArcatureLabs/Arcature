@@ -329,6 +329,52 @@ jobs:
       - name: Prove redaction holds across logs, spans and metrics
         run: cargo test --no-default-features --features otel --test observe_redaction
 
+  optional:
+    name: Off-by-default features
+    runs-on: ubuntu-latest
+
+    # The `oauth` and `telemetry` jobs each closed this gap for one feature.
+    # Five more had it, and the arithmetic is worse for them: `crypt`,
+    # `signed-urls`, `uploads`, `views` and `i18n` carry roughly 150 tests
+    # between them and not one ran on the pull-request path. `Test` builds
+    # the default set, which contains none of the five. `drivers` names all
+    # of them, but `cargo check --all-targets` compiles a test target without
+    # running it, so a test that compiles and then fails its assertion is
+    # indistinguishable there from one that passes.
+    #
+    # The tests this was hiding are the ones least affordable to lose. They
+    # are the adversarial half of three security features: an upload named
+    # `../../etc/passwd`, `CON.txt` or `a\0b`, a `.php` renamed `.jpg` and
+    # caught on its magic bytes, a signed URL with one byte changed, a
+    # ciphertext with one byte changed, and twenty-one hostile locale strings
+    # that must all fail to select anything. Every one of them asserts that
+    # something is *rejected*, which is exactly the kind of assertion that
+    # rots silently: the feature keeps working for the well-behaved input
+    # that everyone tries by hand.
+    #
+    # One job rather than five, on one feature set rather than five minimal
+    # ones. `oauth` and `telemetry` each build `--no-default-features` to
+    # prove the feature stands alone, which is worth a job apiece for two
+    # subsystems that genuinely have no business touching a database. These
+    # five are the ordinary case, `cargo hack --each-feature` already proves
+    # each one compiles by itself, and five near-cold builds to re-prove it
+    # would cost more runner time than the whole rest of this workflow.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      # `--no-fail-fast` for the reason given in `Test`, and it bites harder
+      # here: this is the only place these five suites run at all, so a stop
+      # at the first failure leaves four of them unreported with nowhere else
+      # to catch them. The doctests come along with it -- `i18n` alone adds
+      # seventeen, and a doctest is the one kind of example that goes stale
+      # without anybody editing it.
+      - name: Test the features the default set leaves out
+        run: cargo test --no-fail-fast --features crypt,signed-urls,uploads,views,i18n
+
   typescript:
     name: Generated TypeScript
     runs-on: ubuntu-latest
@@ -577,6 +623,7 @@ jobs:
       - features
       - oauth
       - telemetry
+      - optional
       - typescript
       - scaffold
       - deny

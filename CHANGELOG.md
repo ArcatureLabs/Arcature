@@ -943,6 +943,25 @@ therefore its first.
   alphabetically later than a suite already red looks free until the day the
   first one goes green.
 
+- **The five off-by-default features are tested on the pull-request path.**
+  `crypt`, `signed-urls`, `uploads`, `views` and `i18n` carry roughly 150
+  tests between them and CI ran none of them. The `Test` job builds the
+  default feature set, which contains none of the five; the `drivers` job
+  names all five but runs `cargo check --all-targets`, which compiles a test
+  target without executing it, so a failing assertion and a passing one look
+  identical there. The `oauth` and `telemetry` jobs had already closed the
+  same gap for two features apiece; a new `Off-by-default features` job
+  closes it for the rest, and `CI success` requires it.
+
+  What was uncovered is the adversarial half of three security features: an
+  upload named `../../etc/passwd`, `CON.txt` or `a\0b`, a `.php` renamed
+  `.jpg` and caught on its magic bytes, a signed URL and a ciphertext each
+  with one byte changed, and twenty-one hostile locale strings that must all
+  fail to select anything. Every one asserts that something is *rejected*,
+  which is the kind of assertion that rots without anyone noticing, because
+  the feature goes on working for the well-behaved input a person tries by
+  hand.
+
 ### Security
 
 - **Tampering with a token or a signed URL is proven to fail, one byte at a
