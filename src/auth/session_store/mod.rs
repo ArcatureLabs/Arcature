@@ -9,11 +9,15 @@
 //!
 //! Behind the `session-store-db` feature, which is off by default.
 //!
-//! ```ignore
+//! ```no_run
+//! use arcature::DatabaseConfig;
 //! use arcature::auth::session_store::DbSessionStore;
 //!
-//! let store = DbSessionStore::connect_lazy(&config.database);
+//! # async fn example(database: DatabaseConfig) -> Result<(), Box<dyn std::error::Error>> {
+//! let store = DbSessionStore::connect_lazy(&database);
 //! store.migrate().await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Two decisions worth knowing about

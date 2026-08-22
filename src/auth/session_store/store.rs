@@ -54,16 +54,24 @@ const CONNECTION_CEILING: u32 = 4;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```no_run
+/// use arcature::auth::SessionConfig;
 /// use arcature::auth::session_store::DbSessionStore;
+/// use arcature::{Application, DatabaseConfig};
 ///
-/// let store = DbSessionStore::connect_lazy(&config.database);
+/// # async fn example(
+/// #     database: DatabaseConfig,
+/// #     session_config: SessionConfig,
+/// # ) -> Result<(), Box<dyn std::error::Error>> {
+/// let store = DbSessionStore::connect_lazy(&database);
 /// store.migrate().await?;
 ///
-/// let application = Application::new()
-///     .database(config.database)
+/// let application: Application = Application::new()
+///     .database(database)
 ///     .session(session_config, store)?
 ///     .build();
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone, Debug)]
 #[non_exhaustive]
