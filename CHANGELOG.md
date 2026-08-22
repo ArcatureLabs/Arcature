@@ -285,6 +285,22 @@ therefore its first.
 
 ### Security
 
+- **`SECURITY.md` says that the largest memory-safety surface here is not
+  Rust.** `cargo geiger` counts `unsafe` in Rust, so the baseline it produces
+  is silent about C and assembly reached through FFI -- and the biggest such
+  body in this tree is AWS-LC, vendored by `aws-lc-sys`, which `aws-lc-rs`
+  builds. The manifest selects it deliberately at two sites (`sqlx` with
+  `tls-rustls-aws-lc-rs`, `lettre` with `aws-lc-rs`); both crates also offer
+  `ring`. Version `0.44.0` carries 414 C files, 270 headers and 941 assembly
+  files across all targets, and on `x86_64-pc-windows-msvc` compiles to 254
+  objects in a 16 MB static library that is linked into every binary reaching
+  a database over TLS, sending mail, or making an outbound HTTPS request --
+  which is the default feature set. The new section states plainly that
+  "Arcature is pure Rust" is therefore false, gives the reasoning for
+  choosing AWS-LC over `ring` so a future reader can disagree with an
+  argument instead of guessing there was one, and records the consequence: a
+  CVE in AWS-LC is an Arcature security release.
+
 - **The dependency tree's `unsafe` is counted and recorded.**
   `#![forbid(unsafe_code)]` covered the crate and said nothing about the 359
   crates under it, which is where the `unsafe` actually is.

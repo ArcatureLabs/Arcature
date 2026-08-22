@@ -283,6 +283,61 @@ Three caveats on reading the file:
   no `unsafe`, and the counts confirm it, but nothing currently stops one
   from being added.
 
+### The largest single piece of it is not Rust, and `cargo geiger` cannot see it
+
+`cargo geiger` counts `unsafe` in Rust. The biggest memory-safety surface in
+this tree is not written in Rust at all, so it appears in the table above only
+as the handful of `unsafe extern` declarations that reach it.
+
+TLS resolves to rustls, and rustls needs a cryptographic provider. This
+manifest names one explicitly, twice:
+
+- `sqlx` with `tls-rustls-aws-lc-rs` (`Cargo.toml`)
+- `lettre` with `aws-lc-rs` (`Cargo.toml`)
+
+Both crates also offer a `ring` provider, so this is a decision that was made
+rather than a default that was inherited. `aws-lc-rs` builds `aws-lc-sys`,
+which vendors AWS-LC -- a fork of BoringSSL. Version `0.44.0` of that crate
+carries, across all the targets it supports:
+
+| | Files | Lines |
+|---|---|---|
+| C | 414 | 145,513 |
+| C headers | 270 | 156,427 |
+| Assembly (`.S`) | 902 | 1,044,806 |
+| Assembly (`.asm`, MASM/NASM) | 39 | 87,956 |
+
+Only the subset for the host target is compiled. On
+`x86_64-pc-windows-msvc`, which is what `unsafe-baseline.txt` was recorded on,
+that subset is 254 object files linked into a 16 MB static library, and that
+library is linked into every Arcature binary that talks to a database over
+TLS, sends mail, or makes an outbound HTTPS request. It enters through
+`database` + any `db-*` driver, through `mail`, and through `reqwest` under
+`oauth` and `storage-s3` -- which is to say, through the default feature set.
+
+**So the claim "Arcature is pure Rust" is false, and this file will not make
+it.** `#![forbid(unsafe_code)]` is true of `arcature`. It says nothing about a
+C library an order of magnitude larger than the framework, sitting in the path
+of every TLS handshake.
+
+Why the choice is nonetheless the defensible one, stated so that a future
+reader can disagree with the reasoning rather than guess at it:
+
+- There is no production-grade pure-Rust TLS provider. The choice is not
+  between C and no C; it is between AWS-LC and `ring`, which is itself
+  BoringSSL-derived C and assembly. `ring` is smaller, which is a real
+  argument in its favour and the one to revisit if this is ever reopened.
+- AWS-LC is continuously fuzzed, has a funded security team, ships CVE
+  advisories on a schedule, and holds FIPS 140-3 validation. `ring`'s
+  maintenance has been intermittent.
+- rustls upstream made `aws-lc-rs` its default provider for those reasons.
+  Choosing it keeps this tree on the path that receives upstream's attention.
+
+What follows from writing it down: a CVE in AWS-LC is an Arcature security
+release, not an upstream problem someone else will notice. `cargo audit` runs
+daily and covers `aws-lc-sys` like any other crate, and that is the control
+this section exists to point at.
+
 [`cargo-geiger`]: https://github.com/geiger-rs/cargo-geiger
 
 ## What Arcature does not claim
