@@ -1027,6 +1027,33 @@ therefore its first.
   default because it needs a database, and it adds no dependency beyond what
   `auth-flows` and `database` already bring in.
 
+- **`auth::flows::PasswordConfirmation` asks for the password again before
+  something irreversible, and can go stale.** A session is a bearer credential
+  that outlives the moment it was created, and the person holding it is not
+  always the person who signed in; an unlocked laptop and a lifted cookie end
+  in the same place. `record_verified` stores *when* a signed-in user re-proved
+  their password and *who* they were, and `state` answers `Fresh { remaining }`
+  or `Stale`. Three things follow from storing a timestamp and a subject rather
+  than a flag. A boolean never expires, so one confirmation on Monday would
+  cover every irreversible action until the session ended. A confirmation that
+  does not name who made it is inherited by whoever holds the session next,
+  which is what a sign-out that regenerates the id without clearing the data
+  leaves behind. And reading the state never rewrites the timestamp, so the
+  deadline is measured from the confirmation and cannot be slid forward by
+  using the account -- a sensitive window that renews itself on every sensitive
+  action is one that never closes. `state` returns no `Result` on purpose:
+  never confirmed, expired, confirmed by somebody else, and a stored value left
+  by an older shape of the record all have one correct response, which is to
+  ask again, and a store that has gone away therefore denies sensitive actions
+  rather than waving them through. The window is fifteen minutes by default,
+  compared exclusively, so `Duration::ZERO` means "ask every time"; time comes
+  from the same injectable `crypt::Clock` the signed-URL machinery uses, and a
+  record stamped in the future reads as stale rather than as confirmed just
+  now. Deliberately not a `tower::Layer`, for the reason `LoginThrottle` is
+  not: the check needs the signed-in subject, which the application resolves.
+  Under the existing `auth-flows` feature with no new flag and no new
+  dependency, since it needs neither a database nor a hash.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

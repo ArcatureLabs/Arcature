@@ -27,6 +27,13 @@
 //!   the actual attack, which is one guess each against ten thousand
 //!   different accounts; counting them per account *only* also hands anybody
 //!   a way to lock anybody else out.
+//! * [`PasswordConfirmation`] -- asking for the password again before
+//!   something irreversible only means anything if it can go stale, and the
+//!   obvious implementation cannot. A boolean in the session says a password
+//!   was proved at some point and never says when, so one confirmation covers
+//!   every irreversible action for as long as the session lives; and a
+//!   confirmation that does not name who made it is inherited by whoever holds
+//!   the session next.
 //! * `PasswordResets` -- a reset link has to be spendable exactly once, and
 //!   the obvious implementation spends it twice. Checking "is this token
 //!   valid?" and then deleting it is two statements with a gap, and two
@@ -47,6 +54,7 @@
 //! Those are the application's, and `arc new` scaffolds them. This module is
 //! the part that has to be right rather than the part that has to be yours.
 
+mod confirm;
 mod credentials;
 #[cfg(feature = "auth-remember")]
 mod remember;
@@ -55,6 +63,7 @@ mod reset;
 mod throttle;
 mod verification;
 
+pub use confirm::{CONFIRMATION_SESSION_KEY, ConfirmationState, PasswordConfirmation};
 pub use credentials::{CREDENTIAL_REJECTION, CredentialChecker, CredentialOutcome};
 #[cfg(feature = "auth-remember")]
 pub use remember::{
