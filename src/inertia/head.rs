@@ -351,7 +351,7 @@ fn push_element(out: &mut String, element: &str) {
 /// wrong. `'` is escaped even though every attribute this module writes is
 /// double-quoted, so a value that reaches a hand-written single-quoted
 /// attribute in an application's own root document is still safe.
-fn escape(raw: &str) -> String {
+pub(crate) fn escape(raw: &str) -> String {
     if raw
         .bytes()
         .all(|b| b != b'&' && b != b'<' && b != b'>' && b != b'"' && b != b'\'')

@@ -4,7 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::error::InertiaError;
-use super::head::Head;
+use super::head::{Head, escape};
 use super::props::SharedProps;
 use crate::http::security::CspNonce;
 
@@ -300,6 +300,29 @@ impl InertiaConfig {
     }
 }
 
+/// The `<head>` metadata both stock root documents emit: the page's [`Head`]
+/// when a handler set one, and the application title on its own when nobody
+/// did.
+///
+/// The application title is the fallback for the page title, never a prefix
+/// for it. A document title is what a search result and a browser tab show,
+/// and `Acme -- Acme` or a 90-character concatenation helps neither; an
+/// application that wants a suffix builds it into the head it sets.
+///
+/// The fallback is escaped here even though it comes from the application
+/// rather than from a request. It costs nothing on the ordinary title, and
+/// the alternative is a rule that holds only until someone passes a
+/// configuration value through.
+fn head_markup(head: Option<&Head>, title: &str) -> String {
+    match head {
+        // Byte-for-byte what this document emitted before heads existed,
+        // apart from the escape.
+        None => format!("<title>{}</title>", escape(title)),
+        Some(head) if head.title().is_some() => head.to_html(),
+        Some(head) => head.clone().with_title(title).to_html(),
+    }
+}
+
 /// A minimal root document that references fixed asset paths.
 ///
 /// Kept for applications with no build step, where `public/css/app.css` and
@@ -317,10 +340,13 @@ pub fn default_root_document(title: &str) -> impl RootDocument + use<> {
         // `script-src 'nonce-X'` policy that this document did not satisfy
         // would render the page blank rather than merely unstyled.
         let nonce = body.nonce_attribute();
+        // Rendered into the bytes the server sends, because a link-preview
+        // scraper reads those bytes and runs none of the JavaScript below.
+        let head = head_markup(body.head(), &title);
         format!(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
              <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
-             <title>{title}</title>\n  <link{nonce} rel=\"stylesheet\" href=\"/css/app.css\" />\n</head>\n\
+             {head}\n  <link{nonce} rel=\"stylesheet\" href=\"/css/app.css\" />\n</head>\n\
              <body>\n  {body}\n  <script{nonce} type=\"module\" src=\"/js/app.js\"></script>\n</body>\n</html>"
         )
     }
@@ -363,17 +389,166 @@ pub fn vite_root_document(
     let dev = assets.is_dev();
     move |body: ScriptBody| {
         let nonce = body.nonce().map(CspNonce::as_str);
-        let head = crate::assets::style_tags(
+        let styles = crate::assets::style_tags(
             resolved.as_ref().map(|r| r.css.as_slice()).unwrap_or(&[]),
             nonce,
         );
         let scripts =
             crate::assets::script_tags(resolved.as_ref().map(|r| r.js.as_str()), dev, nonce);
+        // Before the bundle, before hydration: the only version of this page
+        // a scraper will ever see.
+        let head = head_markup(body.head(), &title);
         format!(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
              <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
-             <title>{title}</title>\n  {head}\n</head>\n\
+             {head}\n  {styles}\n</head>\n\
              <body>\n  {body}\n  {scripts}\n</body>\n</html>"
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::assets::{Assets, AssetsConfig};
+
+    /// A body with the mount point a real render would carry, and whatever
+    /// head the case under test is about.
+    fn body(head: Option<Head>) -> ScriptBody {
+        ScriptBody::from_escaped(Arc::from("<div id=\"app\"></div>"), None, head)
+    }
+
+    /// The Vite document in development mode, which resolves an entry to its
+    /// own source path without touching a manifest on disk.
+    fn vite(title: &str) -> impl RootDocument + use<> {
+        vite_root_document(
+            title,
+            &Assets::dev(&AssetsConfig::new()),
+            "resources/js/app.tsx",
+        )
+    }
+
+    #[test]
+    fn the_default_document_without_a_head_is_the_document_it_always_was() {
+        let html = default_root_document("Acme").render(body(None));
+
+        assert_eq!(
+            html,
+            "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
+             <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
+             <title>Acme</title>\n  <link rel=\"stylesheet\" href=\"/css/app.css\" />\n</head>\n\
+             <body>\n  <div id=\"app\"></div>\n  \
+             <script type=\"module\" src=\"/js/app.js\"></script>\n</body>\n</html>"
+        );
+    }
+
+    #[test]
+    fn the_vite_document_without_a_head_is_the_document_it_always_was() {
+        let html = vite("Acme").render(body(None));
+
+        assert_eq!(
+            html,
+            "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  \
+             <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \
+             <title>Acme</title>\n  \n</head>\n\
+             <body>\n  <div id=\"app\"></div>\n  \
+             <script type=\"module\" src=\"/@vite/client\"></script>\n  \
+             <script type=\"module\" src=\"/resources/js/app.tsx\"></script>\n</body>\n</html>"
+        );
+    }
+
+    #[test]
+    fn a_head_with_a_title_replaces_the_application_title() {
+        let head = Head::new()
+            .with_title("Ada Lovelace")
+            .with_description("Notes on the Analytical Engine.");
+
+        for html in [
+            default_root_document("Acme").render(body(Some(head.clone()))),
+            vite("Acme").render(body(Some(head.clone()))),
+        ] {
+            assert!(html.contains("<title>Ada Lovelace</title>"), "{html}");
+            assert!(
+                html.contains(
+                    "<meta name=\"description\" \
+                     content=\"Notes on the Analytical Engine.\" />"
+                ),
+                "{html}"
+            );
+            // The application title is a fallback, not a prefix or a suffix:
+            // when the page says what it is, the application name is gone.
+            assert!(!html.contains("Acme"), "{html}");
+        }
+    }
+
+    #[test]
+    fn a_head_without_a_title_borrows_the_application_title() {
+        let head = Head::new().with_og_image("https://example.com/og.png");
+
+        for html in [
+            default_root_document("Acme").render(body(Some(head.clone()))),
+            vite("Acme").render(body(Some(head.clone()))),
+        ] {
+            assert!(html.contains("<title>Acme</title>"), "{html}");
+            // Filled in as the title proper, so everything that falls back to
+            // the title -- `og:title` here -- gets it too. A preview with an
+            // image and no title is the failure this whole path exists to
+            // prevent.
+            assert!(
+                html.contains("<meta property=\"og:title\" content=\"Acme\" />"),
+                "{html}"
+            );
+            assert!(
+                html.contains(
+                    "<meta property=\"og:image\" content=\"https://example.com/og.png\" />"
+                ),
+                "{html}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_hostile_application_title_cannot_open_a_tag_in_either_document() {
+        let hostile = "<script>alert(1)</script>";
+
+        for html in [
+            default_root_document(hostile).render(body(None)),
+            vite(hostile).render(body(None)),
+            // Also on the fallback path, where the configured title is
+            // escaped by the same helper before it becomes a `Head` title.
+            default_root_document(hostile).render(body(Some(Head::new()))),
+            vite(hostile).render(body(Some(Head::new()))),
+        ] {
+            assert!(
+                html.contains("<title>&lt;script&gt;alert(1)&lt;/script&gt;</title>"),
+                "{html}"
+            );
+            assert!(!html.contains("<script>alert(1)"), "{html}");
+        }
+    }
+
+    #[test]
+    fn a_hostile_page_title_cannot_open_a_tag_in_either_document() {
+        let head = Head::new().with_title("<script>alert(1)</script>");
+
+        for html in [
+            default_root_document("Acme").render(body(Some(head.clone()))),
+            vite("Acme").render(body(Some(head.clone()))),
+        ] {
+            assert!(
+                html.contains("<title>&lt;script&gt;alert(1)&lt;/script&gt;</title>"),
+                "{html}"
+            );
+            // Escaped in the `content="..."` attribute `og:title` falls back
+            // into, not only in the element text.
+            assert!(
+                html.contains(
+                    "<meta property=\"og:title\" \
+                     content=\"&lt;script&gt;alert(1)&lt;/script&gt;\" />"
+                ),
+                "{html}"
+            );
+            assert!(!html.contains("<script>alert(1)"), "{html}");
+        }
     }
 }

@@ -136,6 +136,15 @@ therefore its first.
   page contract's component name when the handler set none -- a change in the
   `<title>` such pages emit, on the view that every route in an application
   sharing one title is a defect, not a default.
+- **The stock root documents emit the page head.** `default_root_document`
+  and `vite_root_document` write the `Head` a handler set into the `<head>`
+  they build, so a scaffolded application gets a server-rendered `<title>`,
+  meta description and `og:` tags without hand-writing a root document. The
+  application title passed to either function is the *fallback* for the page
+  title, never a prefix for it -- a page that says what it is says it alone --
+  and it is escaped on the way out even though it comes from configuration.
+  A page with no head renders exactly the document these functions rendered
+  before.
 
 ### Deprecated
 
