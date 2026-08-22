@@ -323,6 +323,51 @@ jobs:
       - name: Prove redaction holds across logs, spans and metrics
         run: cargo test --no-default-features --features otel --test observe_redaction
 
+  typescript:
+    name: Generated TypeScript
+    runs-on: ubuntu-latest
+
+    # `uag` is in the default set (`cli` pulls it), so `Test` already builds
+    # and runs `tests/uag_typescript.rs`. It passes there without proving
+    # anything: three of its six tests need a TypeScript compiler, find none,
+    # and return early. A test that skips is indistinguishable from a test
+    # that passes in the summary line, so the proof needs a job that is
+    # guaranteed to have the compiler -- and that goes red rather than quiet
+    # if it ever stops having one.
+    #
+    # The self-skip is deliberate and stays: `docs/decisions/0001-no-npm-
+    # package.md` means a contributor gets no npm install from this repo, and
+    # a suite that cannot be run without one would be a suite nobody runs.
+    # Local is opt-in via ARCATURE_TSC; CI is where it is mandatory.
+    #
+    # No `actions/setup-node`: the runner image ships Node, and an action not
+    # added is a pinned SHA not maintained and a supply chain not widened.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      # Pinned, and one package: `typescript` declares no dependencies, so
+      # this adds exactly what it names. The version is pinned because the
+      # test asserts the diagnostic *code* tsc raises for each rejected
+      # snippet -- TS2353 for an excess property, TS2322 for a mistyped one --
+      # and those are the difference between "the mistake was caught" and
+      # "something went wrong". A floating version would let that drift into
+      # a red build nobody asked for.
+      - name: Install the TypeScript compiler
+        run: npm install --no-save --no-audit --no-fund typescript@5.9.3
+
+      # Set explicitly rather than leaning on the test's own search for a
+      # vendored `node_modules`. When ARCATURE_TSC is set the test asserts
+      # the compiler runs; when it is unset a wrong path is a silent skip,
+      # which is the exact failure this job exists to rule out.
+      - name: Type-check the generated route table
+        env:
+          ARCATURE_TSC: ${{ github.workspace }}/node_modules/typescript/bin/tsc
+        run: cargo test --features uag --test uag_typescript
+
   powerset:
     name: Feature powerset (nightly)
     runs-on: ubuntu-latest
@@ -526,6 +571,7 @@ jobs:
       - features
       - oauth
       - telemetry
+      - typescript
       - scaffold
       - deny
       - book

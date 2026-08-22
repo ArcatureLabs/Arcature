@@ -613,6 +613,18 @@ therefore its first.
   means this repo installs nothing on a contributor's behalf -- so point
   `ARCATURE_TSC` at a `tsc` to run it locally.
 
+- **CI type-checks the generated TypeScript.** Unlike the OAuth and telemetry
+  jobs above, this gap was not that the tests never ran -- `uag` is in the
+  default set, since `cli` pulls it, so the `Test` job already built and ran
+  `tests/uag_typescript.rs` and reported it passing. It passed by skipping:
+  no TypeScript compiler on the runner, three of the six tests return early,
+  and a skip and a pass are the same line in the summary. A new `Generated
+  TypeScript` job installs a pinned `typescript` and points `ARCATURE_TSC` at
+  it, which turns a missing compiler from a quiet skip into a failed
+  assertion, and the `CI success` gate requires it. No `actions/setup-node`:
+  the runner image already ships Node, and `typescript` declares no
+  dependencies, so the job adds exactly one package and no new pinned action.
+
 
 ### Changed
 
