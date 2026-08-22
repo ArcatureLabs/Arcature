@@ -19,7 +19,7 @@
 #     1.6.x for Go and 2.4.x for JavaScript. In CodeQL's own versioning that
 #     is a query pack that has not declared itself stable, and the security
 #     query set behind it is correspondingly thin.
-#   * And the Rust extractor builds the crate. This workspace has 32 features
+#   * And the Rust extractor builds the crate. This workspace has 34 features
 #     and three mutually exclusive SQL drivers -- `--all-features` never
 #     compiles here, which is the whole reason ci.yml has separate `drivers`
 #     and `features` jobs. A CodeQL Rust build would have to pick one driver
