@@ -414,3 +414,49 @@ fn the_crate_name_and_binary_are_named_after_the_destination_directory() {
     let main = read(&target, "src/main.rs");
     assert!(main.contains("sub_app::run("), "{main}");
 }
+
+#[test]
+fn a_frontend_change_cannot_reach_the_rust_build() {
+    // `arc dev` refuses to run Cargo for a `.tsx`, `.css` or `.vue` save --
+    // Vite has already handled it -- and `src/cli/commands/dev/watch.rs`
+    // tests that refusal. This is the other half of the same property, and
+    // the half a template edit could break silently: even if something did
+    // ask Cargo to build, no frontend file may be an input to that build.
+    //
+    // There are two ways a non-Rust file becomes a rebuild trigger. A build
+    // script re-runs whenever anything it declares changes, and the
+    // `include_*!` family records the file it reads in rustc's dep-info. A
+    // generated project uses neither, so the frontend and the Rust build are
+    // disjoint by construction rather than by convention.
+    for stack in Stack::ALL {
+        for database in Database::ALL {
+            let label = format!("{}-{}", stack.as_str(), database.as_str());
+            let scratch = Scratch::new(&label);
+            let target = scratch.join("demo");
+            generate(&target, stack, database).expect("generated");
+
+            let manifest = read(&target, "Cargo.toml");
+            assert!(
+                !manifest.contains("build ="),
+                "{label}: the manifest names a build script"
+            );
+
+            for (path, contents) in walk(&target) {
+                assert!(
+                    !path.ends_with("build.rs"),
+                    "{label}: {path} is a build script, which re-runs on every build"
+                );
+                if !path.ends_with(".rs") {
+                    continue;
+                }
+                for embed in ["include_str!", "include_bytes!", "include_dir!"] {
+                    assert!(
+                        !contents.contains(embed),
+                        "{label}: {path} uses {embed}, which makes the file it reads \
+                         an input to the Rust build"
+                    );
+                }
+            }
+        }
+    }
+}

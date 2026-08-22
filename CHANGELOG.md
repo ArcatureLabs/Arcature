@@ -341,6 +341,14 @@ therefore its first.
 
 ### Performance
 
+- **A test now holds the frontend out of the Rust build.** A generated
+  project has no build script and no `include_str!`, `include_bytes!` or
+  `include_dir!` in any `.rs` file, which are the only two ways a `.tsx`,
+  `.css` or `.vue` file can become an input to a Cargo rebuild. That was
+  already true and is now asserted, across all nine stack and driver
+  combinations. `arc dev`'s watcher had the matching test on its side --
+  it refuses to run Cargo for a frontend save at all -- but nothing stopped
+  a future template from quietly reintroducing the dependency underneath it.
 - **A generated application no longer carries its dependencies' debug
   information.** `[profile.dev.package."*"]` in the scaffold adds
   `debug = false`, and a new `[profile.dev.build-override]` does the same for
