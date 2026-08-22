@@ -579,6 +579,19 @@ therefore its first.
   channels are non-empty before searching them, so an absence can never
   pass by capturing nothing.
 
+- **CI runs the telemetry suite, which it never did before.** `otel` is not
+  a default feature, so the `Test` job compiled none of
+  `src/observe/otel.rs`; `Each feature alone` built the feature without
+  running a test, and `Full features, per driver` only `cargo check`ed it.
+  The OTLP round trip and the end-to-end redaction proof were therefore
+  invisible on the pull-request path. A new `Telemetry round-trip` job
+  builds `--no-default-features --features otel` and runs both binaries,
+  and the `CI success` gate requires it. Like the OAuth job it needs no
+  secret and no network -- the collector is a gRPC server on a loopback
+  port inside the test process -- so it behaves identically on a pull
+  request from a fork. `observe_prometheus` is deliberately not in it:
+  `observe` is a default feature, so that binary already runs in `Test`.
+
 
 ### Changed
 

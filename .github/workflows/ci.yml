@@ -284,6 +284,45 @@ jobs:
       - name: The OAuth property tests
         run: cargo test --no-default-features --features oauth --test oauth
 
+  telemetry:
+    name: Telemetry round-trip
+    runs-on: ubuntu-latest
+
+    # Same gap as `oauth`, one feature over. `otel` is not in the default
+    # set, so the `Test` job compiles none of `src/observe/otel.rs` and runs
+    # neither the OTLP export tests nor the end-to-end redaction proof --
+    # which is the suite that asserts what a request's secrets do and do not
+    # do on their way to a collector. `features` builds the feature alone but
+    # runs no test, and `drivers` only `cargo check`s it.
+    #
+    # `observe_prometheus` is deliberately not listed here: `observe` is a
+    # default feature, so that binary already runs in `Test` on both toolchain
+    # rows. Running it again would buy nothing but minutes.
+    #
+    # No secret and no network. The collector is a `tonic` gRPC server the
+    # test binds to a kernel-assigned `127.0.0.1` port in its own process, so
+    # this job behaves identically on a pull request from a fork.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      # `--no-default-features` for the same reason as the job above: a
+      # database, a job runner and a template engine have nothing to do with
+      # an OTLP exporter, and building without them proves `otel` stands on
+      # its own rather than leaning on something the default set drags in.
+      - name: Export spans to a collector and check the trace context
+        run: cargo test --no-default-features --features otel --test observe_otlp
+
+      # The one that matters if it ever goes red: a request carrying a
+      # password, a bearer token, a session cookie and a PKCE verifier,
+      # driven through the whole stack, with every log line, span attribute
+      # and metric label searched for each secret's value.
+      - name: Prove redaction holds across logs, spans and metrics
+        run: cargo test --no-default-features --features otel --test observe_redaction
+
   powerset:
     name: Feature powerset (nightly)
     runs-on: ubuntu-latest
@@ -486,6 +525,7 @@ jobs:
       - drivers
       - features
       - oauth
+      - telemetry
       - scaffold
       - deny
       - book
