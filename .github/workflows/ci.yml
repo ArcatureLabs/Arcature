@@ -210,8 +210,9 @@ jobs:
 
       - name: Build the full feature set once per driver
         run: |
-          feats=api,api-docs,auth,cache,cli,crypt,database,dev-proxy,dx,events,i18n,inertia,jobs,macros,mail
-          feats=$feats,oauth,observe,otel,pages,realtime,session-store-db,signed-urls,storage-fs,storage-s3,templates,test-kit,uag,uploads,validation,views
+          feats=api,api-docs,api-tokens,auth,cache,cli,crypt,database,dev-proxy,dx,events,i18n,inertia,jobs,macros,mail
+          feats=$feats,notifications,notifications-broadcast,notifications-db,notifications-queue,oauth,observe,otel,pages,realtime
+          feats=$feats,session-store-db,signed-urls,storage-fs,storage-s3,templates,test-kit,uag,uploads,validation,views
           for driver in db-postgres db-sqlite db-mysql; do
             echo "== $driver =="
             cargo check --no-default-features --features "$feats,$driver" --all-targets
@@ -425,15 +426,15 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
 
-    # Not on the pull-request path. The crate has 35 features, so an uncapped
+    # Not on the pull-request path. The crate has 39 features, so an uncapped
     # powerset is a six-figure number of builds -- not slow, unrunnable. No
     # exact count is quoted for it: that number moves with every feature added
-    # and is never acted on, unlike the two depths below. `--depth 2` is 429,
+    # and is never acted on, unlike the two depths below. `--depth 2` is 590,
     # and pairwise is where feature-interaction bugs actually live: a feature
     # that breaks alone is caught by the `features` job, and one that breaks
     # only in a specific trio is rare enough not to be worth three orders of
-    # magnitude. Even 429 is too much to put in front of every pull request,
-    # so it runs once a night. Raise the depth to 3 (3,484 builds) when
+    # magnitude. Even 590 is too much to put in front of every pull request,
+    # so it runs once a night. Raise the depth to 3 (5,676 builds) when
     # chasing one.
     #
     # `--skip database` on top of the pinned driver: `db-postgres` already
