@@ -329,9 +329,16 @@ impl FromStr for TrustedProxies {
 /// it with `Extension<ClientIp>` and a Tower layer reads it out of
 /// `extensions()`. Absent over IPC, where there is no peer address at all.
 ///
-/// It is personal data. The access log records it as a structured field,
-/// which is what puts it under the `observe::redact` deny-list rather than
-/// beyond the reach of any formatter.
+/// It is personal data, and it is **not** withheld by default: the access
+/// log records the address in full, because an access log that cannot say
+/// who called is not doing the job it is kept for. What the structured
+/// `client_ip` field buys is reach. The value is passed through
+/// `observe::redact::apply` on its way out and never interpolated into the
+/// human-readable message, so adding an address term to
+/// `observe::redact::DENY_LIST` withholds it everywhere at once -- where an
+/// address baked into a message would already be past the only checkpoint
+/// there is. Deployments that must not retain addresses do that, or drop
+/// the field upstream; nothing here does it for them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct ClientIp(IpAddr);
