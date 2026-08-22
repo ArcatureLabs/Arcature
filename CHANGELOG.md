@@ -42,6 +42,21 @@ therefore its first.
   32-byte subkey of `APP_KEY` rather than `APP_KEY` itself, so the encrypter
   and every future consumer are domain-separated by construction. The
   dependency is pure Rust: no C, no assembly, nothing from OpenSSL.
+- **Signed, expiring URLs, behind the new off-by-default `signed-urls`
+  feature.** `crypt::UrlSigner` mints a link that carries its own proof of
+  origin and, optionally, its own deadline, so "let this one person fetch
+  this one thing" needs no account, no database row and no lookup. The MAC
+  is HMAC-SHA256 over the path and **every** query parameter including
+  `expires`, which is what stops a recipient from typing a bigger number
+  into their own link. Parameters are sorted and percent-decoded before the
+  MAC is taken, so a mail client that reorders a query does not break the
+  link while an edit to one still fails. The presented signature is compared
+  with `subtle::ConstantTimeEq` and never with `==`: an early-returning
+  comparison is a timing oracle that turns 2^256 guesses into a few
+  thousand. Expiry is read from an injectable `Clock`, so an application can
+  test "this dies in an hour" without waiting one. A separate feature from
+  `crypt` on purpose -- an application that only signs links should not pull
+  an AEAD into its dependency graph.
 - **CI runs the suite against all three SQL dialects.** A new `Database`
   matrix job builds `jobs,test-kit` once per driver and points
   `ARCATURE_TEST_DB_URL` at a live PostgreSQL 17, MySQL 8, or SQLite file.

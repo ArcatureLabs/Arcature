@@ -156,10 +156,14 @@ pub use auth::{DbSessionStore, SessionStoreError};
 // with no cookies and no sessions may still need to hand out an opaque token,
 // and making it compile a password hasher and a session layer to get one
 // would be a packaging decision pretending to be a security one.
-#[cfg(feature = "crypt")]
+#[cfg(any(feature = "crypt", feature = "signed-urls"))]
 pub mod crypt;
+#[cfg(any(feature = "crypt", feature = "signed-urls"))]
+pub use crypt::{AppKey, AppKeyError};
+#[cfg(feature = "signed-urls")]
+pub use crypt::{Clock, SignedUrlError, SystemClock, UrlSigner};
 #[cfg(feature = "crypt")]
-pub use crypt::{AppKey, AppKeyError, DecryptError, EncryptError, Encrypter};
+pub use crypt::{DecryptError, EncryptError, Encrypter};
 
 #[cfg(feature = "validation")]
 pub mod validation;

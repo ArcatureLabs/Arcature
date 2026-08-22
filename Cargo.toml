@@ -316,6 +316,30 @@ crypt = [
     "dep:sha2",
 ]
 
+# Signed, expiring URLs: `crypt::UrlSigner`, which mints a link that carries
+# its own proof of origin and its own deadline, and refuses one that has been
+# edited by a byte.
+#
+# A separate feature from `crypt` rather than a part of it, because the two
+# have different costs and different reasons. Signing needs a MAC; encrypting
+# needs a cipher. An application that only wants a one-hour download link
+# should not pull an AEAD into its graph to get one, and an application that
+# only encrypts should not carry a URL parser.
+#
+# `dep:subtle` is the load-bearing one. Comparing a presented MAC with `==`
+# returns at the first differing byte, which is a timing oracle: an attacker
+# who can measure it forges a signature in a few thousand guesses rather than
+# 2^256. `subtle::ConstantTimeEq` reads every byte every time. There is no
+# `==` on a signature anywhere in this crate.
+signed-urls = [
+    "dep:secrecy",
+    "dep:zeroize",
+    "dep:hmac",
+    "dep:sha2",
+    "dep:subtle",
+    "dep:percent-encoding",
+]
+
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
     "macros",
@@ -437,6 +461,15 @@ chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["
 # that has `uploads` or `session-store-db` this adds an edge rather than a
 # crate. RustCrypto, pure Rust, no C.
 hmac = { version = "0.12", default-features = false, optional = true }
+#
+# `subtle` compares a presented signature with the expected one in time that
+# does not depend on how many leading bytes matched. Its whole reason to exist
+# is to be the thing the optimiser is not allowed to turn back into an early
+# return, which is why this is a dependency rather than a five-line loop.
+# RustCrypto-adjacent (dalek-cryptography), pure Rust, no C. Already in the
+# graph beneath `argon2` and `sqlx`, so on a default build this is an edge
+# rather than a crate.
+subtle = { version = "2.6", default-features = false, optional = true }
 
 # Validation.
 validator = { version = "0.21.0", default-features = false, features = ["derive"], optional = true }

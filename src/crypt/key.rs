@@ -18,7 +18,17 @@ const KEY_BYTES: usize = 64;
 const DERIVATION_DOMAIN: &[u8] = b"arcature/kdf/v1";
 
 /// The label for the `Encrypter`'s subkey.
+#[cfg(feature = "crypt")]
 pub(crate) const ENCRYPTER_LABEL: &[u8] = b"encrypter";
+
+/// The label for the `UrlSigner`'s subkey.
+///
+/// Different from `ENCRYPTER_LABEL`, and that is the point: a build with
+/// both features on holds two unrelated 32-byte keys, so a weakness found in
+/// one construction stays inside it. Recovering the signing key would not
+/// hand anybody the ability to decrypt.
+#[cfg(feature = "signed-urls")]
+pub(crate) const URL_SIGNER_LABEL: &[u8] = b"url-signer";
 
 /// The application's master secret: the 64 bytes behind `APP_KEY`.
 ///
@@ -230,7 +240,12 @@ impl std::error::Error for AppKeyError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{AppKey, AppKeyError, ENCRYPTER_LABEL, KEY_BYTES};
+    use super::{AppKey, AppKeyError, KEY_BYTES};
+
+    /// A stand-in for a real consumer's label. The real ones are behind
+    /// feature gates, and these tests are about the derivation rather than
+    /// about who uses it.
+    const LABEL: &[u8] = b"a-consumer";
     use secrecy::ExposeSecret;
 
     fn key(fill: u8) -> AppKey {
@@ -242,8 +257,8 @@ mod tests {
         let from_hex = AppKey::from_hex(&"4a".repeat(KEY_BYTES)).expect("valid hex");
         let from_bytes = key(0x4a);
         assert_eq!(
-            from_hex.subkey(ENCRYPTER_LABEL).expose_secret(),
-            from_bytes.subkey(ENCRYPTER_LABEL).expose_secret()
+            from_hex.subkey(LABEL).expose_secret(),
+            from_bytes.subkey(LABEL).expose_secret()
         );
     }
 
@@ -252,8 +267,8 @@ mod tests {
         let lower = AppKey::from_hex(&"ab".repeat(KEY_BYTES)).expect("lower");
         let upper = AppKey::from_hex(&"AB".repeat(KEY_BYTES)).expect("upper");
         assert_eq!(
-            lower.subkey(ENCRYPTER_LABEL).expose_secret(),
-            upper.subkey(ENCRYPTER_LABEL).expose_secret()
+            lower.subkey(LABEL).expose_secret(),
+            upper.subkey(LABEL).expose_secret()
         );
     }
 
@@ -314,11 +329,27 @@ mod tests {
         );
     }
 
+    /// The two labels that actually ship must not collide. The test above
+    /// proves the mechanism; this proves the constants were spelled
+    /// differently, which is the half a rename could break.
+    #[cfg(all(feature = "crypt", feature = "signed-urls"))]
+    #[test]
+    fn the_shipped_labels_derive_different_subkeys() {
+        use super::{ENCRYPTER_LABEL, URL_SIGNER_LABEL};
+
+        let key = key(0x55);
+        assert_ne!(ENCRYPTER_LABEL, URL_SIGNER_LABEL);
+        assert_ne!(
+            key.subkey(ENCRYPTER_LABEL).expose_secret(),
+            key.subkey(URL_SIGNER_LABEL).expose_secret()
+        );
+    }
+
     // The property the whole derivation exists for.
     #[test]
     fn two_labels_give_two_unrelated_subkeys() {
         let key = key(0x11);
-        let encrypter = key.subkey(ENCRYPTER_LABEL);
+        let encrypter = key.subkey(LABEL);
         let other = key.subkey(b"some-other-consumer");
         assert_ne!(encrypter.expose_secret(), other.expose_secret());
         assert_eq!(encrypter.expose_secret().len(), 32);
@@ -328,22 +359,22 @@ mod tests {
     #[test]
     fn a_subkey_is_not_the_master_key() {
         let key = key(0x22);
-        assert_ne!(key.subkey(ENCRYPTER_LABEL).expose_secret(), &[0x22u8; 32]);
+        assert_ne!(key.subkey(LABEL).expose_secret(), &[0x22u8; 32]);
     }
 
     #[test]
     fn two_master_keys_give_two_subkeys() {
         assert_ne!(
-            key(0x01).subkey(ENCRYPTER_LABEL).expose_secret(),
-            key(0x02).subkey(ENCRYPTER_LABEL).expose_secret()
+            key(0x01).subkey(LABEL).expose_secret(),
+            key(0x02).subkey(LABEL).expose_secret()
         );
     }
 
     #[test]
     fn derivation_is_deterministic() {
         assert_eq!(
-            key(0x33).subkey(ENCRYPTER_LABEL).expose_secret(),
-            key(0x33).subkey(ENCRYPTER_LABEL).expose_secret()
+            key(0x33).subkey(LABEL).expose_secret(),
+            key(0x33).subkey(LABEL).expose_secret()
         );
     }
 
