@@ -27,6 +27,11 @@ COPY bootstrap ./bootstrap
 COPY config ./config
 COPY database ./database
 COPY routes ./routes
+# Askama reads the templates at *build* time and compiles them into the
+# binary, so this is a source directory like the ones above, not runtime
+# data. Leave it out and the release build fails on a template it cannot
+# find; nothing at runtime reads it back.
+COPY templates ./templates
 # The registry and the target directory are the two expensive things to
 # rebuild; a cache mount keeps both across builds without baking them in.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

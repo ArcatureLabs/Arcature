@@ -51,6 +51,12 @@ arcature = { version = "__ARCATURE_VERSION__", default-features = false, feature
     "observe",
     "pages",
     "realtime",
+    # Compiled server-rendered views. On here, off in the framework: the
+    # framework cannot know whether a given application serves HTML, and
+    # this one does -- `app/views/` and `templates/` ship with the scaffold.
+    # Remove it, and those two directories, if every screen is an Inertia
+    # page.
+    "views",
 ] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.53", features = ["macros", "rt-multi-thread"] }

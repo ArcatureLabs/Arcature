@@ -3,6 +3,7 @@
 use arcature::prelude::*;
 
 use crate::app::pages::HomePage;
+use crate::app::views::WelcomeView;
 use crate::bootstrap::AppState;
 
 /// The home controller.
@@ -24,5 +25,25 @@ impl HomeController {
             // reports the framework version the scaffold was cut from.
             arcature_version: "__ARCATURE_VERSION__".to_string(),
         }))
+    }
+
+    /// `GET /welcome` -- the one server-rendered page the scaffold ships
+    /// with.
+    ///
+    /// The return type is `Response` rather than `Page<..>` because there is
+    /// no client component behind it: the HTML is finished when it leaves
+    /// the server, which is what makes a view the right answer for a screen
+    /// that has to work with JavaScript turned off.
+    ///
+    /// A view that fails to render answers `500` with the framework's
+    /// ordinary error body; the template text and its path go to the log and
+    /// never to the browser.
+    pub async fn welcome(State(state): State<AppState>) -> Result<Response> {
+        Ok(view(WelcomeView {
+            title: state.app_name.clone(),
+            message: "This page was rendered on the server, from \n                      templates/welcome.html."
+                .to_string(),
+        })
+        .into_response())
     }
 }

@@ -447,6 +447,27 @@ therefore its first.
   routes a render failure through `ViewError`, so the template text does not
   reach a response body by way of the mail path either.
 
+- **`arc new` scaffolds a `templates/` directory and one worked view.** A
+  generated project now ships `templates/layout.html`, a
+  `templates/welcome.html` that extends it, an `app/views/` module holding
+  the `WelcomeView` struct whose fields the template names, and a
+  `GET /welcome` route that renders it -- the server-rendered counterpart to
+  the Inertia page already on `/`. The generated manifest turns the
+  framework's `views` feature on, which is the one place the scaffold departs
+  from the framework default: the framework cannot know whether a given
+  application serves HTML, and this one does. Delete the two directories and
+  the feature if every screen is an Inertia page. The view struct carries
+  `askama = arcature::askama`, so the generated project depends on askama
+  only through Arcature and cannot drift to a second version of it. A test
+  generates all nine stack-and-driver combinations and asserts the templates,
+  the module, the route and the feature are all present, because they live in
+  four different files and any one of them missing is a project that does not
+  compile. The generated `Dockerfile` copies `templates/` into the Rust
+  stage, which is easy to miss: askama reads the files during `cargo build`,
+  so they are source like `app/` and `routes/` rather than runtime data, and
+  omitting the line would leave a tree that compiles on a laptop and cannot
+  build an image at all. That line has its own assertion.
+
 
 ### Changed
 

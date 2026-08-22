@@ -1,0 +1,20 @@
+{# The base every server-rendered view extends.
+
+   This file is compiled, not read. Askama turns it into Rust at build time,
+   so a typo in a block name or a field that does not exist is a compile
+   error, and there is no template parser in the running process for a
+   request to reach. Editing it needs a rebuild; `arc dev` does that for you.
+
+   `{{ }}` escapes its value because this file's extension is `.html`. Write
+   `{{ value|safe }}` only for markup you produced yourself. #}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}__PROJECT_NAME__{% endblock %}</title>
+  </head>
+  <body>
+    {% block content %}{% endblock %}
+  </body>
+</html>

@@ -460,3 +460,63 @@ fn a_frontend_change_cannot_reach_the_rust_build() {
         }
     }
 }
+
+/// The compiled-view scaffold is wired end to end: the templates land where
+/// askama looks for them, the view struct that names them is generated, and
+/// the manifest turns on the framework feature that makes the derive exist.
+///
+/// Any one of the three missing is a generated project that does not
+/// compile, and the three live in different files, so nothing but a test
+/// keeps them in step.
+#[test]
+fn the_scaffold_ships_a_compiled_view_and_the_feature_that_builds_it() {
+    let scratch = Scratch::new("views");
+    for stack in Stack::ALL {
+        for database in Database::ALL {
+            let label = format!("{}-{}", stack.as_str(), database.as_str());
+            let target = scratch.join(&label);
+            generate(&target, stack, database).expect("generated");
+
+            // Askama resolves `path = "..."` against `CARGO_MANIFEST_DIR/
+            // templates`, so the project root is the only place these work.
+            for required in [
+                "templates/layout.html",
+                "templates/welcome.html",
+                "app/views/mod.rs",
+            ] {
+                assert!(
+                    target.join(required).is_file(),
+                    "{label} is missing {required}"
+                );
+            }
+
+            let manifest = read(&target, "Cargo.toml");
+            assert!(manifest.contains("\"views\""), "{manifest}");
+
+            let view = read(&target, "app/views/mod.rs");
+            assert!(view.contains("path = \"welcome.html\""), "{view}");
+            // Without this the derive emits `askama::` paths and the
+            // generated project would have to depend on askama itself.
+            assert!(view.contains("askama = arcature::askama"), "{view}");
+
+            let welcome = read(&target, "templates/welcome.html");
+            assert!(
+                welcome.contains("{% extends \"layout.html\" %}"),
+                "{welcome}"
+            );
+
+            let routes = read(&target, "routes/mod.rs");
+            assert!(routes.contains("HomeController::welcome"), "{routes}");
+
+            // Askama reads the templates during `cargo build`, so the Rust
+            // stage of the image needs them as source. Without this line the
+            // tree compiles on a laptop and the release image does not build
+            // at all.
+            let dockerfile = read(&target, "Dockerfile");
+            assert!(
+                dockerfile.contains("COPY templates ./templates"),
+                "{dockerfile}"
+            );
+        }
+    }
+}

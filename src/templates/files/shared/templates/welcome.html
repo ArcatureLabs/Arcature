@@ -1,0 +1,12 @@
+{# The one server-rendered view the scaffold ships with. See
+   `app/views/mod.rs` for the struct whose fields these names come from. #}
+{% extends "layout.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<main>
+  <h1>{{ title }}</h1>
+  <p>{{ message }}</p>
+</main>
+{% endblock %}

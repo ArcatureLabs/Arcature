@@ -17,6 +17,7 @@ pub mod policies;
 pub mod requests;
 pub mod resources;
 pub mod services;
+pub mod views;
 
 use arcature::prelude::*;
 

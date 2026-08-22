@@ -222,6 +222,10 @@ fn shared() -> Vec<TemplateFile> {
             content: include_str!("files/shared/app/services/mod.rs"),
         },
         TemplateFile {
+            path: "app/views/mod.rs",
+            content: include_str!("files/shared/app/views/mod.rs"),
+        },
+        TemplateFile {
             path: "bootstrap/app.rs",
             content: include_str!("files/shared/bootstrap/app.rs"),
         },
@@ -296,6 +300,20 @@ fn shared() -> Vec<TemplateFile> {
         TemplateFile {
             path: "storage/uploads/.gitkeep",
             content: include_str!("files/shared/storage/uploads/.gitkeep"),
+        },
+        // The compiled-view templates. `templates/` here is the generated
+        // application's askama directory, which is a different thing from
+        // the directory this file lives in -- `src/templates/` is the
+        // scaffold catalog. Askama resolves a `path = "..."` against
+        // `CARGO_MANIFEST_DIR/templates`, so these two files have to land at
+        // the project root and nowhere else.
+        TemplateFile {
+            path: "templates/layout.html",
+            content: include_str!("files/shared/templates/layout.html"),
+        },
+        TemplateFile {
+            path: "templates/welcome.html",
+            content: include_str!("files/shared/templates/welcome.html"),
         },
         TemplateFile {
             path: "tests/smoke.rs",

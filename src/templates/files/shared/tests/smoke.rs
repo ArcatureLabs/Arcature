@@ -13,6 +13,12 @@ fn the_home_route_resolves_by_name() {
 }
 
 #[test]
+fn the_server_rendered_route_resolves_by_name() {
+    let routes = app_routes();
+    assert_eq!(routes.url_for("welcome", &[]).unwrap(), "/welcome");
+}
+
+#[test]
 fn every_route_name_is_unique() {
     let mut names: Vec<&str> = APP_ROUTES
         .iter()
