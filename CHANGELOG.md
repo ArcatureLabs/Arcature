@@ -1014,6 +1014,31 @@ therefore its first.
   now sets `opt-level = 2` and `debug = false` for build scripts, proc-macro
   crates and their dependencies. Nothing about the profile of the code being
   shipped changes.
+- **Inertia props resolve concurrently.** A page whose props load four things
+  from four places used to wait for the sum of the four: resolution was a
+  single pass that inspected, awaited and recorded each prop before looking at
+  the next. Nothing about the props required that -- it was the shape of the
+  loop. Every decision about every prop is now taken up front, while the
+  output is still empty, so no resolver can observe another's result; the
+  resolvers are then polled together and the results recorded in declaration
+  order. Same props, same metadata, same order, in the time of the slowest
+  resolver rather than the sum of all of them.
+
+  One behaviour does change, and it is inherent to running them at once rather
+  than a choice made here. Previously the first resolver to fail ended
+  resolution, and resolvers declared after it never ran. They now all start
+  before any error is examined, so a resolver that follows a failing one will
+  execute -- its side effects happen, and the request still fails with the
+  same error, chosen by declaration order rather than by which failure arrived
+  first. Resolvers that only read are unaffected; a resolver that writes
+  something on a page that also has a failing prop is the case to look at.
+
+  Not built on `tokio::spawn`: the runtime turns a spawned task's panic into a
+  `JoinError`, which would quietly demote a panicking resolver to one failed
+  prop. Polling in place leaves a panic unwinding the request as it did
+  before. No new dependency either -- the join is twenty lines over
+  `std::future::poll_fn` rather than a combinator crate to track advisories
+  for.
 
 ### Documentation
 

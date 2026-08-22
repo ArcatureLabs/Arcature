@@ -23,6 +23,7 @@ use std::collections::BTreeSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -569,9 +570,11 @@ pub(crate) async fn resolve(
     let mut props: Map<String, Value> = Map::new();
     let mut metadata = PageMetadata::default();
 
+    let mut outcomes = resolve_together(resolvers).await;
+
     for plan in plans {
         let outcome = match plan.action {
-            Action::Invoke { at, .. } => Some(resolvers[at].as_mut().await),
+            Action::Invoke { at, .. } => outcomes[at].take(),
             _ => None,
         };
         apply(plan, outcome, &context, &mut props, &mut metadata)?;
@@ -719,6 +722,57 @@ enum Action<'a> {
 fn park(resolvers: &mut Vec<PropFuture>, future: PropFuture) -> usize {
     resolvers.push(future);
     resolvers.len() - 1
+}
+
+/// Poll every parked resolver at once, and return the outcomes in the order
+/// the resolvers were parked.
+///
+/// A page that loads four things from four places used to wait for the sum of
+/// the four. Nothing made that necessary: by the time a resolver runs, every
+/// decision about every prop has already been taken, so no resolver can see
+/// another's result and none of them can be ordered against the others.
+///
+/// Hand-rolled rather than `futures::future::join_all`. The `futures` crate is
+/// optional in this crate and the `inertia` feature does not enable it, so
+/// borrowing one combinator would pull its whole tree into every Inertia
+/// build -- a dependency to watch for advisories forever, in exchange for
+/// twenty lines.
+///
+/// Not `tokio::spawn` or `JoinSet` either, and that choice is about behaviour
+/// rather than dependencies. The runtime catches a spawned task's panic and
+/// returns it as a `JoinError`, which would quietly demote a panicking
+/// resolver to one failed prop. Polling in place leaves a panic doing what it
+/// did before: unwinding the request. It also means no resolver is ever
+/// dropped part-way -- every one is polled to completion, and which error
+/// wins is settled afterwards, by declaration order.
+async fn resolve_together(resolvers: Vec<PropFuture>) -> Vec<Option<ResolverOutcome>> {
+    let mut pending: Vec<Option<PropFuture>> = resolvers.into_iter().map(Some).collect();
+    let mut outcomes: Vec<Option<ResolverOutcome>> = (0..pending.len()).map(|_| None).collect();
+    let mut remaining = pending.len();
+
+    std::future::poll_fn(move |cx| {
+        for (slot, parked) in pending.iter_mut().enumerate() {
+            let Some(future) = parked.as_mut() else {
+                continue;
+            };
+            if let Poll::Ready(outcome) = future.as_mut().poll(cx) {
+                outcomes[slot] = Some(outcome);
+                // Taken, not flagged: a finished future must never be polled
+                // again, and an absent one cannot be.
+                *parked = None;
+                remaining -= 1;
+            }
+        }
+
+        // Every future still pending was polled with this waker on this pass,
+        // so whichever of them wakes first wakes the whole set.
+        if remaining == 0 {
+            Poll::Ready(std::mem::take(&mut outcomes))
+        } else {
+            Poll::Pending
+        }
+    })
+    .await
 }
 
 fn plan_page<'a>(
@@ -1119,6 +1173,94 @@ mod tests {
         .expect("resolution succeeds");
         assert_eq!(resolved.props["posts"], serde_json::json!([1, 2]));
         assert!(metadata_json(&resolved).get("mergeProps").is_none());
+    }
+
+    #[tokio::test]
+    async fn resolvers_run_at_the_same_time_rather_than_one_after_another() {
+        // The only assertion here that fails against the implementation this
+        // replaced, and it has to be about the clock. Concurrent resolution
+        // is invisible in the output by design -- same props, same metadata,
+        // same order, which is what the next test exists to hold -- so output
+        // cannot tell the two apart.
+        //
+        // Four resolvers that each sleep for `STEP`: `4 * STEP` sequentially,
+        // one `STEP` plus scheduling concurrently. The bound sits between the
+        // two and nearer the sequential end, because a loaded machine delays
+        // timer wake-ups and a flaky test is worse than a loose one. Even so
+        // it leaves 200ms of daylight under the sequential cost, which is not
+        // a gap scheduling noise closes.
+        const STEP: Duration = Duration::from_millis(150);
+        const BOUND: Duration = Duration::from_millis(400);
+
+        let mut props = Props::new();
+        for index in 0..4 {
+            props = props.with(
+                format!("slow{index}"),
+                lazy(|| async {
+                    tokio::time::sleep(STEP).await;
+                    Ok(Value::from(1))
+                }),
+            );
+        }
+
+        let started = std::time::Instant::now();
+        let resolved = run(props, &request(&[])).await;
+        let elapsed = started.elapsed();
+
+        // Four props plus the `errors` default, so a bound met by resolving
+        // nothing at all would still be caught.
+        assert_eq!(resolved.props.len(), 5);
+        assert!(
+            elapsed < BOUND,
+            "four {STEP:?} resolvers took {elapsed:?}, which is one after another, not at once"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_order_resolvers_finish_in_is_not_observable() {
+        async fn resolve_with(delays: [u64; 4]) -> Value {
+            // The value is the prop's own name, never its delay: a resolver
+            // whose output moved with its timing would differ between the two
+            // runs for an honest reason and prove nothing.
+            fn sleeping(name: &'static str, delay: u64, fail: bool) -> Prop {
+                let prop = lazy(move || async move {
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                    if fail {
+                        Err("upstream is down".into())
+                    } else {
+                        Ok(Value::from(name))
+                    }
+                });
+                if fail { rescue(prop) } else { prop }
+            }
+
+            let resolved = run(
+                Props::new()
+                    .with("alpha", sleeping("alpha", delays[0], false))
+                    .with("beta", sleeping("beta", delays[1], true))
+                    .with("gamma", sleeping("gamma", delays[2], true))
+                    .with("delta", sleeping("delta", delays[3], false)),
+                &request(&[]),
+            )
+            .await;
+
+            let metadata = metadata_json(&resolved);
+            serde_json::json!({ "metadata": metadata, "props": resolved.props })
+        }
+
+        // The same four props twice, finishing in opposite orders.
+        //
+        // `rescuedProps` is the sharp end. It is a list rather than a map, and
+        // two of the four props are rescued, so a recording pass that ran in
+        // completion order would emit `["beta", "gamma"]` for one of these
+        // runs and `["gamma", "beta"]` for the other.
+        let ascending = resolve_with([10, 20, 30, 40]).await;
+        let descending = resolve_with([40, 30, 20, 10]).await;
+        assert_eq!(ascending, descending);
+        assert_eq!(
+            ascending["metadata"]["rescuedProps"],
+            serde_json::json!(["beta", "gamma"])
+        );
     }
 
     #[tokio::test]
