@@ -753,6 +753,20 @@ therefore its first.
   Cranelift backend, hot-patching) are listed with what each would cost,
   and the issue stays open.
 
+- **`Application::serve` says that it has no client address.** The raw
+  escape hatch installs neither `ConnectInfo` nor `ClientIp`, so
+  `KeySource::Ip` falls into the shared bucket there and the access log
+  records an empty `client_ip`. Its docs now say so, and say why it is
+  not a gap to be closed later: the method accepts any listener whose
+  address is only `Debug` -- a Unix socket, a named pipe, an in-memory
+  duplex -- and installing the extensions would require
+  `Listener<Addr = SocketAddr>`, narrowing the escape hatch to TCP and
+  shutting out the listeners it exists for. The entry points that do bind
+  TCP are named, along with `ClientIp::resolve` for anyone keeping their
+  own listener.
+
+
+
 ## [0.1.0]
 
 ### Added

@@ -1033,6 +1033,36 @@ impl Application<()> {
     }
 
     /// Serve on an already-bound listener. The stateless escape hatch.
+    ///
+    /// # No client address on this path
+    ///
+    /// A request served here carries neither
+    /// [`ConnectInfo`](axum::extract::ConnectInfo) nor
+    /// [`ClientIp`](crate::http::ClientIp), so anything keyed on the caller
+    /// has nothing to key on: [`KeySource::Ip`](crate::routing::KeySource)
+    /// puts every request in the shared
+    /// [`UNIDENTIFIED_KEY`](crate::routing::rate_limit::UNIDENTIFIED_KEY)
+    /// bucket, and the access log records an empty `client_ip`.
+    ///
+    /// This is a consequence of the signature rather than an oversight a
+    /// later patch closes. `L` here is *any*
+    /// [`Listener`](axum::serve::Listener) whose address is merely `Debug` --
+    /// a Unix domain socket, a Windows named pipe, an in-memory duplex --
+    /// and an address that is only `Debug` is not an [`IpAddr`]. The
+    /// per-connection service that installs both extensions needs
+    /// `L: Listener<Addr = SocketAddr>`; requiring that here would narrow
+    /// this method to TCP and shut the escape hatch on the listeners it
+    /// exists for.
+    ///
+    /// Where the client address matters, use [`run`](Self::run) or
+    /// [`run_with_state`](Application::run_with_state), which bind TCP and
+    /// go through the serve path that installs it. If the listener has to
+    /// stay yours, resolve the address yourself:
+    /// [`ClientIp::resolve`](crate::http::ClientIp::resolve) is public, and
+    /// a layer of your own can put the result into request extensions
+    /// before the pipeline sees it.
+    ///
+    /// [`IpAddr`]: std::net::IpAddr
     #[cfg(feature = "macros")]
     pub async fn serve<L>(self, listener: L) -> EngineResult<()>
     where
