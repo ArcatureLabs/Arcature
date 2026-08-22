@@ -4,11 +4,15 @@ use chrono::Utc;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 use sqlx::types::Json;
+use subtle::ConstantTimeEq;
+use zeroize::Zeroize;
 
 use super::dialect::{TokenDb, TokenPool, restored_time, sql, stored_time};
 use super::error::ApiTokenError;
 use super::migrate;
-use super::token::{ID_BYTES, IssuedApiToken, PlaintextToken, SECRET_BYTES, format_plaintext};
+use super::token::{
+    ID_BYTES, IssuedApiToken, PlaintextToken, SECRET_BYTES, format_plaintext, parse_plaintext,
+};
 use super::{Abilities, ApiToken, ApiTokenId, NewApiToken};
 
 /// The row type of the dialect this build speaks.
@@ -216,6 +220,86 @@ impl ApiTokens {
         let abilities = abilities_at(&row, 2)?;
         let expires_at = restored_time(row.try_get(3)?)?;
         let created_at = restored_time(row.try_get(4)?)?;
+
+        Ok(Some(ApiToken::from_row(
+            id,
+            tokenable_id,
+            name,
+            abilities,
+            expires_at,
+            created_at,
+        )))
+    }
+
+    /// Authenticate a plaintext token a client presented.
+    ///
+    /// Returns the record if the string is a live token this store minted,
+    /// and `None` for every other reason: malformed, unknown id, wrong
+    /// secret, expired. The caller cannot tell those apart and should not.
+    /// Each one means "not authenticated", and a client that learns *which*
+    /// one has learned something about tokens it does not hold.
+    ///
+    /// # The comparison is constant-time, and that is the whole point
+    ///
+    /// The digest of the presented secret is compared with the stored digest
+    /// through [`subtle::ConstantTimeEq`], which reads every byte every time.
+    /// A `==` would return at the first differing byte. A few hundred
+    /// nanoseconds, averaged over enough requests, is enough to recover a
+    /// digest one byte at a time -- thirty-two rounds of two hundred and
+    /// fifty-six guesses, instead of a search of 2^256.
+    ///
+    /// # What is still observable, said plainly
+    ///
+    /// The digest is computed *before* the query rather than after it, so an
+    /// unknown id and a known id with a wrong secret follow the same path and
+    /// differ by one constant-time comparison. What remains is whatever the
+    /// database leaks by finding a row versus not finding one.
+    ///
+    /// That residue is acceptable here, and it is worth saying why, because
+    /// it has the same shape as the enumeration oracle a login form must not
+    /// have. The difference is what the attacker already knows. An email
+    /// address is public and the password behind it is often guessable, so
+    /// "this account exists" is a real step forward. A token id is 128 random
+    /// bits and the secret behind it is 256 more; learning that some id
+    /// exists costs the same 128-bit search either way and buys nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiTokenError::Database`] if the query fails, or
+    /// [`ApiTokenError::Decode`] / [`ApiTokenError::Expiry`] if the row does
+    /// not hold what the schema promises. A token that simply does not
+    /// authenticate is `Ok(None)`, not an error.
+    pub async fn authenticate(&self, presented: &str) -> Result<Option<ApiToken>, ApiTokenError> {
+        let Some((id, mut secret)) = parse_plaintext(presented) else {
+            return Ok(None);
+        };
+
+        let mut presented_digest = digest_of(&secret);
+        secret.zeroize();
+
+        let found = sqlx::query(sql::AUTHENTICATE)
+            .bind(id.as_bytes().to_vec())
+            .fetch_optional(&self.pool)
+            .await?;
+
+        let Some(row) = found else {
+            presented_digest.zeroize();
+            return Ok(None);
+        };
+
+        let stored: Vec<u8> = row.try_get(0)?;
+        let matches: bool = presented_digest.ct_eq(stored.as_slice()).into();
+        presented_digest.zeroize();
+        if !matches {
+            return Ok(None);
+        }
+
+        // Columns by index, as in `find`, offset by the digest at 0.
+        let tokenable_id: String = row.try_get(1)?;
+        let name: String = row.try_get(2)?;
+        let abilities = abilities_at(&row, 3)?;
+        let expires_at = restored_time(row.try_get(4)?)?;
+        let created_at = restored_time(row.try_get(5)?)?;
 
         Ok(Some(ApiToken::from_row(
             id,

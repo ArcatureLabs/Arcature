@@ -325,6 +325,30 @@ pub(crate) fn format_plaintext(id: &[u8; ID_BYTES], secret: &[u8; SECRET_BYTES])
     format!("{TOKEN_PREFIX}{}_{}", hex_encode(id), hex_encode(secret))
 }
 
+/// Split a presented plaintext back into its public id and its secret half.
+///
+/// Returns `None` for anything that is not exactly the shape
+/// [`format_plaintext`] writes: the prefix, sixteen bytes of hex, the
+/// separator, thirty-two bytes of hex, and nothing after. A caller holding
+/// `None` was handed something this crate never minted and can reject it
+/// without asking the database, which is the point -- a malformed string
+/// should not cost a query.
+///
+/// This is deliberately strict about length. `hex_decode` refuses input whose
+/// length does not match the buffer exactly, so a truncated or padded id
+/// fails here rather than silently decoding to a different token.
+pub(crate) fn parse_plaintext(presented: &str) -> Option<(ApiTokenId, [u8; SECRET_BYTES])> {
+    let (id_hex, secret_hex) = presented.strip_prefix(TOKEN_PREFIX)?.split_once('_')?;
+
+    let mut id = [0u8; ID_BYTES];
+    let mut secret = [0u8; SECRET_BYTES];
+    if !hex_decode(id_hex, &mut id) || !hex_decode(secret_hex, &mut secret) {
+        return None;
+    }
+
+    Some((ApiTokenId(id), secret))
+}
+
 // ---------------------------------------------------------------------------
 // ApiToken
 // ---------------------------------------------------------------------------

@@ -717,6 +717,23 @@ therefore its first.
   enters the dependency graph (`sha2` and `zeroize` are already there,
   randomness comes from the unconditional `getrandom`), and an application
   that does not enable `api-tokens` cannot reach any of these names.
+- **`ApiAuth` authenticates an `Authorization: Bearer` header.** The extractor
+  reads the credential, splits it back into the public id and the secret half,
+  hashes the secret, and compares against the stored digest with
+  `subtle::ConstantTimeEq`; the handler runs only if a live token matched, and
+  reaches its abilities through `ApiToken::can`. Two properties are worth
+  knowing before you rely on it. The digest is computed *before* the query, so
+  an unknown id and a wrong secret walk the same path and differ by one
+  constant-time comparison -- what remains observable is whether a row exists,
+  which for a 128-bit random id guarding 256 more bits tells an attacker
+  nothing it could act on. And every failure -- absent header, another scheme,
+  malformed credential, unknown id, wrong secret, expired token -- returns the
+  same `401` with `WWW-Authenticate: Bearer`, because a client that can tell
+  those apart is being told about tokens it does not hold. A route that asks
+  for `ApiAuth` without the store installed as an axum `Extension` gets `500`,
+  not `401`: that is a wiring mistake, and answering `401` would send a
+  correct client away to mint a token that would fail identically. A database
+  error answers `503` for the same reason.
 
 
 ### Changed

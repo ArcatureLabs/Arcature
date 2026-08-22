@@ -253,13 +253,18 @@ session-store-db = ["auth", "database", "dep:sha2", "dep:async-trait"]
 # API request. The full argument is at the hashing site in
 # `src/tokens/store.rs`.
 #
+# `dep:subtle` compares the presented digest against the stored one in
+# constant time. A byte-by-byte `==` returns early on the first difference,
+# which turns the comparison into a way to learn the digest one byte at a
+# time -- the same reason `signed-urls` uses it on signatures.
+#
 # `dep:zeroize` wipes the one plaintext copy when it drops, so a credential
 # that was shown once does not linger in freed heap.
 #
-# No new crates enter the graph: `sha2` and `zeroize` are already pulled by
-# `session-store-db`, `crypt`, and `signed-urls`, and the randomness comes
-# from `getrandom`, which is unconditional.
-api-tokens = ["database", "dep:sha2", "dep:zeroize"]
+# No new crates enter the graph: `sha2`, `subtle` and `zeroize` are already
+# pulled by `session-store-db`, `crypt`, and `signed-urls`, and the randomness
+# comes from `getrandom`, which is unconditional.
+api-tokens = ["database", "dep:sha2", "dep:subtle", "dep:zeroize"]
 
 # OAuth 2.0 Authorization Code + PKCE. Provider-agnostic: an application
 # names its own endpoints, and the bundled presets are plain consts.

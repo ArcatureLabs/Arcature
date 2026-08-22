@@ -59,15 +59,24 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # Presenting one
+//!
+//! A client sends the plaintext as `Authorization: Bearer <token>`, and
+//! [`ApiAuth`] turns it back into an [`ApiToken`] or rejects the request. The
+//! store reaches the extractor through an axum `Extension`, so an application
+//! installs it once on the router rather than threading it into state.
 
 mod dialect;
 mod error;
+mod extract;
 mod migrate;
 mod store;
 mod token;
 
 pub use dialect::TokenPool;
 pub use error::ApiTokenError;
+pub use extract::ApiAuth;
 pub use store::ApiTokens;
 pub use token::{
     Abilities, ApiToken, ApiTokenId, IssuedApiToken, NewApiToken, PlaintextToken, TOKEN_PREFIX,

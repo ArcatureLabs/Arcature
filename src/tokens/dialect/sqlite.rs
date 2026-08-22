@@ -32,6 +32,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?)"#;
  WHERE id = ?
    AND expires_at > CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)"#;
 
+    /// [`FIND`] plus the digest, for the one caller that has a secret to
+    /// check against it. Kept separate so that every other read is
+    /// structurally incapable of loading the digest into memory.
+    /// Binds: id.
+    pub(crate) const AUTHENTICATE: &str = r#"SELECT secret_digest, tokenable_id, name, abilities, expires_at, created_at
+  FROM arcature_api_tokens
+ WHERE id = ?
+   AND expires_at > CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)"#;
+
     /// Every live token issued to one subject, newest first.
     /// Binds: tokenable id.
     pub(crate) const LIST_FOR: &str = r#"SELECT id, tokenable_id, name, abilities, expires_at, created_at

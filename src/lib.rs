@@ -246,7 +246,7 @@ pub use api::{PROBLEM_JSON, Problem, ProblemBuilder, ProblemKind};
 #[cfg(feature = "api-tokens")]
 pub mod tokens;
 #[cfg(feature = "api-tokens")]
-pub use tokens::{ApiToken, ApiTokenError, ApiTokenId, ApiTokens};
+pub use tokens::{ApiAuth, ApiToken, ApiTokenError, ApiTokenId, ApiTokens};
 
 #[cfg(feature = "observe")]
 pub mod observe;
