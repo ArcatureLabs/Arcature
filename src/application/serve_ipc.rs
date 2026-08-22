@@ -289,6 +289,107 @@ fn http_url(addr: SocketAddr) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Peer address
+// ---------------------------------------------------------------------------
+
+/// A make-service that gives every accepted connection its peer address.
+///
+/// # Why this exists at all
+///
+/// Axum's own answer is `Router::into_make_service_with_connect_info`, and it
+/// is out of reach here: the thing being served is not a `Router` but the
+/// opaque service [`compose_service`] returns, and `ServiceExt` -- the trait
+/// that gives a bare `tower::Service` an `into_make_service` -- has no
+/// connect-info counterpart. Without a replacement there is no peer address
+/// anywhere in the request, which is what made
+/// [`KeySource::Ip`](crate::routing::KeySource::Ip) a no-op: every client
+/// shared one bucket.
+///
+/// The whole of it is eight lines of `tower::Service`. A make-service is
+/// called once per accepted connection and returns the service that will
+/// handle that connection's requests, so the address is captured once at
+/// accept time and cloned into each request rather than looked up per
+/// request.
+///
+/// # Only on TCP
+///
+/// The bound is `Listener<Addr = SocketAddr>`, which is exactly the set of
+/// listeners that have a peer address to report. An IPC peer -- a Unix
+/// domain socket or a Windows named pipe -- has none: see [`IpcAddr`], whose
+/// `Addr` is the endpoint path because there is nothing else to name. The
+/// IPC branch of [`ServeTarget::serve`] therefore keeps the plain
+/// `into_make_service`, and a request that arrived over IPC carries no
+/// `ConnectInfo` at all rather than a fabricated one.
+///
+/// [`compose_service`]: crate::application::pipeline
+struct WithPeerAddr<S> {
+    inner: S,
+}
+
+impl<S, L> tower::Service<axum::serve::IncomingStream<'_, L>> for WithPeerAddr<S>
+where
+    S: Clone,
+    L: axum::serve::Listener<Addr = SocketAddr>,
+{
+    type Response = PeerAddrService<S>;
+    type Error = std::convert::Infallible;
+    type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(
+        &mut self,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, stream: axum::serve::IncomingStream<'_, L>) -> Self::Future {
+        std::future::ready(Ok(PeerAddrService {
+            inner: self.inner.clone(),
+            peer: *stream.remote_addr(),
+        }))
+    }
+}
+
+/// The per-connection service [`WithPeerAddr`] produces.
+///
+/// It inserts one extension and delegates. `ConnectInfo` rather than a type
+/// of Arcature's own so the extractor an application already knows --
+/// `ConnectInfo<SocketAddr>` in a handler signature -- works unchanged, and
+/// so does any third-party Tower layer that reads it.
+#[derive(Clone)]
+struct PeerAddrService<S> {
+    inner: S,
+    peer: SocketAddr,
+}
+
+impl<S> tower::Service<crate::axum::extract::Request> for PeerAddrService<S>
+where
+    S: tower::Service<
+            crate::axum::extract::Request,
+            Response = crate::axum::response::Response,
+            Error = std::convert::Infallible,
+        >,
+{
+    type Response = crate::axum::response::Response;
+    type Error = std::convert::Infallible;
+    type Future = S::Future;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut request: crate::axum::extract::Request) -> Self::Future {
+        request
+            .extensions_mut()
+            .insert(axum::extract::ConnectInfo(self.peer));
+        self.inner.call(request)
+    }
+}
+
 /// Where the application listens.
 ///
 /// One decision, made once, at the point the serve path used to reach
@@ -365,6 +466,13 @@ impl ServeTarget {
 
     /// Serve `service` until `shutdown` resolves.
     ///
+    /// On TCP every request arrives carrying
+    /// [`ConnectInfo<SocketAddr>`](axum::extract::ConnectInfo) for the peer
+    /// that opened the connection -- see [`WithPeerAddr`] for why that needs
+    /// a make-service of our own. Over IPC it does not: a Unix socket or a
+    /// named pipe has no peer address, and inventing one would be worse than
+    /// its absence.
+    ///
     /// # Errors
     ///
     /// [`EngineError::Serve`] if the accept loop fails terminally.
@@ -383,7 +491,7 @@ impl ServeTarget {
         use crate::axum::ServiceExt as _;
         match self {
             Self::Tcp(listener) => {
-                axum::serve(listener, service.into_make_service())
+                axum::serve(listener, WithPeerAddr { inner: service })
                     .with_graceful_shutdown(shutdown)
                     .await
             }
@@ -515,6 +623,68 @@ mod tests {
         assert_eq!(
             http_url("[::1]:8080".parse().expect("a literal address")),
             "http://[::1]:8080"
+        );
+    }
+
+    /// Serve `router` on an ephemeral loopback port for the duration of
+    /// `body`, then shut it down.
+    ///
+    /// The peer address only exists on a real socket, so the tests that care
+    /// about it cannot use `oneshot` against a router the way the rest of the
+    /// suite does -- there is no connection to take an address from.
+    async fn with_server<F, Fut, T>(router: axum::Router, body: F) -> T
+    where
+        F: FnOnce(String) -> Fut,
+        Fut: Future<Output = T>,
+    {
+        let target = ServeTarget::bind("127.0.0.1:0".parse().expect("a literal address"))
+            .await
+            .expect("an ephemeral port should be bindable");
+        let base = target.describe();
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            target
+                .serve(router, async move {
+                    let _ = stopped.await;
+                })
+                .await
+        });
+
+        let outcome = body(base).await;
+
+        let _ = stop.send(());
+        let _ = server.await;
+        outcome
+    }
+
+    /// The defect this whole path exists to fix: without a connect-info
+    /// make-service the extension is simply absent, and everything that keys
+    /// on the client -- rate limiting first among them -- silently shares one
+    /// bucket.
+    #[tokio::test]
+    async fn a_tcp_request_carries_its_peer_address() {
+        let router: axum::Router = axum::Router::new().route(
+            "/peer",
+            axum::routing::get(
+                |axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<SocketAddr>| async move {
+                    peer.ip().to_string()
+                },
+            ),
+        );
+
+        let seen = with_server(router, |base| async move {
+            reqwest::get(format!("{base}/peer"))
+                .await
+                .expect("the server should answer")
+                .text()
+                .await
+                .expect("the body should be text")
+        })
+        .await;
+
+        assert_eq!(
+            seen, "127.0.0.1",
+            "the handler should have seen the loopback peer, not nothing"
         );
     }
 }

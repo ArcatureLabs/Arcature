@@ -321,6 +321,16 @@ therefore its first.
   pulled, because a rejection issued after the body is buffered is an
   out-of-memory waiting for a slightly larger upload.
 
+- **A TCP request now carries its peer address.** The serve path installs a
+  connect-info make-service of its own, so every request accepted on a TCP
+  listener arrives with `ConnectInfo<SocketAddr>` in its extensions and the
+  `ConnectInfo` extractor works in a handler. Axum's
+  `into_make_service_with_connect_info` was not available here: what
+  Arcature serves is the composed pipeline service rather than a `Router`,
+  and `ServiceExt` has no connect-info counterpart. The IPC serve path is
+  unchanged and deliberately has no `ConnectInfo` -- a Unix domain socket
+  or a Windows named pipe has no peer address to report.
+
 
 ### Changed
 
