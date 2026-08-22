@@ -388,6 +388,26 @@ therefore its first.
   matrix runs them on all three dialects. SQLite needs no server, so one of
   the three is always runnable on a laptop.
 
+- **A compiled view layer, behind the new `views` feature.** `arcature::view`
+  renders [askama](https://crates.io/crates/askama) templates:
+  `view(template).render()` gives a `String`, `ViewError` names the one
+  failure a compiled template still has, and the certified `askama` is
+  re-exported at `arcature::askama` so an application points
+  `#[template(askama = arcature::askama)]` at the framework's copy rather
+  than resolving a second version of its own. The engine being compiled
+  rather than interpreted is the whole of the choice. minijinja, tera and
+  handlebars each carry a parser and an expression evaluator that run
+  *inside the request path*, and that is where server-side template
+  injection lives -- the shortest route there is from a form field to remote
+  code execution. Askama emits `write!` calls at build time, so at runtime
+  there is no parser for hostile input to reach and the class of bug is
+  absent rather than mitigated. The price, paid knowingly, is that editing a
+  template needs a rebuild. Autoescaping is picked from the template's
+  extension and is proven by a test that renders a `<script>` through an
+  `.html` template and gets entities back. Off by default: a generated
+  application renders through Inertia, and a build that never serves a
+  server-rendered page has no reason to carry a template compiler.
+
 
 ### Changed
 

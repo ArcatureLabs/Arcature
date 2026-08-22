@@ -237,6 +237,19 @@ pub mod pages;
 #[cfg(feature = "templates")]
 pub mod templates;
 
+// Compiled HTML views. Off by default: a generated application renders
+// through Inertia, and a build that never serves a server-rendered page has
+// no reason to carry a template compiler.
+#[cfg(feature = "views")]
+pub mod view;
+#[cfg(feature = "views")]
+pub use view::{View, ViewError, view};
+// Re-export the certified askama so `#[template(askama = arcature::askama)]`
+// resolves from an application that does not depend on askama itself -- the
+// same reason `sea_orm`, `validator` and `lettre` are re-exported.
+#[cfg(feature = "views")]
+pub use askama;
+
 #[cfg(feature = "cli")]
 pub mod cli;
 

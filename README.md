@@ -131,10 +131,11 @@ position is in the module documentation and in
 | Observability | tracing, request ids, JSON logs, Prometheus text, W3C trace context | `observe` |
 | Static pages and assets | tower-http `fs` | `pages` |
 | The `arc` CLI and templates | clap 4 | `cli`, `templates` |
+| Compiled HTML views | askama 0.16 (no runtime parser, so no SSTI) | `views` |
 
 Operator opt-ins stay off by default: `otel` (OpenTelemetry over OTLP),
 `api-docs` (an interactive API reference is a map of the attack surface),
-`oauth`, `storage-s3`, `dev-proxy`, `uag`, `test-kit`.
+`oauth`, `storage-s3`, `dev-proxy`, `uag`, `test-kit`, `views`.
 
 Database drivers are separate features so a SQLite user does not compile the
 PostgreSQL protocol. `database` on its own brings the crates but no driver;

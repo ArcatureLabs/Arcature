@@ -111,6 +111,11 @@ pub use crate::{DbFromState, RouteModel};
 #[cfg(feature = "realtime")]
 pub use crate::realtime::{Broadcast, SseEndpoint, WebSocketEndpoint};
 
+// Compiled views. `Template` carries both the trait and the derive macro,
+// which is what makes a bare `#[derive(Template)]` work after a glob import.
+#[cfg(feature = "views")]
+pub use crate::view::{Template, View, view};
+
 #[cfg(feature = "api")]
 pub use crate::api::{Problem, ProblemKind};
 

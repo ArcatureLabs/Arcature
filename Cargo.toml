@@ -276,6 +276,24 @@ api-docs = ["api", "uag"]
 # `realtime`, which is every default build.
 uploads = ["axum/multipart", "validation", "storage-fs", "dep:tokio", "dep:unicode-normalization", "dep:sha2", "dep:infer"]
 
+# Compiled HTML views (feature `views`).
+#
+# Askama compiles a template into Rust code at build time. That is the whole
+# reason this feature names askama and not minijinja, tera or handlebars: a
+# runtime template engine carries a parser and an expression evaluator that
+# run inside the request path, which is where server-side template injection
+# lives and SSTI is the shortest route from user input to remote code
+# execution. With a compile-time engine there is no parser at runtime at all,
+# so the class of bug is not mitigated, it is absent.
+#
+# The trade accepted in exchange: editing a template needs a rebuild.
+#
+# Off by default. A generated Arcature application renders its pages through
+# Inertia, so the server-rendered view layer is for the applications that want
+# HTML from the server -- and a build that never renders one has no business
+# carrying a template compiler.
+views = ["dep:askama"]
+
 # Full features convenience alias (everything except operator opt-ins).
 fullstack = [
     "macros",
@@ -300,6 +318,7 @@ fullstack = [
     "dev-proxy",
     "uag",
     "uploads",
+    "views",
 ]
 
 [lints.rust]
@@ -451,6 +470,24 @@ tower-sessions-memory-store = { version = "0.15.0", default-features = false, op
 
 # `arc dev` file watching (feature `cli`).
 notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"], optional = true }
+
+# Views (feature `views`). `default-features = false` drops two things on
+# purpose. `config` would add `basic-toml`, `glob`, `serde` and `serde_derive`
+# to the build-time graph to read an `askama.toml` this framework does not
+# ship and does not document; `urlencode` would add `percent-encoding` for a
+# filter an HTML template does not need, since escaping is the autoescaper's
+# job and not a filter's. What is left is `derive` (the `#[derive(Template)]`
+# macro) and `std`. The whole tree is pure Rust, MIT OR Apache-2.0, and every
+# crate under it -- `itoa`, `memchr`, `rustc-hash`, `syn`, `quote`,
+# `proc-macro2` -- is already in the lock file.
+#
+# `askama_axum` is deliberately absent. It was folded into askama and then
+# dropped; the `IntoResponse` impl lives in `src/view/response.rs`, where it
+# can answer a render failure the way the rest of the framework answers one.
+askama = { version = "0.16.0", default-features = false, features = [
+    "derive",
+    "std",
+], optional = true }
 
 # Error handling.
 thiserror = { version = "2.0", default-features = false }
