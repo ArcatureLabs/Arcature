@@ -12,8 +12,8 @@
 //! The crate depends on clap with `default-features = false` and the manifest
 //! does not enable clap's `derive` feature, so `#[derive(Parser)]` does not
 //! exist in this build. The builder is also the better fit for the `make:*`
-//! family: sixteen near-identical subcommands come out of one loop over
-//! [`MakeKind::ALL`] instead of sixteen hand-written variants that could
+//! family: seventeen near-identical subcommands come out of one loop over
+//! [`MakeKind::ALL`] instead of seventeen hand-written variants that could
 //! drift apart.
 
 use std::ffi::OsString;
@@ -244,12 +244,15 @@ impl DbAction {
 
 /// The kind of artifact `arc make:<kind>` writes.
 ///
-/// One enum rather than sixteen subcommand variants: every `make:*` command
+/// One enum rather than seventeen subcommand variants: every `make:*` command
 /// takes the same single `<name>` argument and differs only in which
 /// blueprint it renders, so the difference belongs in data, not in the shape
 /// of the dispatcher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MakeKind {
+    /// A feature module -- its own directory under `app/modules/`, holding a
+    /// controller, a service and a routes block declared in one `module!`.
+    Module,
     /// An Axum controller under `app/controllers/`.
     Controller,
     /// A SeaORM model under `app/models/`.
@@ -287,6 +290,7 @@ pub enum MakeKind {
 impl MakeKind {
     /// Every kind, in the order they appear in `arc --help`.
     pub const ALL: &'static [Self] = &[
+        Self::Module,
         Self::Controller,
         Self::Model,
         Self::Migration,
@@ -309,6 +313,7 @@ impl MakeKind {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Module => "module",
             Self::Controller => "controller",
             Self::Model => "model",
             Self::Migration => "migration",
@@ -339,6 +344,7 @@ impl MakeKind {
     #[must_use]
     pub fn subcommand_name(self) -> &'static str {
         match self {
+            Self::Module => "make:module",
             Self::Controller => "make:controller",
             Self::Model => "make:model",
             Self::Migration => "make:migration",
@@ -363,6 +369,7 @@ impl MakeKind {
     #[must_use]
     pub fn about(self) -> &'static str {
         match self {
+            Self::Module => "Generate a feature module in app/modules",
             Self::Controller => "Generate a controller in app/controllers",
             Self::Model => "Generate a model in app/models",
             Self::Migration => "Generate a timestamped migration in database/migrations",

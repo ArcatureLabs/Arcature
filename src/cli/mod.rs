@@ -16,7 +16,8 @@
 //! - `arc serve [--bind <addr>] [--port <n>]` — run the current application.
 //! - `arc migrate [--dsn <url>]` — run pending migrations.
 //! - `arc schedule [--dsn <url>]` — run the job scheduler.
-//! - `arc make:<kind> <name>` — generate one source file (sixteen kinds).
+//! - `arc make:<kind> <name>` — generate a source file (seventeen kinds;
+//!   `make:module` writes a directory of four).
 //! - `arc key:generate [--show]` — mint the application key (`auth`).
 //! - `arc storage:link` — link `storage/app/public` into `public/storage`.
 //! - `arc db:seed | db:fresh | db:reset [--dsn <url>] [--force]` — database lifecycle.
@@ -102,8 +103,12 @@ fn execute(cmd: Subcommand) -> Result<(), CliError> {
             commands::schedule::run(dsn.as_deref()).map_err(CliError::from)
         }
         Subcommand::Make { kind, name } => {
-            let generated = commands::make::run(kind, &name).map_err(CliError::from)?;
-            generated.report();
+            // `run_all` rather than `run`: `make:module` writes four files, and
+            // a command that names one of them is a command whose output the
+            // reader has to distrust for every other kind too.
+            for generated in commands::make::run_all(kind, &name).map_err(CliError::from)? {
+                generated.report();
+            }
             Ok(())
         }
         #[cfg(feature = "auth")]

@@ -1,9 +1,10 @@
 //! What each `arc make:<kind>` writes, and where.
 //!
-//! One function per kind would spread sixteen near-identical decisions across
-//! sixteen places, so instead [`plan`] answers all of them: the destination
-//! path, the file body, whether a sibling `mod.rs` should learn about the new
-//! file, and any follow-up the generator cannot do for the developer.
+//! One function per kind would spread seventeen near-identical decisions
+//! across seventeen places, so instead [`plan`] answers all of them: the
+//! destination path, the file body, whether a sibling `mod.rs` should learn
+//! about the new file, and any follow-up the generator cannot do for the
+//! developer.
 //!
 //! # Scaffolds that compile
 //!
@@ -36,9 +37,13 @@ pub struct Artifact {
 }
 
 /// Decide everything about the file `kind` + `name` produces.
+///
+/// For a kind that writes more than one file this is the *primary* artifact
+/// -- the one whose path names the thing. Use [`plan_all`] to get the rest.
 #[must_use]
 pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
     match kind {
+        MakeKind::Module => module_root(name),
         MakeKind::Controller => rust(name, "app/controllers", "Controller", controller),
         MakeKind::Model => rust(name, "app/models", "", model),
         MakeKind::Migration => migration(name),
@@ -55,6 +60,26 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
         MakeKind::Test => test(name),
         MakeKind::Factory => rust(name, "database/factories", "Factory", factory),
         MakeKind::Seeder => rust(name, "database/seeders", "Seeder", seeder),
+    }
+}
+
+/// Every file `kind` + `name` produces, primary artifact first.
+///
+/// Sixteen of the seventeen kinds write one file, and [`plan`] is the older,
+/// narrower way to ask for one of those. `module` is the exception: a module
+/// is a directory whose entire point is that the controller, the service and
+/// the routes sit together, and a directory holding one of the three is not a
+/// module.
+///
+/// A second function rather than a `Vec<Artifact>` field on [`Artifact`] --
+/// or a second path on [`super::Generated`] -- because both of those structs
+/// are public API and neither is `#[non_exhaustive]`, so growing either a
+/// field is a breaking change. Growing a module a function is not.
+#[must_use]
+pub fn plan_all(kind: MakeKind, name: &ArtifactName) -> Vec<Artifact> {
+    match kind {
+        MakeKind::Module => module(name),
+        _ => vec![plan(kind, name)],
     }
 }
 
@@ -548,6 +573,197 @@ fn seeder(r: &Rendered) -> String {
          \x20   /// Insert this seeder's rows.\n\
          \x20   pub async fn run(_db: &Db) -> Result<()> {{\n\
          \x20       Ok(())\n\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+// ---------------------------------------------------------------------------
+// The module blueprint: one directory, four files.
+// ---------------------------------------------------------------------------
+
+/// A feature module: the `module!` block, and the controller, service and
+/// routes it declares.
+///
+/// Four files rather than five. `arc make:policy` is one command away, and a
+/// policy scaffold cannot compile until it is pointed at a model and a user
+/// type that a fresh application does not have -- shipping one inside a
+/// module would mean `arc make:module billing` produces a project that does
+/// not build.
+fn module(name: &ArtifactName) -> Vec<Artifact> {
+    let rendered = Rendered::new(name, "");
+    vec![
+        module_root(name),
+        module_part(name, "controller.rs", module_controller(&rendered)),
+        module_part(name, "service.rs", module_service(&rendered)),
+        module_part(name, "routes.rs", module_routes(&rendered)),
+    ]
+}
+
+/// `app/modules/<segments...>/<stem>/<file>` -- the directory a module owns.
+fn module_file(name: &ArtifactName, file: &str) -> PathBuf {
+    let mut path = PathBuf::from("app/modules");
+    for segment in name.segments() {
+        path.push(segment);
+    }
+    path.push(name.file_stem(""));
+    path.push(file);
+    path
+}
+
+/// One of the three files the module's own `mod.rs` already declares.
+///
+/// `register_module` is false here, and on the root as well. The generic
+/// registration derives the declaration from the file stem, which for these
+/// three would append a second `pub mod controller;` to a `mod.rs` that
+/// already has one -- and for the root would write `pub mod mod;`.
+/// [`super::generate_all`] registers the module as a whole instead.
+fn module_part(name: &ArtifactName, file: &str, contents: String) -> Artifact {
+    Artifact {
+        path: module_file(name, file),
+        contents,
+        register_module: false,
+        notes: Vec::new(),
+    }
+}
+
+fn module_root(name: &ArtifactName) -> Artifact {
+    let r = Rendered::new(name, "");
+    let Rendered {
+        stem,
+        type_name,
+        slash_path,
+        ..
+    } = &r;
+    let controller_type = format!("{type_name}Controller");
+    let service_type = format!("{type_name}Service");
+    let routes_const = format!("{}_ROUTES", stem.to_uppercase());
+
+    let contents = format!(
+        "//! The `{slash_path}` feature module.\n\
+         //!\n\
+         //! Everything this feature owns lives in this directory, and the\n\
+         //! `module!` block below is the index of it. The application graph\n\
+         //! reads that index at boot: a type missing from it still compiles\n\
+         //! and still serves, it is simply invisible to `arc routes` and\n\
+         //! `arc typegen`.\n\
+         \n\
+         pub mod controller;\n\
+         pub mod routes;\n\
+         pub mod service;\n\
+         \n\
+         use arcature::prelude::*;\n\
+         \n\
+         // `controllers:` and `routes:` are resolved at this site -- the\n\
+         // first reads the controller's method metadata, the second is a path\n\
+         // to a const. `services:` and `policies:` are recorded as names\n\
+         // only, which is why `{service_type}` is named below but not\n\
+         // imported: an import the macro never resolves is an unused one.\n\
+         use controller::{controller_type};\n\
+         \n\
+         module! {{\n\
+         \x20   pub {type_name} {{\n\
+         \x20       controllers: [{controller_type}],\n\
+         \x20       services: [{service_type}],\n\
+         \x20       routes: routes::{routes_const},\n\
+         \x20   }}\n\
+         }}\n"
+    );
+
+    Artifact {
+        path: module_file(name, "mod.rs"),
+        contents,
+        register_module: false,
+        notes: Vec::new(),
+    }
+}
+
+fn module_controller(r: &Rendered) -> String {
+    let Rendered {
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    let controller_type = format!("{type_name}Controller");
+    format!(
+        "//! HTTP entry points for the `{slash_path}` module.\n\
+         \n\
+         use arcature::prelude::*;\n\
+         \n\
+         /// The `{slash_path}` controller.\n\
+         pub struct {controller_type};\n\
+         \n\
+         #[controller]\n\
+         impl {controller_type} {{\n\
+         \x20   /// The index action, already wired up in this module's\n\
+         \x20   /// `routes.rs`. Replace the body with the real response.\n\
+         \x20   pub async fn index() -> Result<Response> {{\n\
+         \x20       Ok(text(StatusCode::OK, \"{controller_type}::index\"))\n\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+fn module_service(r: &Rendered) -> String {
+    let Rendered {
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    let service_type = format!("{type_name}Service");
+    format!(
+        "//! Business logic for the `{slash_path}` module.\n\
+         \n\
+         use arcature::prelude::*;\n\
+         \n\
+         /// `#[service]` builds this per request from the application's\n\
+         /// resources. Keep the methods framework-agnostic -- take domain\n\
+         /// values, return domain values, and let the controller map the\n\
+         /// result to HTTP.\n\
+         #[service]\n\
+         pub struct {service_type} {{\n\
+         \x20   db: Db,\n\
+         }}\n\
+         \n\
+         impl {service_type} {{\n\
+         \x20   /// The pool this service was resolved with.\n\
+         \x20   pub fn db(&self) -> &Db {{\n\
+         \x20       &self.db\n\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+fn module_routes(r: &Rendered) -> String {
+    let Rendered {
+        stem,
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    let controller_type = format!("{type_name}Controller");
+    let route_name = slash_path.replace('/', ".");
+    format!(
+        "//! The paths the `{slash_path}` module serves.\n\
+         //!\n\
+         //! `app/modules/mod.rs` merges this block into the application's own\n\
+         //! table, so the paths here are absolute -- living in a module adds\n\
+         //! no prefix. Two modules claiming the same path is a panic at boot,\n\
+         //! from axum; two modules claiming the same route *name* is not, and\n\
+         //! the later one silently wins. That is why the name below carries\n\
+         //! the module's own.\n\
+         \n\
+         use arcature::prelude::*;\n\
+         \n\
+         use super::controller::{controller_type};\n\
+         use crate::bootstrap::AppState;\n\
+         \n\
+         routes! {{\n\
+         \x20   pub {stem} {{\n\
+         \x20       state: AppState;\n\
+         \n\
+         \x20       get \"/{slash_path}\" => {controller_type}::index \
+         {{ name: {route_name}.index }}\n\
          \x20   }}\n\
          }}\n"
     )

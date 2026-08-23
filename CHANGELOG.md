@@ -1074,6 +1074,28 @@ therefore its first.
   generator that comes next: it inserts one line into each and touches nothing
   else, which is what keeps a generator out of the composition root.
 
+- **`arc make:module <name>` generates a feature module and wires it up.** The
+  seventeenth `make` kind, and the one a module-first framework was oddly
+  missing: until now, adding a feature module meant writing the `module!`
+  block by hand, creating the directory, and remembering to register it. The
+  command writes `app/modules/<name>/{mod,controller,service,routes}.rs` --
+  the `module!` block and the three things it declares -- then adds the
+  `pub mod` line and one entry to each of the two lists in
+  `app/modules/mod.rs`. The route it declares is named `<name>.index` rather
+  than `index`, because `Routes::merge` resolves a duplicate route *name* by
+  letting the later one win, silently, and a bare `index` in every module
+  would make that a matter of registration order. Four files rather than five:
+  a policy scaffold cannot compile until it is pointed at a model and a user
+  type a fresh application does not have, and `arc make:policy` is one command
+  away. The command refuses if *any* of the four targets exists, before
+  writing the first one, so a collision never leaves a half-written module
+  behind; and a project whose `app/modules/mod.rs` has no markers -- one
+  generated before this release, or one somebody edited -- still gets its
+  files, with the two lines to paste reported rather than guessed at.
+  Alongside it, `cli::commands::make::run_all` and `generate_all` report every
+  file a kind wrote, and `blueprint::plan_all` plans them; `run`, `generate`
+  and `plan` keep answering with the primary artifact.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every
