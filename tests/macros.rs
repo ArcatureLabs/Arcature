@@ -1,6 +1,22 @@
 //! Tests for the arcature-macros proc-macro crate.
+//!
+//! Gated on `dx` as well as `macros`, because that is what the code these
+//! macros emit is written against: `#[controller]`, `module!`, `#[provider]`,
+//! `#[listener]` and `#[command]` all expand into implementations of
+//! contracts that live behind `dx`. With `macros` alone the macros still
+//! expand, and every one of those expansions names a trait that is not
+//! compiled.
+//!
+//! That combination is reachable -- `test-kit` enables `macros` and not `dx`,
+//! so `cargo test --no-default-features --features test-kit` produced fifty
+//! three compile errors from this file. Nothing caught it because no job
+//! compiles test targets in that shape: `features` passes `--no-dev-deps`,
+//! `powerset` builds without `--all-targets`, and `drivers` does use
+//! `--all-targets` but with a feature list holding both. A test target that
+//! will not build is worse than one that fails, because the failure is
+//! attributed to whatever the reader was doing at the time.
 
-#![cfg(feature = "macros")]
+#![cfg(all(feature = "macros", feature = "dx"))]
 
 use arcature::jobs::JobRequest;
 use serde::{Deserialize, Serialize};
