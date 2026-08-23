@@ -42,6 +42,13 @@ dist/
 # `coverage-baseline.<host-target>.txt`, which is committed.
 /coverage-report.txt
 
+# The load suite appends its measurements here when `ARCATURE_LOAD` is set.
+# Unlike the two above there is no gate reading it back: throughput and
+# latency describe the runner as much as the code, so the accepted answer
+# `load-baseline.<host-target>.txt` is a record for a human and not a
+# threshold for a check. See `tests/load_profile.rs` for why.
+/load-report.txt
+
 # Agent worktrees. `git worktree add .claude/worktrees/<name>` puts a whole
 # checkout in here, and an unignored one turns `git add -A` into a commit
 # containing a gitlink to a branch that exists on nobody else's machine.
