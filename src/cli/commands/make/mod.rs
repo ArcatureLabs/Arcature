@@ -7,7 +7,7 @@
 //!
 //! # One file, except when the thing is not one file
 //!
-//! Eighteen of the nineteen kinds write a single file, and [`run`] is the way
+//! Eighteen of the twenty kinds write a single file, and [`run`] is the way
 //! to ask for one. `module` writes four, because a directory holding a
 //! controller but no service and no routes is not a module — it is a
 //! controller in an oddly named directory. [`run_all`] is the honest answer
@@ -817,6 +817,45 @@ mod tests {
                 .expect("read"),
             "// mine\n"
         );
+    }
+
+    #[test]
+    fn a_view_writes_the_struct_and_the_template_it_is_the_type_of() {
+        let dir = scaffold();
+
+        let generated =
+            generate_all(MakeKind::View, "admin/receipt", dir.path()).expect("generation");
+        let paths: Vec<_> = generated.iter().map(|g| g.path.clone()).collect();
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("app/views/admin/receipt_view.rs"),
+                PathBuf::from("templates/admin/receipt.html"),
+            ]
+        );
+        for path in &paths {
+            assert!(
+                dir.path().join(path).is_file(),
+                "{} missing",
+                path.display()
+            );
+        }
+
+        // The two halves have to agree on one string or the crate does not
+        // compile, and they are produced by two different functions. This is
+        // the assertion that keeps them together.
+        let view = std::fs::read_to_string(dir.path().join(&paths[0])).expect("view");
+        assert!(
+            view.contains(r#"#[template(path = "admin/receipt.html", askama = arcature::askama)]"#),
+            "{view}"
+        );
+
+        // Only the Rust half is declared to rustc. A `mod.rs` in `templates/`
+        // would be a Rust file in a directory the compiler never looks at.
+        let views =
+            std::fs::read_to_string(dir.path().join("app/views/admin/mod.rs")).expect("views mod");
+        assert!(views.contains("pub mod receipt_view;"), "{views}");
+        assert!(!dir.path().join("templates/admin/mod.rs").exists());
     }
 
     #[test]

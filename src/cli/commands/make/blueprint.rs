@@ -1,7 +1,7 @@
 //! What each `arc make:<kind>` writes, and where.
 //!
-//! One function per kind would spread nineteen near-identical decisions
-//! across nineteen places, so instead [`plan`] answers all of them: the
+//! One function per kind would spread twenty near-identical decisions
+//! across twenty places, so instead [`plan`] answers all of them: the
 //! destination path, the file body, whether a sibling `mod.rs` should learn
 //! about the new file, and any follow-up the generator cannot do for the
 //! developer.
@@ -70,16 +70,23 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
         MakeKind::Seeder => rust(name, "database/seeders", "Seeder", seeder),
         MakeKind::Notification => notification(name),
         MakeKind::Mail => rust(name, "app/mail", "", mailable),
+        MakeKind::View => rust(name, "app/views", "View", view_struct),
     }
 }
 
 /// Every file `kind` + `name` produces, primary artifact first.
 ///
-/// Eighteen of the nineteen kinds write one file, and [`plan`] is the older,
-/// narrower way to ask for one of those. `module` is the exception: a module
-/// is a directory whose entire point is that the controller, the service and
-/// the routes sit together, and a directory holding one of the three is not a
-/// module.
+/// Eighteen of the twenty kinds write one file, and [`plan`] is the older,
+/// narrower way to ask for one of those. Two kinds are not one file, for the
+/// same underlying reason: what they produce is not a file, it is a set of
+/// files that only means anything together.
+///
+/// A module is a directory whose entire point is that the controller, the
+/// service and the routes sit together, and a directory holding one of the
+/// three is not a module. A view is a struct and the template it is the type
+/// of, and askama reads that template when the crate compiles -- so a view
+/// without its template is not a half-finished scaffold, it is a build
+/// failure.
 ///
 /// A second function rather than a `Vec<Artifact>` field on [`Artifact`] --
 /// or a second path on [`super::Generated`] -- because both of those structs
@@ -89,6 +96,7 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
 pub fn plan_all(kind: MakeKind, name: &ArtifactName) -> Vec<Artifact> {
     match kind {
         MakeKind::Module => module(name),
+        MakeKind::View => view(name),
         _ => vec![plan(kind, name)],
     }
 }
@@ -703,6 +711,110 @@ fn mailable(r: &Rendered) -> String {
          \x20           .plain(format!(\"Hello, {{}}.\", self.name))\n\
          \x20   }}\n\
          }}\n"
+    )
+}
+
+// ---------------------------------------------------------------------------
+// The view blueprint: a struct and the template it is the type of.
+// ---------------------------------------------------------------------------
+
+/// A server-rendered view: the Rust struct, and the `.html` it renders.
+///
+/// Two files because askama reads the template at build time. A view struct
+/// whose `path` names a file that is not there is not a scaffold with a gap
+/// in it -- it is a compile error, and the project stops building until the
+/// developer writes the half the generator declined to. The pair is the
+/// artifact.
+fn view(name: &ArtifactName) -> Vec<Artifact> {
+    let rendered = Rendered::new(name, "View");
+    vec![
+        Artifact {
+            path: destination("app/views", name, &rendered.stem),
+            contents: view_struct(&rendered),
+            register_module: true,
+            notes: Vec::new(),
+        },
+        Artifact {
+            path: view_template_path(name),
+            contents: view_template(&rendered),
+            // No `mod.rs` beside a template: `templates/` is read by the
+            // askama derive, not declared to rustc. Registering it would
+            // write `pub mod welcome;` into a directory that has no Rust in
+            // it at all.
+            register_module: false,
+            notes: Vec::new(),
+        },
+    ]
+}
+
+/// `templates/<segments...>/<base stem>.html`.
+///
+/// The base stem, not the file stem: the struct is `WelcomeView` and the
+/// template is `welcome.html`, because `path` is a template's name and
+/// nothing in askama makes it a type's name.
+fn view_template_path(name: &ArtifactName) -> PathBuf {
+    let mut path = PathBuf::from("templates");
+    for segment in name.segments() {
+        path.push(segment);
+    }
+    path.push(format!("{}.html", name.file_stem("")));
+    path
+}
+
+fn view_struct(r: &Rendered) -> String {
+    let Rendered {
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    format!(
+        "//! The `{type_name}`, and the template it is the type of.\n\
+         \n\
+         // `Template` is both the trait and the `#[derive(Template)]` macro,\n\
+         // so one `use` names both. It is in `arcature::prelude` as well,\n\
+         // alongside the `view` helper the controller rendering this calls.\n\
+         use arcature::view::Template;\n\
+         \n\
+         /// `templates/{slash_path}.html`.\n\
+         ///\n\
+         /// The fields are the names the template is allowed to use, and\n\
+         /// that is checked when this crate compiles: a `{{{{ subtitle }}}}`\n\
+         /// with no `subtitle` field here is a build failure, not a blank\n\
+         /// space on a page nobody looked at.\n\
+         ///\n\
+         /// `askama = arcature::askama` points the derive at the askama the\n\
+         /// framework pins, so this application does not depend on askama\n\
+         /// directly and cannot drift to a different version of it.\n\
+         #[derive(Template)]\n\
+         #[template(path = \"{slash_path}.html\", askama = arcature::askama)]\n\
+         pub struct {type_name} {{\n\
+         \x20   /// The document title, and the heading.\n\
+         \x20   pub title: String,\n\
+         \x20   /// The body copy.\n\
+         \x20   pub message: String,\n\
+         }}\n"
+    )
+}
+
+fn view_template(r: &Rendered) -> String {
+    let Rendered { type_name, .. } = r;
+    format!(
+        "{{# The template `{type_name}` renders. Its field names are the only\n\
+         \x20  names available here, and askama checks that at build time.\n\
+         \n\
+         \x20  `{{{{ }}}}` escapes, because this file's extension is `.html`.\n\
+         \x20  Write `{{{{ value|safe }}}}` only for markup you produced\n\
+         \x20  yourself -- never for a value that came in on a request. #}}\n\
+         {{% extends \"layout.html\" %}}\n\
+         \n\
+         {{% block title %}}{{{{ title }}}}{{% endblock %}}\n\
+         \n\
+         {{% block content %}}\n\
+         <main>\n\
+         \x20 <h1>{{{{ title }}}}</h1>\n\
+         \x20 <p>{{{{ message }}}}</p>\n\
+         </main>\n\
+         {{% endblock %}}\n"
     )
 }
 

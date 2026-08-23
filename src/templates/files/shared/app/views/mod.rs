@@ -21,8 +21,11 @@
 //! input to reach. The price is that editing a template needs a rebuild;
 //! `arc dev` already rebuilds on save.
 //!
-//! One view ships with the scaffold. Add yours here, one struct per
-//! template.
+//! One view ships with the scaffold, declared inline below because there
+//! is exactly one of it. `arc make:view <name>` writes the next one as a
+//! sibling module and declares it here, along with the template it is the
+//! type of -- both files, because askama reads the template when this
+//! crate compiles and a struct without one does not build.
 
 // `Template` is both the trait and the `#[derive(Template)]` macro; one
 // `use` names both. It is also in `arcature::prelude`, alongside `view`,

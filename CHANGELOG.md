@@ -1174,6 +1174,20 @@ therefore its first.
   `Mailable::build` is required to return, so the person who later adds
   that import out of habit reads the reason in the file they are editing.
 
+- **`arc make:view`.** The twentieth kind, and the second one that is not a
+  file. It writes `app/views/<name>_view.rs` and `templates/<name>.html`,
+  because askama reads the template when the crate compiles: a view struct
+  whose `path` names a file that is not there is not a scaffold with a gap
+  in it, it is a build failure. Only the Rust half is declared to rustc --
+  a `mod.rs` beside a template would be a Rust file in a directory the
+  compiler never looks at -- and a test asserts that the `path` in the
+  derive is the path the template was written to, since two different
+  functions produce those two strings and nothing else would notice them
+  drifting apart. `plan_all` gained the arm rather than `Artifact` gaining
+  a field, for the reason it exists: `Artifact` and `Generated` are public
+  API and neither is `#[non_exhaustive]`, so growing either one a field is
+  a breaking change and growing a module a function is not.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every
