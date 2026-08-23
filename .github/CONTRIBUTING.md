@@ -188,7 +188,7 @@ Rules that fall out of that:
 
 ## Releases and versioning
 
-Arcature uses semantic versioning, currently `0.1.0`.
+Arcature uses semantic versioning, currently `0.1.1`.
 
 - `MAJOR` increments on a breaking change, and stays `0` until the API is
   frozen.

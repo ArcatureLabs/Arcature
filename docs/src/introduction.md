@@ -36,10 +36,13 @@ use arcature::prelude::*;
 
 ## Status
 
-`arcature 0.1.0` is on crates.io. It is the first release of this codebase,
-there is no upgrade path from an earlier one, and the API is still moving. Read
+`arcature 0.1.1` is on crates.io. `0.1.0` was the first release of this
+codebase, there is no upgrade path from anything earlier, and the API is still
+moving. `0.1.1` removes nothing and changes no signature, so `arcature = "0.1"`
+carries you to it; it adds fourteen subsystems, all behind feature flags that
+are off by default. Read
 [the changelog](https://github.com/ArcatureLabs/Arcature/blob/main/CHANGELOG.md)
-before relying on anything here.
+and [the upgrade note](upgrade.md) before relying on anything here.
 
 The `2026.x` versions under the `arcature*` names on crates.io come from an
 abandoned predecessor repository. They are yanked and share nothing with this
