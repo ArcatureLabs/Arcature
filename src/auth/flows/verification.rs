@@ -401,12 +401,23 @@ mod tests {
         let flow = flow();
         let link = flow.link("user:42", "ada@example.com").expect("sign");
         let binding = binding_of(&link).to_owned();
-        // Flip one character of the signature.
-        let tampered = if link.ends_with('A') {
-            format!("{}B", &link[..link.len() - 1])
-        } else {
-            format!("{}A", &link[..link.len() - 1])
-        };
+
+        // Flip the *first* character of the signature body, not the last.
+        // A 32-byte MAC is 43 base64url characters, so the final group holds
+        // three of them and the last one carries two padding bits the decoder
+        // requires to be zero -- only sixteen of the sixty-four alphabet
+        // characters are legal in that position. Substituting an arbitrary one
+        // is rejected as `Malformed` before the signature is ever compared,
+        // which is the decoder doing its job and not what this test is about.
+        // The expiry rides inside the signed input, so the signature differs
+        // every second: editing the tail failed roughly one run in sixteen,
+        // whenever the genuine last character happened to be `A`. The first
+        // character sits at the top of a full group, where all sixty-four are
+        // legal and any change is a different MAC.
+        let marker = "signature=v1.";
+        let body = link.find(marker).expect("a signed link") + marker.len();
+        let flipped = if link[body..].starts_with('A') { 'B' } else { 'A' };
+        let tampered = format!("{}{flipped}{}", &link[..body], &link[body + 1..]);
 
         assert_eq!(
             flow.confirm(&tampered, "user:42", &binding, "ada@example.com"),
