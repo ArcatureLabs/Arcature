@@ -857,7 +857,6 @@ fn upload(name: &ArtifactName) -> Artifact {
          //! the response says.\n\
          \n\
          use arcature::prelude::*;\n\
-         use arcature::serde_json;\n\
          use arcature::storage::StorageError;\n\
          use arcature::validation::upload::UploadedFile;\n\
          \n\
@@ -1007,9 +1006,6 @@ fn account(name: &ArtifactName) -> Artifact {
          //! next request. A model with neither still compiles -- it simply\n\
          //! cannot be signed in.\n\
          \n\
-         use arcature::auth::UserLoader;\n\
-         use arcature::database::sea_orm::ActiveValue;\n\
-         use arcature::database::{{insert, update}};\n\
          use arcature::prelude::*;\n\
          \n\
          use crate::bootstrap::AppState;\n\
@@ -1154,7 +1150,6 @@ fn registration_controller(r: &Rendered) -> String {
          //! `AuthManager` here and accept the oracle knowingly.\n\
          \n\
          use arcature::prelude::*;\n\
-         use arcature::serde_json;\n\
          \n\
          use super::{stem}::{{create, find_by_email}};\n\
          use crate::bootstrap::AppState;\n\
@@ -1236,12 +1231,8 @@ fn session_controller(r: &Rendered) -> String {
          \n\
          use std::sync::{{LazyLock, OnceLock}};\n\
          \n\
-         use arcature::auth::PasswordHashString;\n\
          use arcature::auth::flows::{{CREDENTIAL_REJECTION, CredentialChecker, LoginThrottle}};\n\
-         use arcature::axum::Extension;\n\
-         use arcature::http::ClientIp;\n\
          use arcature::prelude::*;\n\
-         use arcature::serde_json;\n\
          \n\
          use super::{stem}::{{{type_name}, find_by_email}};\n\
          use crate::bootstrap::AppState;\n\
@@ -1386,7 +1377,6 @@ fn password_controller(r: &Rendered) -> String {
          \n\
          use arcature::auth::flows::PasswordResets;\n\
          use arcature::prelude::*;\n\
-         use arcature::serde_json;\n\
          \n\
          use super::{stem}::{{connection, find_by_email, set_password}};\n\
          use crate::bootstrap::AppState;\n\
