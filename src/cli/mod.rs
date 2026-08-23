@@ -16,7 +16,7 @@
 //! - `arc serve [--bind <addr>] [--port <n>]` — run the current application.
 //! - `arc migrate [--dsn <url>]` — run pending migrations.
 //! - `arc schedule [--dsn <url>]` — run the job scheduler.
-//! - `arc make:<kind> <name>` — generate a source file (seventeen kinds;
+//! - `arc make:<kind> <name>` — generate a source file (eighteen kinds;
 //!   `make:module` writes a directory of four).
 //! - `arc key:generate [--show]` — mint the application key (`auth`).
 //! - `arc storage:link` — link `storage/app/public` into `public/storage`.

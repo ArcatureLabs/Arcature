@@ -12,8 +12,8 @@
 //! The crate depends on clap with `default-features = false` and the manifest
 //! does not enable clap's `derive` feature, so `#[derive(Parser)]` does not
 //! exist in this build. The builder is also the better fit for the `make:*`
-//! family: seventeen near-identical subcommands come out of one loop over
-//! [`MakeKind::ALL`] instead of seventeen hand-written variants that could
+//! family: eighteen near-identical subcommands come out of one loop over
+//! [`MakeKind::ALL`] instead of eighteen hand-written variants that could
 //! drift apart.
 
 use std::ffi::OsString;
@@ -244,7 +244,7 @@ impl DbAction {
 
 /// The kind of artifact `arc make:<kind>` writes.
 ///
-/// One enum rather than seventeen subcommand variants: every `make:*` command
+/// One enum rather than eighteen subcommand variants: every `make:*` command
 /// takes the same single `<name>` argument and differs only in which
 /// blueprint it renders, so the difference belongs in data, not in the shape
 /// of the dispatcher.
@@ -285,6 +285,8 @@ pub enum MakeKind {
     Factory,
     /// A database seeder under `database/seeders/`.
     Seeder,
+    /// A multi-channel notification under `app/notifications/`.
+    Notification,
 }
 
 impl MakeKind {
@@ -307,6 +309,7 @@ impl MakeKind {
         Self::Test,
         Self::Factory,
         Self::Seeder,
+        Self::Notification,
     ];
 
     /// The bare kind name, as it appears after `make:`.
@@ -330,6 +333,7 @@ impl MakeKind {
             Self::Test => "test",
             Self::Factory => "factory",
             Self::Seeder => "seeder",
+            Self::Notification => "notification",
         }
     }
 
@@ -361,6 +365,7 @@ impl MakeKind {
             Self::Test => "make:test",
             Self::Factory => "make:factory",
             Self::Seeder => "make:seeder",
+            Self::Notification => "make:notification",
         }
     }
 
@@ -386,6 +391,7 @@ impl MakeKind {
             Self::Test => "Generate an integration test in tests",
             Self::Factory => "Generate a model factory in database/factories",
             Self::Seeder => "Generate a database seeder in database/seeders",
+            Self::Notification => "Generate a notification in app/notifications",
         }
     }
 

@@ -1,20 +1,28 @@
 //! What each `arc make:<kind>` writes, and where.
 //!
-//! One function per kind would spread seventeen near-identical decisions
-//! across seventeen places, so instead [`plan`] answers all of them: the
+//! One function per kind would spread eighteen near-identical decisions
+//! across eighteen places, so instead [`plan`] answers all of them: the
 //! destination path, the file body, whether a sibling `mod.rs` should learn
 //! about the new file, and any follow-up the generator cannot do for the
 //! developer.
 //!
 //! # Scaffolds that compile
 //!
-//! Every blueprint here produces a file that compiles as written, with one
-//! deliberate exception each for `policy` and `listener`. Both macros bind to
-//! a type the developer chooses -- the model a policy guards, the event a
-//! listener reacts to -- and no generator can guess it. Those two name a
-//! placeholder and say so at the top of the file, because a scaffold that
-//! silently omits the binding is worse than one that fails to compile until
-//! it is pointed somewhere real.
+//! Every blueprint here produces a file that compiles as written, with two
+//! kinds of exception.
+//!
+//! `policy` and `listener` bind to a type the developer chooses -- the model
+//! a policy guards, the event a listener reacts to -- and no generator can
+//! guess it. Those two name a placeholder and say so at the top of the file,
+//! because a scaffold that silently omits the binding is worse than one that
+//! fails to compile until it is pointed somewhere real.
+//!
+//! `notification` compiles only once the application enables the feature its
+//! imports live behind, which a fresh `arc new` does not. The alternative was
+//! to have the generator edit `Cargo.toml`, and a generator that reaches into
+//! the manifest is a generator that can break a build it was never pointed
+//! at. The artifact's notes say which feature and why, and adding it is one
+//! line.
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,12 +68,13 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
         MakeKind::Test => test(name),
         MakeKind::Factory => rust(name, "database/factories", "Factory", factory),
         MakeKind::Seeder => rust(name, "database/seeders", "Seeder", seeder),
+        MakeKind::Notification => notification(name),
     }
 }
 
 /// Every file `kind` + `name` produces, primary artifact first.
 ///
-/// Sixteen of the seventeen kinds write one file, and [`plan`] is the older,
+/// Seventeen of the eighteen kinds write one file, and [`plan`] is the older,
 /// narrower way to ask for one of those. `module` is the exception: a module
 /// is a directory whose entire point is that the controller, the service and
 /// the routes sit together, and a directory holding one of the three is not a
@@ -576,6 +585,86 @@ fn seeder(r: &Rendered) -> String {
          \x20   }}\n\
          }}\n"
     )
+}
+
+fn notification(name: &ArtifactName) -> Artifact {
+    let r = Rendered::new(name, "");
+    let Rendered {
+        stem, type_name, ..
+    } = &r;
+    let kind = stem.replace('_', ".");
+
+    let contents = format!(
+        "//! The `{type_name}` notification.\n\
+         //!\n\
+         //! All three channels are written out, because the trait defaults\n\
+         //! every one of them to `None` and a channel that was never\n\
+         //! considered looks exactly like a channel that was considered and\n\
+         //! declined. Delete the ones this notification should not use; the\n\
+         //! deletion is the decision.\n\
+         \n\
+         use arcature::notifications::{{\n\
+         \x20   BroadcastContent, DatabaseContent, MailContent, Notification, Recipient,\n\
+         }};\n\
+         use arcature::serde_json;\n\
+         \n\
+         /// What happened, in the fields the channels below render from.\n\
+         #[derive(Debug, Clone)]\n\
+         pub struct {type_name} {{\n\
+         \x20   pub id: i64,\n\
+         }}\n\
+         \n\
+         impl Notification for {type_name} {{\n\
+         \x20   fn to_mail(&self, recipient: &Recipient) -> Option<MailContent> {{\n\
+         \x20       // No address, no mail -- and no error. A recipient\n\
+         \x20       // without one is not a failure to send.\n\
+         \x20       recipient.email_address()?;\n\
+         \n\
+         \x20       Some(MailContent::new(\n\
+         \x20           \"{type_name}\",\n\
+         \x20           format!(\"Something happened, and it concerns #{{}}.\", self.id),\n\
+         \x20       ))\n\
+         \x20   }}\n\
+         \n\
+         \x20   fn to_database(&self, _recipient: &Recipient) -> Option<DatabaseContent> {{\n\
+         \x20       Some(DatabaseContent::new(\n\
+         \x20           KIND,\n\
+         \x20           serde_json::json!({{ \"id\": self.id }}),\n\
+         \x20       ))\n\
+         \x20   }}\n\
+         \n\
+         \x20   fn to_broadcast(&self, _recipient: &Recipient) -> Option<BroadcastContent> {{\n\
+         \x20       Some(BroadcastContent::new(\n\
+         \x20           KIND,\n\
+         \x20           serde_json::json!({{ \"id\": self.id }}),\n\
+         \x20       ))\n\
+         \x20   }}\n\
+         }}\n\
+         \n\
+         /// The name the front end and the stored rows know this by.\n\
+         ///\n\
+         /// Deliberately a constant and deliberately not derived from\n\
+         /// `{type_name}`: this string is written into the notifications\n\
+         /// table and switched on by the client, so a `refactor: rename` of\n\
+         /// the type must not quietly rewrite a protocol and orphan every row\n\
+         /// already stored. Renaming the type is free; changing this is a\n\
+         /// migration.\n\
+         const KIND: &str = \"{kind}\";\n"
+    );
+
+    Artifact {
+        path: destination("app/notifications", name, stem),
+        contents,
+        register_module: true,
+        notes: vec![
+            "notifications are behind the `notifications` feature; add it to the \
+             application's `arcature` dependency before building"
+                .to_string(),
+            "`to_database` and `to_broadcast` render whatever the features are, but \
+             delivering them needs `notifications-db` and `notifications-broadcast`"
+                .to_string(),
+        ],
+    }
 }
 
 // ---------------------------------------------------------------------------

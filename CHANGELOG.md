@@ -1146,6 +1146,20 @@ therefore its first.
   `&'static str`. Behind the `uploads` feature, and purely additive -- a new
   trait implementation on an existing type.
 
+- **`arc make:notification`.** The eighteenth kind, and the first one whose
+  output does not compile in a fresh application: notifications live behind
+  the `notifications` feature, which `arc new` does not enable, so the
+  artifact's notes name the feature instead of the generator editing
+  `Cargo.toml` -- a generator that reaches into the manifest is a generator
+  that can break a build it was never pointed at. The file implements all
+  three channels rather than the one the trait needs, because every method on
+  `Notification` defaults to `None`, which makes a channel nobody considered
+  indistinguishable from a channel that was considered and declined; deleting
+  the two that do not apply is how the decision gets recorded. The kind string
+  the front end and the stored rows switch on is a named constant with the
+  reason beside it: it is not derived from the Rust type, so renaming the type
+  stays free and changing the protocol stays a migration.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every
