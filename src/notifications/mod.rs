@@ -156,6 +156,11 @@ mod store;
 #[cfg(feature = "notifications-db")]
 mod stored;
 
+// Needs `test-kit` for the "is a test database configured, and is it safe to
+// write to" decision, which lives there and must have exactly one spelling.
+#[cfg(all(test, feature = "notifications-db", feature = "test-kit"))]
+mod tests;
+
 #[cfg(feature = "notifications-broadcast")]
 pub use broadcast::{BroadcastChannels, BroadcastNotifications, PerRecipientChannels};
 pub use channel::{Channel, NotificationError};

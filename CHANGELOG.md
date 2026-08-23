@@ -1287,6 +1287,19 @@ therefore its first.
   neither authenticates nor lists before any sweep runs; that `DELETE`,
   `DELETE_FOR` and `DELETE_EXPIRED` each reach what they name and nothing
   else; and that the row holds a SHA-256 digest and never a working token.
+- **The database notification inbox is exercised against a live database.** A
+  third round-trip suite behind `test-kit` runs `notifications-db`'s nine
+  runtime statements against a real server: that the JSON payload survives the
+  round trip through `JSONB`, `JSON` and `TEXT` with its nesting, arrays,
+  nulls and non-ASCII intact; that both listings order `created_at DESC, id`
+  and honour their limit, so an inbox page does not reshuffle between
+  requests; that `COUNT_UNREAD` always agrees with `LIST_UNREAD`; that a
+  second marking keeps the first receipt, which is the whole point of
+  `read_at IS NULL` in the predicate; that every per-row statement is scoped
+  to its recipient, so an id lifted from another inbox matches nothing; and
+  that `DELETE_READ_BEFORE` is deliberately *not* recipient-scoped -- it
+  reaches read rows in every inbox and can never touch an unread one, however
+  old.
 
 ### Changed
 
