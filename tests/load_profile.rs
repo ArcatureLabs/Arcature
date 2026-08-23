@@ -692,15 +692,15 @@ fn sampled(quarters: Option<(f64, f64)>, what: &str) -> Option<(f64, f64)> {
 
 /// Append a block to the fresh report at the workspace root.
 ///
-/// Same shape as `unsafe-report.txt`: the run writes a report, and promoting
-/// it to `load-baseline.<target>.txt` is a human decision that belongs in a
+/// Same shape as `baselines/unsafe-report.txt`: the run writes a report, and promoting
+/// it to `baselines/load-baseline.<target>.txt` is a human decision that belongs in a
 /// commit. Unlike the unsafe baseline there is no diff gate on it, for the
 /// reason the module documentation gives -- these numbers describe the runner
 /// as much as the code, so the record is for a reader, not for a check.
 fn write_report(block: &str) {
     use std::io::Write as _;
 
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("load-report.txt");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("baselines/load-report.txt");
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

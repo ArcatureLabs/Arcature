@@ -278,7 +278,7 @@ crate boundary, and the crate boundary is not where the memory-safety risk is:
 the framework's job is to integrate other people's code, and other people's
 code is where the `unsafe` lives.
 
-`unsafe-baseline.<host-target>.txt` at the repository root records the whole
+`baselines/unsafe-baseline.<host-target>.txt` records the whole
 picture, one line per crate, as measured by [`cargo-geiger`]. `just geiger`
 recomputes it and diffs against the file for the current host;
 `just geiger-accept` records a new answer. On a developer's machine the diff

@@ -4,7 +4,7 @@
 # crate and nothing else. The dependency graph underneath it writes plenty of
 # `unsafe`, and that is where a memory-safety CVE would come from. A security
 # posture that quotes the `forbid` attribute without ever counting the graph is
-# telling itself a story; `unsafe-baseline.<host-target>.txt` is the number
+# telling itself a story; `baselines/unsafe-baseline.<host-target>.txt` is the number
 # that keeps it honest.
 #
 # `just geiger` diffs a fresh report against that baseline. A difference is not
@@ -50,7 +50,7 @@ on:
     # happened to be at the head six days later.
     paths:
       - "Cargo.lock"
-      - "unsafe-baseline.*.txt"
+      - "baselines/unsafe-baseline.*.txt"
       - "justfile"
       - ".github/workflows/geiger.yml"
   schedule:
@@ -109,5 +109,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unsafe-report
-          path: unsafe-report.txt
+          path: baselines/unsafe-report.txt
           if-no-files-found: warn

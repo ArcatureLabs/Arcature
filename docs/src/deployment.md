@@ -130,7 +130,7 @@ table keeps growing, and every subsequent request rescans it while holding a
 blocking mutex. Measured at 128 connections: a fresh key on every request
 costs nothing under a per-second quota and **5.6x throughput** under a
 per-hour one -- 6786 requests a second against 1201. That run is recorded in
-`load-baseline.x86_64-unknown-linux-gnu.txt`, and `tests/load_profile.rs`
+`baselines/load-baseline.x86_64-unknown-linux-gnu.txt`, and `tests/load_profile.rs`
 reproduces it, one variable per row. The memory reading agrees independently:
 it is the only one of the four runs whose resident set moved, +4.2% against
 +0.1% to +0.3% for the other three, which is the bucket table growing.

@@ -30,6 +30,19 @@ therefore its first.
 
 ## [Unreleased]
 
+### Changed
+
+- **The recorded baselines moved out of the repository root into
+  `baselines/`.** Four committed files -- the two unsafe baselines, the
+  coverage floor and the load record -- plus the three gitignored reports the
+  recipes write beside them. Nothing about what they hold changed; the root
+  listing simply stopped being seven files of machine output with the
+  README.
+
+  Only relevant if you had a path to one: `just geiger`, `just
+  geiger-accept`, `just coverage`, `just coverage-accept`, the Geiger
+  workflow's trigger and both artifact uploads all follow.
+
 ## [0.1.1] - 2026-08-23
 
 Fourteen new subsystems, every one behind a feature flag that is off by

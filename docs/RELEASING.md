@@ -120,14 +120,14 @@ one. Patch the two lines in each baseline by hand and check that the diff is
 exactly two lines per file, no unsafe count moved:
 
 ```
-sed -i 's/  arcature X.Y.Z-old$/  arcature X.Y.Z/' unsafe-baseline.*.txt
-sed -i 's/  |-- arcature-macros X.Y.Z-old$/  |-- arcature-macros X.Y.Z/' unsafe-baseline.*.txt
-git diff --numstat unsafe-baseline.*.txt      # expect 2 2 per file
+sed -i 's/  arcature X.Y.Z-old$/  arcature X.Y.Z/' baselines/unsafe-baseline.*.txt
+sed -i 's/  |-- arcature-macros X.Y.Z-old$/  |-- arcature-macros X.Y.Z/' baselines/unsafe-baseline.*.txt
+git diff --numstat baselines/unsafe-baseline.*.txt      # expect 2 2 per file
 ```
 
-The same is true of `coverage-baseline.*` only if the number ever changes,
+The same is true of `baselines/coverage-baseline.*` only if the number ever changes,
 which it does not -- that file holds a percentage and nothing else.
-`load-baseline.*` records the version nowhere.
+`baselines/load-baseline.*` records the version nowhere.
 
 Do this in the same commit as the bump. Leaving it makes the next Geiger run
 red for a reason that has nothing to do with what changed, which is exactly

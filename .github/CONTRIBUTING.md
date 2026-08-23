@@ -100,7 +100,7 @@ fixes something that failed quietly, the test is the point of the change.
 and in `Cargo.toml`. There is no exception process.
 
 That covers this crate and not the several hundred beneath it, which is where
-the `unsafe` actually is. `unsafe-baseline.<host-target>.txt` records the count
+the `unsafe` actually is. `baselines/unsafe-baseline.<host-target>.txt` records the count
 per crate; `just geiger` diffs the current graph against the file for this
 host, and `just geiger-accept` records a new answer. A pull request that
 changes a dependency is expected to say what moved and why it is acceptable.

@@ -131,7 +131,7 @@
 //! no C and no network or filesystem access.
 //!
 //! **The `cargo geiger` baseline does not change, and that is not a claim
-//! that nothing was added.** `unsafe-baseline.<host-target>.txt` is recorded
+//! that nothing was added.** `baselines/unsafe-baseline.<host-target>.txt` is recorded
 //! over the *default* feature set, and `i18n` is not in `default`, so
 //! `self_cell` is outside the graph the baseline measures and the file is
 //! byte-identical after this change. A reader who expected the number to move

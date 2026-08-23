@@ -150,7 +150,7 @@ deny:
 # `cargo geiger` counts what is there: unsafe functions, expressions, impls,
 # traits and methods per crate, each as `used/total` -- what this build's
 # feature set actually reaches, over what the package contains.
-# `unsafe-baseline.<host-target>.txt` is the last accepted answer for a given
+# `baselines/unsafe-baseline.<host-target>.txt` is the last accepted answer for a given
 # target, and this recipe diffs a fresh report against the one for this host.
 #
 # A difference is not a failure. It is a question for the pull request that
@@ -172,7 +172,7 @@ deny:
 # CI hold a baseline for the target the application actually deploys to
 # without overwriting the one a developer records locally.
 #
-# The report lands in `unsafe-report.txt` (gitignored) and is kept only when
+# The report lands in `baselines/unsafe-report.txt` (gitignored) and is kept only when
 # the diff fails. Regenerating it is another cold build, so the run that just
 # told you something moved should not also throw away the evidence -- accepting
 # the change is `just geiger-accept`, and CI uploads the same file as an
@@ -183,24 +183,24 @@ deny:
 geiger:
     #!/usr/bin/env bash
     set -euo pipefail
-    baseline="unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
-    just _geiger-report unsafe-report.txt
+    baseline="baselines/unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    just _geiger-report baselines/unsafe-report.txt
     if [ ! -f "$baseline" ]; then
         # Copy rather than move. The two files are identical here, but a CI
         # run bootstrapping a new target hands its evidence back by uploading
-        # unsafe-report.txt -- moving it leaves that run with nothing to
+        # baselines/unsafe-report.txt -- moving it leaves that run with nothing to
         # upload, so the one run that records a target's first baseline would
         # be the one that cannot give it to you.
-        cp unsafe-report.txt "$baseline"
+        cp baselines/unsafe-report.txt "$baseline"
         echo "no baseline for this target yet -- recorded $baseline" >&2
         echo "review it and commit it; the diff starts meaning something after that" >&2
         exit 1
     fi
-    if diff -u "$baseline" unsafe-report.txt; then
-        rm -f unsafe-report.txt
+    if diff -u "$baseline" baselines/unsafe-report.txt; then
+        rm -f baselines/unsafe-report.txt
         echo "unsafe counts match $baseline"
     else
-        echo "counts moved against $baseline -- fresh report kept at unsafe-report.txt" >&2
+        echo "counts moved against $baseline -- fresh report kept at baselines/unsafe-report.txt" >&2
         exit 1
     fi
 
@@ -208,9 +208,9 @@ geiger:
 geiger-accept:
     #!/usr/bin/env bash
     set -euo pipefail
-    baseline="unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
-    if [ -f unsafe-report.txt ]; then
-        mv unsafe-report.txt "$baseline"
+    baseline="baselines/unsafe-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    if [ -f baselines/unsafe-report.txt ]; then
+        mv baselines/unsafe-report.txt "$baseline"
     else
         just _geiger-report "$baseline"
     fi
@@ -273,7 +273,7 @@ _geiger-report out:
 # Coverage. `cargo llvm-cov` runs the suite under LLVM's source-based
 # instrumentation and reports which lines the tests actually executed.
 #
-# `coverage-baseline.<host-target>.txt` holds one number: the accepted floor
+# `baselines/coverage-baseline.<host-target>.txt` holds one number: the accepted floor
 # for line coverage. `just coverage` fails below it -- and fails again once
 # the real number has climbed five points above it. The second half is the
 # half that matters. A floor nobody raises stops meaning anything: coverage
@@ -309,7 +309,7 @@ _geiger-report out:
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
-    baseline="coverage-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    baseline="baselines/coverage-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
     just _coverage-run
     actual="$(just _coverage-total)"
     if [ ! -f "$baseline" ]; then
@@ -336,21 +336,21 @@ coverage:
             exit 1
             ;;
     esac
-    rm -f coverage-report.txt
+    rm -f baselines/coverage-report.txt
     echo "line coverage $actual% sits in the band above $floor%"
 
 # Record the current line coverage, less a point, as the accepted floor.
 coverage-accept:
     #!/usr/bin/env bash
     set -euo pipefail
-    baseline="coverage-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
-    if [ ! -f coverage-report.txt ]; then
+    baseline="baselines/coverage-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    if [ ! -f baselines/coverage-report.txt ]; then
         just _coverage-run
     fi
     actual="$(just _coverage-total)"
     floor="$(awk -v a="$actual" 'BEGIN { f = a - 1; if (f < 0) f = 0; printf "%.2f", f }')"
     printf '%s\n' "$floor" > "$baseline"
-    rm -f coverage-report.txt
+    rm -f baselines/coverage-report.txt
     echo "measured $actual% -- recorded $baseline at $floor%"
 
 # The instrumented run. One place, so the gate and the accept cannot disagree
@@ -379,7 +379,7 @@ _coverage-run:
     # failing target leaves the rest of the suite unexecuted, and unexecuted
     # reads as uncovered.
     cargo llvm-cov --no-report --no-fail-fast --features "$feats"
-    cargo llvm-cov report --summary-only | tee coverage-report.txt
+    cargo llvm-cov report --summary-only | tee baselines/coverage-report.txt
 
 # The one number, read out of the report `_coverage-run` left behind.
 #
@@ -395,11 +395,11 @@ _coverage-run:
     # come and go without moving it -- but a layout change would still land
     # here, which is what the guard is for. A floor read out of the wrong
     # column is worse than no floor at all.
-    total="$(awk '$1 == "TOTAL" { gsub(/%/, "", $10); print $10 }' coverage-report.txt)"
+    total="$(awk '$1 == "TOTAL" { gsub(/%/, "", $10); print $10 }' baselines/coverage-report.txt)"
     case "$total" in
         ''|*[!0-9.]*)
             echo "could not read a line-coverage percentage from the summary" >&2
-            echo "the TOTAL row is at the end of coverage-report.txt; check its columns" >&2
+            echo "the TOTAL row is at the end of baselines/coverage-report.txt; check its columns" >&2
             exit 1
             ;;
     esac
