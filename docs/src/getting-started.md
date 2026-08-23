@@ -58,6 +58,23 @@ Handlers return `Result<Response>`, where `Result` is Arcature's. `text`,
 
 ## The generated application
 
+```console
+$ arc new blog --stack react --db postgres
+Created blog at blog
+  installing frontend dependencies (npm install)...
+
+Next:
+  cd blog
+  arc key:generate     # writes APP_KEY into .env
+  arc dev              # one port, backend and Vite together
+```
+
+A project is two halves, and only one of them is Rust. `cargo` resolves the
+crates on the first build; the frontend needs `npm install` run once, and
+`arc new` runs it. Pass `--no-install` to skip that and run `arc install`
+yourself later — `arc dev` refuses to start without it and
+says so, rather than letting Node fail on a missing `vite`.
+
 `arc new` writes a Laravel-shaped project rather than a single file:
 
 ```text

@@ -165,6 +165,13 @@ asserted by the test suite. `.inertia()` before `.csrf()` and `.csrf()` before
  6 SecurityHdrs 12 BodyLimit     18 Inertia
 ```
 
+Two of those slots carry a second layer: stage 8 also holds `TraceContext`
+(`.trace_context()`) and stage 9 also holds `Metrics` (`.metrics(registry)`).
+They sit there rather than among the user layers at 21 because 21 is inside
+the body limit, the timeout, maintenance and the rate limiter -- a counter or
+a trace installed there never sees a request refused with a `413`, a `408`, a
+`503` or a `429`, which is the traffic an incident is about.
+
 Stages 5 through 21 are off unless asked for, with one exception: stage 20 is
 on unless refused, because `redirect().route(..)` silently doing nothing is a
 worse default than one extension lookup per response. The reasoning for each
@@ -205,7 +212,7 @@ exactly one of `db-postgres` / `db-sqlite` / `db-mysql` belongs in a build.
 
 ### Versioning
 
-Arcature follows semantic versioning. Current version `0.1.2`, readable as
+Arcature follows semantic versioning. Current version `0.1.3`, readable as
 `arcature::FRAMEWORK_VERSION`.
 
 Being in `0.x` shifts SemVer one field left, and Cargo agrees: the breaking
@@ -475,6 +482,7 @@ logged by accident.
 | `arc migrate` | Run pending migrations. |
 | `arc schedule` | Run the scheduler. |
 | `arc make:<kind> <name>` | Generate an artifact. 22 kinds: module, controller, model, migration, request, resource, policy, service, job, event, listener, middleware, command, page, test, factory, seeder, notification, mail, view, upload, auth. `module` writes a directory of four files, `auth` writes an account, three controllers, a route table and a migration, and `view` writes a struct plus its template; the rest write one apiece. |
+| `arc install` | Install the frontend's npm dependencies (`--ci` to enforce the lockfile). `arc new` runs it for you. |
 | `arc key:generate` | Generate the session key. |
 | `arc storage:link` | Link `public/storage` to the local disk. |
 | `arc db:seed`, `db:fresh`, `db:reset` | Database lifecycle. |

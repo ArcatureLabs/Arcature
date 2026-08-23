@@ -30,7 +30,82 @@ therefore its first.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-24
+
+A patch release, and the last of a run of three that all say the same thing in
+different words: a control that was not doing what its configuration claimed.
+In `0.1.2` it was an SSE connection limit and a request span. Here it is a
+distributed trace that never joined.
+
+Nothing removed, no signature changed, no new feature flag. **Two** behaviours
+change, and only one of them is behind `otel`.
+
+The `otel` one is the trace join, and it is what that feature exists for. The
+other is not gated at all: `.trace_context()` is reachable on the default
+`observe` feature, and the span it opens is now attached with `Instrument`
+rather than held as a guard across awaits. Any application that calls
+`.trace_context()` -- OpenTelemetry or not -- had concurrent requests'
+work attributed to whichever trace happened to be entered, and the
+`trace_id`, `parent_span_id` and `continued_trace` fields on its log records
+change accordingly. If you have been reading those fields, read the second
+entry below before upgrading.
+
+**No open issues remain.** #8, the dev loop, is closed with a measured number
+rather than met: about 4.4s against a 2.5s target that was itself never
+measured. Everything reachable from inside this repository shipped; what is
+left is nightly tooling or a machine's antivirus configuration.
+
+### Added
+
+- **`arc install` installs the frontend's npm dependencies**, and `arc new`
+  now runs it for you. A generated project is two halves: `cargo` resolves the
+  Rust one on the first build with no prompting, and the Node one needed
+  `npm install` run once. Nothing said so. `arc new` printed the created path
+  and stopped, and the only mention of `npm install` anywhere was a recipe in
+  the generated `justfile`.
+
+  So the first thing a fresh project did was fail, and it failed like this:
+
+  ```
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'vite' imported from
+      C:\...\.arcature\vite-ipc.mjs
+      at Object.getPackageJSONURL (node:internal/modules/package_json_reader:301:9)
+      ... four more frames of node:internal/modules/* ...
+  arc: the process that should listen on \\.\pipe\arcature-vite-6360 exited first
+  ```
+
+  Three messages, a file the reader never wrote, and not one of them naming
+  the one thing that was wrong.
+
+  `arc new` now installs and then prints the next three commands. A failed
+  install is a note rather than an error -- the application is already written
+  and correct, and npm being absent or offline says nothing about the files on
+  disk -- so it tells you to run `arc install` and leaves the project intact.
+  `--no-install` skips it. `arc install --ci` uses `npm ci` for a machine that
+  wants `package-lock.json` enforced; plain `arc install` uses `npm install`,
+  which is the right default on a developer's machine because `npm ci` refuses
+  outright the moment `package.json` and the lockfile disagree.
+
+- **`arc dev` checks for the frontend before it starts anything.** The check
+  is for `node_modules/vite` rather than for `node_modules`, because a
+  directory left by an interrupted install is not an install. The message
+  names `arc install`.
+
 ### Changed
+
+- **The generated Vite entry point takes arguments, not environment
+  variables.** `.arcature/vite-ipc.mjs` read `ARCATURE_VITE_IPC` and
+  `ARCATURE_RESTART_SENTINEL` from its environment; it now takes both as
+  `process.argv`. Neither was ever configuration -- the supervisor mints the
+  endpoint per run and owns where the sentinel lives -- but an environment
+  variable reads like a knob, is inherited by everything the process spawns,
+  and lets a stale value exported in some shell present itself as a broken dev
+  server.
+
+  This is internal. The file is rewritten on every `arc dev`, nothing else
+  reads it, and no application code changes. `ARCATURE_VITE_IPC` itself stays:
+  `arcature::config::VITE_IPC_ENV` is public, and the application child still
+  reads it to find Vite when it is run outside the supervisor.
 
 - **Issue #8 is closed, and the dev loop has a measured number instead of a
   target nobody had checked.** Both figures in that issue -- 12.4s and 2.5s --
@@ -77,6 +152,13 @@ therefore its first.
   handler -- including the ones where the task is parked and another request
   is running on the thread, which attributes other requests' work to this
   trace. It now attaches the span with `Instrument`, as the access log does.
+
+  **This one is not behind `otel`.** `.trace_context()` sits on the default
+  `observe` feature and `TraceContextService` is not gated, so an application
+  that has never enabled OpenTelemetry is affected too: the `trace_id`,
+  `parent_span_id` and `continued_trace` fields on log records from concurrent
+  handlers were sometimes another request's and are now this one's. A log
+  query grouping by `trace_id` returns a different, smaller, correct set.
 
   That is the third instance of this shape in one module family, after the
   SSE connection guard and the access-log span in `0.1.2`. `AGENTS.md` names
@@ -2468,7 +2550,8 @@ to find them at runtime.
   endpoint key off `cfg!(debug_assertions)` instead. See the type
   documentation.
 
-[Unreleased]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ArcatureLabs/Arcature/releases/tag/v0.1.0

@@ -1,5 +1,58 @@
 # Upgrading
 
+## Upgrading from 0.1.2 to 0.1.3
+
+Nothing to do. `0.1.3` removes nothing, changes no public signature, and adds
+no feature flag, so `cargo update -p arcature` takes it.
+
+Two behaviours change, and only the first is behind `otel`. The second reaches
+every application that calls `.trace_context()`, which is available on the
+default `observe` feature — read it even if you have never enabled
+OpenTelemetry.
+
+### Under `otel`: an incoming `traceparent` becomes the exported trace id
+
+**An incoming `traceparent` now becomes the exported trace id.**
+`TraceContextLayer` parsed the header and opened a span carrying `trace_id`
+and `parent_span_id` as *fields*, but never called `set_parent` — so
+`tracing-opentelemetry` minted a fresh trace id for the span it exported. A
+request arriving with a `traceparent` started a **new** trace at this service,
+and the caller's half and yours never met in the backend.
+
+The log side looked correct the whole time, which is why it lasted: the ids
+were present, on a record nothing joins on.
+
+If you have been reading traces in a backend and wondering why an upstream
+call and its downstream never appear together, this is why, and it is fixed.
+Expect traces that used to arrive as two disconnected roots to arrive as one.
+Nothing changes for a request that carried no `traceparent`: a root is still a
+root, and a remote parent is set only for a trace that was genuinely
+continued.
+
+### On the default `observe` feature: span attribution under concurrency
+
+**`TraceContextService` no longer holds a span guard across an await.** This
+one is not gated on `otel`, and that is the part worth pausing on: nothing
+about it needs an exporter, a collector, or the feature flag. If your
+application calls `.trace_context()`, it is affected.
+
+The service ended with `let _entered = span.enter();` and then awaited the
+inner service. In async code a guard stays entered across every await point
+below it — including the ones where the task is parked and another request is
+running on that thread — so work belonging to other requests was recorded
+under this request's trace. The span is now attached with `Instrument`, which
+enters it only while this future is actually polled.
+
+What you will see change: the `trace_id`, `parent_span_id` and
+`continued_trace` fields on log records emitted by concurrent handlers. They
+were sometimes wrong and are now right, which means a log query that grouped
+records by `trace_id` returns a different — smaller, and correct — set than it
+did on `0.1.2`. If your spans have looked implausibly wide under load, that
+was this.
+
+Nothing changes for a single-threaded or low-concurrency workload, where there
+was no other request to misattribute to.
+
 ## Upgrading from 0.1.1 to 0.1.2
 
 Nothing to do. `0.1.2` removes nothing, changes no public signature, and adds
@@ -183,7 +236,7 @@ Arcature is versioned `MAJOR.MINOR.PATCH`, starting at `0.1.0`.
 | `MINOR` | A compatible addition — and, while `MAJOR` is `0`, a breaking change too. |
 | `PATCH` | Something is fixed compatibly. |
 
-The current version is `0.1.2`, readable at runtime as
+The current version is `0.1.3`, readable at runtime as
 `arcature::FRAMEWORK_VERSION`.
 
 The row that matters is the middle one. Cargo treats the leftmost non-zero

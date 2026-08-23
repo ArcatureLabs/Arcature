@@ -3,7 +3,7 @@
 Arcature is a full-stack web framework for Rust. One crate, batteries included:
 HTTP routing, the Inertia protocol, a database layer, authentication,
 validation, background jobs, events, cache, storage, mail, and the `arc`
-command-line tool. One dependency line is the whole install -- see
+command-line tool. One dependency line is the whole install — see
 [Getting started](getting-started.md), and the **Status** section below for
 what "one crate" currently buys you.
 
@@ -36,12 +36,12 @@ use arcature::prelude::*;
 
 ## Status
 
-`arcature 0.1.2` is on crates.io. `0.1.0` was the first release of this
+`arcature 0.1.3` is on crates.io. `0.1.0` was the first release of this
 codebase, there is no upgrade path from anything earlier, and the API is still
-moving. Neither patch since removes anything or changes a signature, so
-`arcature = "0.1"` carries you to both: `0.1.1` added fourteen subsystems, all
-behind feature flags that are off by default, and `0.1.2` fixes two controls
-that were not doing what their configuration said. Read
+moving. No patch since removes anything or changes a signature, so
+`arcature = "0.1"` carries you to all of them: `0.1.1` added fourteen
+subsystems, all behind feature flags that are off by default, and `0.1.2` and
+`0.1.3` fix controls that were not doing what their configuration said. Read
 [the changelog](https://github.com/ArcatureLabs/Arcature/blob/main/CHANGELOG.md)
 and [the upgrade note](upgrade.md) before relying on anything here.
 
