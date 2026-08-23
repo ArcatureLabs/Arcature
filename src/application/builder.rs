@@ -690,6 +690,28 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
+    /// Resolve the W3C trace context at stage 8, beside the request id.
+    ///
+    /// Reads `traceparent` and `tracestate` from the request, puts a
+    /// [`TraceContext`](crate::observe::TraceContext) into extensions, and
+    /// opens a span carrying `trace_id` and `parent_span_id` so a log line
+    /// can be joined to a distributed trace by id alone. Nothing is written
+    /// back onto the response.
+    ///
+    /// Off by default. Stage 8 rather than a user `.layer()` at 21 for the
+    /// same reason as [`metrics`](Self::metrics): 21 is inside the body
+    /// limit, the timeout, maintenance and the rate limiter, so a request
+    /// refused with a `413`, a `408`, a `503` or a `429` would carry no trace
+    /// at all -- and a refused request is one somebody is very likely to go
+    /// looking for. From 8 the context is resolved before anything can refuse
+    /// it, and the access line at stage 9 can carry the ids.
+    #[cfg(feature = "observe")]
+    #[must_use]
+    pub fn trace_context(mut self) -> Self {
+        self.pipeline.trace_context = true;
+        self
+    }
+
     /// Turn a panic below this point into a `500` carrying an RFC 9457
     /// `Problem`.
     ///

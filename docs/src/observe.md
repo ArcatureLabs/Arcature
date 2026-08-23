@@ -789,10 +789,16 @@ placements agree on a request that is served. The second of those asserts the
 gap on purpose, so that anyone who later moves user layers outside the
 admission stages learns it from a failing test rather than from a graph.
 
-**Wire trace context yourself.** `TraceContextLayer` still has no builder
-method and lands at stage 21 through `.layer(..)`. It is not a counter, so the
-placement costs a span rather than a number, but a request refused before
-stage 21 carries no trace.
+**Use `.trace_context()` for the same reason.** It installs
+`TraceContextLayer` at stage 8, beside the request id and outside the
+admission stages, so the access line for a `429` carries the caller's trace
+id. Through `.layer(..)` it would land at 21 and a refused request would
+produce log lines with no trace on them at all — and a refused request is one
+somebody is very likely to go looking for.
+
+`tests/observe_trace_stage.rs` pins that pair the same way the metrics tests
+do, including the negative: a user layer is asserted to miss the refusal, so
+moving user layers later fails a test rather than quietly costing traces.
 
 **Redact in debug builds.** The `fmt` layer prints fields verbatim.
 

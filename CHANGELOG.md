@@ -83,6 +83,19 @@ therefore its first.
 
 ### Added
 
+- **`ApplicationBuilder::trace_context()` installs the trace-context layer at
+  stage 8, where a refused request still resolves its trace.** Same argument
+  as `metrics` below and the same fix: through `.layer(..)` it landed at stage
+  21, inside the admission stages, so a request refused with a `413`, a `408`,
+  a `503` or a `429` produced log lines carrying no trace at all. A refused
+  request is one somebody is very likely to go looking for.
+
+  Stage 8 now carries the request id and the trace context together. Neither
+  a stage nor an ordering changed, and nothing changes for an application that
+  does not call the new method. `tests/observe_trace_stage.rs` pins the pair,
+  including the negative case, so moving user layers later fails a test rather
+  than quietly costing traces.
+
 - **`ApplicationBuilder::metrics(registry)` installs the metrics layer at
   stage 9, where it can see a refused request.** Previously the only way to
   record request metrics was `.layer(MetricsLayer::new(..))`, and a user

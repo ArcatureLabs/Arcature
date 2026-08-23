@@ -22,7 +22,7 @@ Outermost first:
 | 5 | `Compression` | Sees the final body, whoever produced it. |
 | 6 | `SecurityHeaders` | Outside the body limit and timeout, so a `413` and a `408` carry them too. Mints the per-request CSP nonce on the way down. |
 | 7 | `CORS` | Answers a preflight without waking anything below. |
-| 8 | `RequestId` | Every response carries `x-request-id`. |
+| 8 | `RequestId`, `TraceContext` | Every response carries `x-request-id`. Outside the admission stages, so a refused request still resolves its trace. |
 | 9 | `AccessLog`, `Metrics` | Outside the panic catcher, the body limit, the timeout and the rate limiter, so a `500`, a `413`, a `408` and a `429` are logged and counted. |
 | 10 | `CatchPanic` | A panic becomes a `500`, not a dropped connection. |
 | 11 | `ErrorMapping` | RFC 9457 bodies for bodiless errors; release redaction. |
@@ -117,7 +117,7 @@ behind a load balancer a client gets roughly *n* times the nominal quota.
 `RateLimit::redis(cache)` (needs the `cache` feature) moves the buckets to
 Redis/Valkey and the quota becomes global. Decide this deliberately:
 `OnBackendError` controls what happens when Redis is unreachable, and it
-defaults to `Refuse` -- the limiter fails closed rather than silently
+defaults to `Refuse` — the limiter fails closed rather than silently
 becoming no limiter at all.
 
 **A per-hour quota keyed by address is the one combination that costs
@@ -129,7 +129,7 @@ bucket stays ineligible for six minutes, so the sweep drops nothing, the
 table keeps growing, and every subsequent request rescans it while holding a
 blocking mutex. Measured at 128 connections: a fresh key on every request
 costs nothing under a per-second quota and **5.6x throughput** under a
-per-hour one -- 6786 requests a second against 1201. That run is recorded in
+per-hour one — 6786 requests a second against 1201. That run is recorded in
 `baselines/load-baseline.x86_64-unknown-linux-gnu.txt`, and `tests/load_profile.rs`
 reproduces it, one variable per row. The memory reading agrees independently:
 it is the only one of the four runs whose resident set moved, +4.2% against
@@ -137,7 +137,7 @@ it is the only one of the four runs whose resident set moved, +4.2% against
 
 That combination is exactly the shape of a login or password-reset throttle,
 so it is worth choosing on purpose. `RateLimit::redis(cache)` avoids it
-entirely -- there is no client-side map to scan, only a per-key expiry the
+entirely — there is no client-side map to scan, only a per-key expiry the
 server honours. Failing that, prefer the faster-refilling spelling of the
 same rate: `per_minute(600)` and `per_hour(10)` allow nearly the same
 traffic over an hour, but the first refills a spent bucket in a tenth of a
@@ -175,7 +175,7 @@ rather than inherited, and no traffic has yet asked the question.
 `Maintenance` is an `Arc`-backed handle, not a global and not a file on disk.
 Flip it from an admin route, a signal handler, or a test. Everything except
 the health endpoints and any path passed to `Maintenance::allow` gets a `503`
-with a `Retry-After` header and an RFC 9457 body -- so a browser, a `fetch`,
+with a `Retry-After` header and an RFC 9457 body — so a browser, a `fetch`,
 and a CLI client all get an answer they can act on.
 
 Because nothing looks the handle up in a registry, an application that does
@@ -218,7 +218,7 @@ SecurityHeaders::new()
 
 A template with no `{nonce}` in it is refused at construction rather than
 quietly sent without one, and `.with_csp(..)` and `.with_csp_nonce(..)`
-replace each other -- the last one called wins.
+replace each other — the last one called wins.
 
 The nonce goes into the request extensions before the request reaches
 anything else, and the framework stamps it onto every element it emits
@@ -241,7 +241,7 @@ Three details worth getting right before you turn this on:
   that also carries a nonce, which is why `script-src 'nonce-X'
   'unsafe-inline'` is the documented fallback for old browsers rather than a
   contradiction. But `'unsafe-inline'` in a directive with no nonce in it --
-  `style-src`, usually -- is not ignored by anything.
+  `style-src`, usually — is not ignored by anything.
 - Without `'strict-dynamic'` a nonce does not propagate to scripts that a
   nonce'd script goes on to insert, so a code-split bundle needs `'self'` (or
   `'strict-dynamic'`) in `script-src` alongside the nonce.
@@ -262,7 +262,7 @@ The listen port is resolved at startup in this order, highest first:
 4. whatever `.config(..)` or `.port(..)` last set, defaulting to `3000`
 
 The first that parses as a `u16` wins; one that is present but malformed --
-`PORT=` in a compose file, say -- is skipped rather than fatal, so an empty
+`PORT=` in a compose file, say — is skipped rather than fatal, so an empty
 variable does not stop the process booting.
 
 `ARCATURE_BACKEND_PORT` is first, ahead of the platform's `PORT`, because
@@ -274,22 +274,22 @@ would fail with a message about the port being in use.
 `AppConfig::from_env()` reads `APP_NAME`, `APP_URL`, `APP_ENV` and `APP_PORT`.
 Hand the result to `.config(..)` and `port` becomes the port the server binds.
 
-`name` and `url` appear on the startup line -- the one record a booting
-application emits unprompted -- so a process that believes it is reachable at
+`name` and `url` appear on the startup line — the one record a booting
+application emits unprompted — so a process that believes it is reachable at
 an address nobody expected says so immediately rather than three days later in
 a broken emailed link. `url` is otherwise spent through
 `AppConfig::absolute_url(path)`, which roots a path at `APP_URL` with the
 trailing slash normalised away; that is the accessor to reach for whenever a
 link has to be built with no request in scope, which is every link that
-matters -- password resets, `redirect_uri`, anything signed. `path` is joined
+matters — password resets, `redirect_uri`, anything signed. `path` is joined
 and never substituted, so passing something that looks like a URL of its own
 produces a path segment under the configured host rather than a link to
 another one.
 
 `env` is carried, readable back through `Application::config()`, and
 **deliberately barred from gating behaviour**. Every protection that could plausibly key off an
-environment -- the security headers, HSTS, release redaction of error
-messages, the UAG endpoint -- keys off `cfg!(debug_assertions)` instead, so it
+environment — the security headers, HSTS, release redaction of error
+messages, the UAG endpoint — keys off `cfg!(debug_assertions)` instead, so it
 is decided when the binary is built. An `APP_ENV` that could switch them off
 would let anyone who can set an environment variable downgrade a production
 binary without redeploying it.
@@ -308,12 +308,12 @@ cargo build --release
 Feature selection is how you control what ends up in the binary. The default
 feature set is batteries-included and compiles the generated application with
 no extra flags; `fullstack` adds the operator-adjacent extras (`storage-s3`,
-`dev-proxy`, `uag`). Operator opt-ins -- `otel`, `api-docs`, `oauth` -- stay
+`dev-proxy`, `uag`). Operator opt-ins — `otel`, `api-docs`, `oauth` — stay
 off unless you name them; `api-docs` in particular publishes a map of your
 attack surface.
 
-Database drivers are separate features -- `db-postgres`, `db-sqlite`,
-`db-mysql` -- and exactly one belongs in a build. Enabling `database` alone
+Database drivers are separate features — `db-postgres`, `db-sqlite`,
+`db-mysql` — and exactly one belongs in a build. Enabling `database` alone
 gives a build that cannot connect to anything, which is deliberate: it is the
 only way one crate serves all three without a SQLite user compiling the
 Postgres protocol.
@@ -328,7 +328,7 @@ and a `postgres:17` service on
 order:
 
 ```sh
-cargo fmt --all -- --check
+cargo fmt --all — --check
 cargo clippy --all-targets
 cargo build
 cargo test

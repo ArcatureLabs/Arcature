@@ -19,7 +19,7 @@
 //! | 5 | `Compression` | Outermost of the response-shaping layers, so it sees the final body — including one a layer below produced instead of a handler. |
 //! | 6 | `SecurityHeaders` | Outside the body limit and the timeout **on purpose**: a `413` and a `408` are responses a browser renders too, and they need `nosniff` and a framing policy as much as a page does. |
 //! | 7 | `CORS` | Answers a preflight without waking anything below. Inside `SecurityHeaders` so the preflight response still carries them. |
-//! | 8 | `RequestId` | Before the access log, which reads the id out of extensions — and before everything that can produce a response, so every response carries `x-request-id`. |
+//! | 8 | `RequestId`, `TraceContext` | Before the access log, which reads the id out of extensions — and before everything that can produce a response, so every response carries `x-request-id`. |
 //! | 9 | `AccessLog`, `Metrics` | Directly inside `RequestId`. Outside the panic catcher, the body limit, the timeout and the rate limiter, so a `500`, a `413`, a `408` and a `429` are all logged and counted rather than vanishing. `Metrics` shares the stage because it must see the same requests; installed as a user layer at 21 it would see none of the refusals. |
 //! | 10 | `CatchPanic` | Turns a panic below into a `500` instead of a dropped connection. Inside the access log so the `500` is recorded; outside everything that runs application code. |
 //! | 11 | `ErrorMapping` | Gives an RFC 9457 body to every bodiless error produced below it — the bare `404`, `405`, `408` and `413` that axum and `tower-http` emit — and redacts `text/plain` 5xx bodies in release. Inside the panic catcher, which already produces a `Problem`. |
@@ -82,6 +82,13 @@ pub(crate) struct Pipeline<S: RouterState> {
     /// One access-log line per request, enabled by `.access_log()`.
     #[cfg(feature = "observe")]
     pub access_log: bool,
+    /// Resolve the W3C trace context, enabled by `.trace_context()`.
+    ///
+    /// Stage 8 beside the request id: both must be outside the access log at
+    /// 9 for the access line to carry their ids, and outside the admission
+    /// stages so a refused request still joins its trace.
+    #[cfg(feature = "observe")]
+    pub trace_context: bool,
     /// A metrics registry to record into, enabled by `.metrics()`.
     ///
     /// Stage 9 beside the access log rather than a stage of its own, because
@@ -134,6 +141,8 @@ impl<S: RouterState> Pipeline<S> {
             request_id: false,
             #[cfg(feature = "observe")]
             access_log: false,
+            #[cfg(feature = "observe")]
+            trace_context: false,
             #[cfg(feature = "observe")]
             metrics: None,
             catch_panic: false,
@@ -277,7 +286,19 @@ impl<S: RouterState> Pipeline<S> {
             router
         };
 
-        // 8 — request id.
+        // 8 — trace context, then the request id outside it. Both sit here
+        // rather than among the user layers at 21 for the same reason the
+        // metrics layer does: 21 is inside the admission stages, so a request
+        // refused with a 413, a 408, a 503 or a 429 would carry no trace at
+        // all. From 8 the context is resolved before anything can refuse, and
+        // the access line at 9 can carry the ids.
+        #[cfg(feature = "observe")]
+        let router = if self.trace_context {
+            router.layer(crate::observe::TraceContextLayer)
+        } else {
+            router
+        };
+
         #[cfg(feature = "observe")]
         let router = if self.request_id {
             router.layer(crate::observe::RequestIdLayer)

@@ -256,7 +256,7 @@ order builder methods were called in.
 | 5 | Compression | off |
 | 6 | SecurityHeaders | off |
 | 7 | CORS | off |
-| 8 | RequestId | off |
+| 8 | RequestId, TraceContext | off (`.request_id()`, `.trace_context()`) |
 | 9 | AccessLog, Metrics | off (`.access_log()`, `.metrics(r)`) |
 | 10 | CatchPanic | off |
 | 11 | ErrorMapping | off |
@@ -450,12 +450,12 @@ Each of these is real and checked.
     in.
 13. **Realtime and the in-memory rate limiter are per-process.** Multiple
     instances multiply the effective quota and split the broadcast audience.
-14. **Use `.metrics(registry)`, never `.layer(MetricsLayer::new(..))`.** Both
-    compile; only the first counts a refused request. A user `.layer()` is at
-    stage 21, inside the body limit, timeout, maintenance and rate limiter, so
-    a counter there misses every 413, 408, 503 and 429. `.metrics()` installs
-    it at stage 9. `TraceContextLayer` still has no builder method and does
-    land at 21.
+14. **Use `.metrics(registry)` and `.trace_context()`, never `.layer(..)`
+    for either.** All of them compile; only the builder methods see a refused
+    request. A user `.layer()` is at stage 21, inside the body limit, timeout,
+    maintenance and rate limiter, so a counter there misses every 413, 408,
+    503 and 429, and a trace context there leaves those requests untraceable.
+    `.metrics()` installs at stage 9, `.trace_context()` at stage 8.
 15. **`ignore` doctests are not compiled.** `no_run` compiles without running.
 
 ---
