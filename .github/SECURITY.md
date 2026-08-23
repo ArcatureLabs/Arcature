@@ -113,12 +113,54 @@ input back.
 | JSON body | `ValidatedJson<T>` | `serde_json` | `Validate`, then `from_json_rejection` | `validation` |
 | Form body | `ValidatedForm<T>` | `serde_urlencoded` | `Validate`, then `from_form_rejection` | `validation` |
 
-**There is no multipart extractor and no multipart parser.** `axum` is
-depended on with `default-features = false` and an explicit feature list that
-does not name `multipart`. Adding file upload adds a row here and widens the
-surface materially -- filename, content type and length are all attacker-
-chosen. That is exactly why it is worth writing the boundary down before the
-feature exists.
+This section used to end by saying, in bold, that there was no multipart
+extractor and no multipart parser, and that adding file upload would add a row
+here. File upload was added in `0.1.1`; the row was not. It is below, with the
+other surfaces that release brought. The omission is recorded rather than
+quietly repaired, because a wrong entry nobody noticed for a whole release is
+the most useful thing this table has said about itself: it only works if
+editing it is part of editing the code.
+
+### File uploads
+
+Behind `uploads`, which is what turns on `axum/multipart`. The filename, the
+declared content type, the part count and every byte count are attacker-chosen.
+
+| Attacker input | Where it enters | Interpreted by | Guard, and its default | Feature |
+|---|---|---|---|---|
+| Multipart framing and the `boundary=` parameter | `UploadedFile::from_request`, `src/validation/upload.rs` | `multer`, via `axum::extract::Multipart` | axum wraps the body in `http_body_util::Limited` at **2 MiB** unless the application raises `DefaultBodyLimit`, which Arcature never touches. On a default build that is the cap that bites first -- ahead of the 16 MiB below. | `uploads` |
+| Number of parts | `BoundedMultipart::next_field`, `src/http/multipart.rs` | counted before the part is read | `MultipartLimits::fields`, **default 32**, and it applies with no layer installed -- `from_extensions` falls through `unwrap_or_default()`. A thousand-part body is refused at part 33, unparsed. | `uploads` |
+| Bytes in one part | `BoundedField::chunk`, `src/http/multipart.rs` | counted as it streams | `MultipartLimits::field_bytes`, **default 8 MiB**. Also the bound on resident memory for the extractor, which buffers deliberately. | `uploads` |
+| Bytes across all parts | `BoundedField::chunk`, `src/http/multipart.rs` | shared counter | `MultipartLimits::total_bytes`, **default 16 MiB**. | `uploads` |
+| The *rate* the body arrives at -- a byte at a time, holding a task and a socket open | `tokio::time::timeout` around each read, `src/http/multipart.rs` | -- | `MultipartLimits::read_timeout`, **default 30 s**, per read rather than per request. There is no whole-request deadline unless `ApplicationBuilder::timeout` is set, and that is unset by default. | `uploads` |
+| The part's declared `Content-Type` | `BoundedField::declared_content_type` | **nothing** | Not a guard: the value reaches no decision anywhere in the upload path. It is carried and never believed -- a test is named `the_declared_content_type_is_carried_but_not_believed`. An application that calls the accessor itself gets the raw client string. | `uploads` |
+| The bytes, against the extension they claim | `sniff::verify`, `src/storage/sniff.rs` | `infer` | An extension that promises a signature must deliver it, so a `.php` renamed `.jpg` is refused on its bytes. `infer` matches a magic-byte table; it does not decode. | `uploads` |
+| The filename | `StoragePath::from_filename`, `src/storage/filename.rs` | Unicode normalization, then a whitelist | The filename never becomes a path -- the object name is content-addressed and the original is metadata. Traversal, control characters, Windows reserved device names and Unicode tag characters are rejected rather than stripped. | `uploads` |
+| The extension | `UploadPolicy`, `src/validation/upload.rs` | whitelist | **Fails closed.** A route with no `UploadPolicy` layer does not accept everything: `Default` is `AllowedExtensions::images()`, exactly `jpg`, `jpeg`, `png`, `gif`, `webp`. `svg` is deliberately excluded -- it is a document that executes script. | `uploads` |
+
+Image *decoding* is absent because the framework does not do it. Decoders are
+the densest source of memory-safety CVEs in any web stack. An application that
+resizes an upload should do it in a queue worker, off the request path.
+
+### Credentials that are not a session cookie
+
+| Attacker input | Where it enters | Interpreted by | Guard, and its default | Feature |
+|---|---|---|---|---|
+| `Authorization: Bearer <token>` | `ApiAuth`, `src/tokens/` | the store | The database holds a SHA-256 digest and never a usable token, so disclosure of the table is not disclosure of live credentials. The comparison is `subtle::ConstantTimeEq` (`src/tokens/store.rs`), which reads every byte every time. Tokens carry abilities and an expiry. | `api-tokens` |
+| A password-reset link | `PasswordResets`, `src/auth/flows/reset/` | -- | Stored as a SHA-256 digest, single-use, and issuing a new one invalidates the previous mail. It deliberately does **not** sign the account's other sessions out: sessions are keyed by id and not indexed by user, so no portable statement deletes them. The module states that limitation rather than leaving it to be assumed. | `auth-reset` |
+| A remember-me cookie | `RememberTokens`, `src/auth/flows/remember/` | -- | Rotated on every use, so presenting a spent token is evidence of theft rather than a login. | `auth-remember` |
+| An address at the sign-in form | `CredentialChecker`, `src/auth/flows/credentials.rs` | -- | The hash runs whether or not the address exists, so response time is not a list of who has an account. Failures are throttled by address *and* caller. | `auth-flows` |
+| A signed URL -- its query, its `signature`, its `expires` | `UrlSigner::verify`, `src/crypt/signer.rs` | a strict base64url decoder written here rather than pulled in | The MAC is compared with `subtle::ConstantTimeEq`. The expiry is *inside* the signed material, so a link cannot be extended by editing it. The decoder rejects padding, rejects a length no encoder produces, and rejects non-canonical trailing bits -- a token has exactly one spelling, so one revoked by string comparison cannot return under a second. | `signed-urls` |
+| A ciphertext presented for decryption | `Encrypter::decrypt`, `src/crypt/encrypter.rs` | XChaCha20-Poly1305 | Authenticated: not one byte of an altered token is returned. The 192-bit nonce is what makes a random nonce safe, which is why it is the X variant rather than AES-GCM. | `crypt` |
+| A session id presented to the database store | `DbSessionStore`, `src/auth/session_store/` | -- | The row key is the SHA-256 digest of the id and never the id, so the table is not a list of bearer tokens. | `session-store-db` |
+
+### Rendering and localization
+
+| Attacker input | Where it enters | Interpreted by | Guard, and its default | Feature |
+|---|---|---|---|---|
+| Any value interpolated into a view | `src/view/`, Askama | **no runtime parser exists** | Askama compiles a template into Rust at build time, so there is no expression evaluator on the request path and server-side template injection is structurally absent rather than defended against. That is the reason the feature names Askama and not a runtime engine. | `views` |
+| `Accept-Language`, and any locale override the application accepts | `src/i18n/negotiate.rs` | the negotiator, then a whitelist | A locale string is matched against the locales the application registered and **never becomes a path** -- there is no filesystem access anywhere in `src/i18n/`. An unregistered or hostile locale selects the default rather than reaching anything. Fluent's parser runs over developer-authored catalogs, not over request bytes. | `i18n` |
+| Content that reaches a notification row or a broadcast payload | `src/notifications/` | -- | Rows are written through parameterized statements. The broadcast channel is bounded, and a slow subscriber is lagged rather than buffered without limit. | `notifications-db`, `notifications-broadcast` |
 
 ### Cookies and tokens
 
