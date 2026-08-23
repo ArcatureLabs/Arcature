@@ -39,18 +39,72 @@ only from peers you list with `ApplicationBuilder::trusted_proxies`, and the
 default list is empty -- behind a reverse proxy, the address is your proxy's
 until you say otherwise.
 
-### Two new feature flags
+### Fourteen new feature flags
 
-Both are off by default. Neither changes an existing build.
+Every one is off by default, and nothing was removed, so an existing build
+compiles unchanged and links not a byte more. This list is the release: the
+features are the release, and the two behaviour changes above are the only
+things that happen without asking.
+
+**Sign-in and credentials**
 
 | Feature | What it adds | Why it is opt-in |
 |---|---|---|
-| `uploads` | `multipart/form-data` bodies, filename sanitizing, content-addressed object names, bounded readers, magic-byte content sniffing, attachment downloads | An upload endpoint is the largest attacker-authored surface an application has. A build with no upload route should not carry a multipart parser. |
-| `session-store-db` | A sqlx-backed `SessionStore`, so sessions survive a restart instead of logging every user out on deploy | It needs a database and a migration. An application that has neither should not be made to have them. |
+| `auth-flows` | `auth::flows` -- the decisions between `auth`'s seams and a login form that are wrong in ways nothing reports. An unknown address costs the same time as a wrong password; a failed attempt is throttled by address *and* caller | An application with no sign-in screen has no use for it, and it is the half of authentication where a plausible implementation leaks who has an account |
+| `auth-reset` | One-time password-reset links: mailed once, redeemed once, stored as a SHA-256 digest, and issuing a new one invalidates the previous mail | Brings a table and a migration. An application whose accounts are provisioned by an administrator has no use for it |
+| `auth-remember` | Rotating remember-me tokens, with the theft detection that makes a weeks-long credential defensible | Brings a table and a migration. "Stay signed in" is a product decision |
+| `api-tokens` | Hashed personal access tokens -- an opaque bearer credential for a CLI, a CI job, another service. The database holds only a SHA-256 digest | Brings a table and a migration, and is independent of `auth`: an API with no passwords may still hand out a token |
 
-`session-store-db` needs its table created before first use. Apply
-`arcature_sessions` the way you apply the job migrations; a project generated
-by `arc new` on this version already wires it into `--migrate`.
+**Cryptography**
+
+| Feature | What it adds | Why it is opt-in |
+|---|---|---|
+| `crypt` | `crypt::Encrypter`: XChaCha20-Poly1305 over a versioned, self-describing token that refuses to return a single byte of altered ciphertext | The moment a build can produce ciphertext, somebody owns a key-rotation story |
+| `signed-urls` | `crypt::UrlSigner`: a link carrying its own proof of origin and its own deadline, refused if edited by a byte | Separate from `crypt` because signing needs a MAC and encrypting needs a cipher. A one-hour download link should not pull in an AEAD |
+
+**Request and response**
+
+| Feature | What it adds | Why it is opt-in |
+|---|---|---|
+| `uploads` | `multipart/form-data` bodies, filename sanitizing, content-addressed object names, bounded readers, magic-byte content sniffing, attachment downloads | The filename, the declared content type and the byte count all come from the client. A build with no upload route has no business carrying a multipart parser |
+| `views` | Compiled HTML views through Askama, plus mail bodies rendered from the same templates | Askama compiles templates to Rust at build time, so there is no expression evaluator in the request path and server-side template injection is structurally absent rather than defended against. The trade is that editing a template means rebuilding |
+| `i18n` | Fluent translation catalogs, locale negotiation against a whitelist, and the active locale exposed to views and Inertia props | An application shipping one language should not carry a message parser and a plural-rule table to say so |
+
+**Persistence**
+
+| Feature | What it adds | Why it is opt-in |
+|---|---|---|
+| `session-store-db` | A sqlx-backed `SessionStore`, so sessions survive a restart instead of logging every user out on deploy | Brings a table and a migration |
+
+**Notifications**
+
+| Feature | What it adds | Why it is opt-in |
+|---|---|---|
+| `notifications` | One event, told to one person, over whichever channels apply. Implies `mail`, which is the channel it is overwhelmingly used for | A channel-less core would be a subsystem that can deliver nothing |
+| `notifications-db` | The in-app inbox: one row per delivered notification | Brings a table and a migration. An application that only sends mail should not carry them |
+| `notifications-broadcast` | A live push to whoever is connected now, over the `realtime` machinery | The inbox answers "what did I miss"; the broadcast answers "what just happened". Wanting one is not wanting the other |
+| `notifications-queue` | Hands the mail channel to the job queue instead of the request | The only one of the four that changes *where* the work happens. It takes on running a worker, and an application without one should not be offered a method that writes rows nobody drains |
+
+Five of these bring a table: `auth-reset`, `auth-remember`, `api-tokens`,
+`notifications-db` and `session-store-db`. Each has its own idempotent
+migration, applied the way you apply the job migrations. A project generated
+by `arc new` on this version wires `arcature_sessions` into `--migrate`
+already; the rest are yours to apply, because only you know the order they
+belong in.
+
+One thing `auth-reset` does **not** do, because it would be easy to assume it
+does: spending a reset link does not sign the account's other sessions out.
+Sessions are keyed by session id and are not indexed by user, so there is no
+portable statement that deletes every session belonging to one subject. The
+mechanism that would hold -- a credential stamp checked when a session loads
+-- is a separate piece this release does not ship. If your threat model is
+"the attacker already has a session and the user is resetting to evict them",
+that is yours to build on top.
+
+None of the five new database features shares a table with any other, and no
+two claim the same advisory lock -- `tests/advisory_locks.rs` fails if that
+stops being true, so two migrators can run concurrently without one waiting on
+a lock the other holds under a different name.
 
 ### Following `main` instead
 
