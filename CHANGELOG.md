@@ -1677,6 +1677,20 @@ therefore its first.
   stage bundles -- so neither line is safe to delete on the strength of the
   other. A new scaffold test fails if either one goes.
 
+- **A new guide chapter, "Your first module", goes from `arc new` to a route
+  that answers.** The module system was the strongest thing in the framework
+  with the least written about it: `module!` and `ApplicationGraph` had a
+  paragraph in *Controllers* and a mention in *Decisions*, and neither said
+  what a module is for or what happens if you skip one. The page covers the
+  by-kind and by-feature layouts and why both are supported, what
+  `arc make:module` writes and how it registers it, what the two marked
+  regions in `app/modules/mod.rs` are and what happens when one is missing,
+  nested names, the three wiring mistakes `ApplicationGraph::new` rejects and
+  the one it cannot see, why a module gets four files and not five, and a
+  table of every `module!` section saying which are resolved at the call site
+  and which are recorded as names -- which is the whole rule for what has to
+  be in scope, and for what a typo costs in each.
+
 
 
 ## [0.1.0]

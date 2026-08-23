@@ -173,3 +173,7 @@ assert_eq!(descriptor.controllers, ["DashboardController"]);
 The descriptor is built from the same `&'static` consts the macros emit, so
 the module is a description of wiring rather than a container that resolves
 things at runtime.
+
+`arc make:module dashboard` writes this block, a controller, a service and a
+routes table into one directory and registers the lot. See
+[Your first module](modules.md).

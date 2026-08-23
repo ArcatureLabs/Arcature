@@ -149,5 +149,6 @@ The job queue requires PostgreSQL.
 
 ## Next
 
-[Routing](routing.md) for how requests reach handlers, or
+[Your first module](modules.md) to add a feature to the application you just
+generated, [Routing](routing.md) for how requests reach handlers, or
 [Inertia](inertia.md) if you are building a page-driven frontend.
