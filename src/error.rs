@@ -353,6 +353,42 @@ impl From<crate::storage::StorageConnectError> for Error {
     }
 }
 
+/// The one conversion in this file that does not answer 500.
+///
+/// [`UploadError`](crate::storage::UploadError) is deliberately two halves,
+/// and its own documentation says why: `Storage` is the server's problem and
+/// `Content` is the client's, and "collapsing them into one error is how an
+/// upload endpoint ends up reporting a rejected file as an outage". Without
+/// this impl every upload handler writes that split by hand, in a `map_err`,
+/// on the path where getting it wrong is invisible -- the endpoint works,
+/// and only the status code lies.
+///
+/// The `Content` half becomes a validation failure on
+/// [`UPLOAD_FIELD`](crate::UPLOAD_FIELD), which is the same shape and the
+/// same RFC 9457 document the extractor already produces when it refuses a
+/// file before the handler runs. A caller cannot tell whether the mismatch
+/// was caught on the way in or on the way to disk, which is correct: it is
+/// the same fact about the same file.
+///
+/// Nothing from the request is reflected. `SniffError` names the extension
+/// the file was accepted under -- one of a whitelist the application chose
+/// -- and the media type the bytes were recognized as, which is a
+/// `&'static str`.
+#[cfg(feature = "uploads")]
+impl From<crate::storage::UploadError> for Error {
+    fn from(e: crate::storage::UploadError) -> Self {
+        use crate::storage::UploadError;
+
+        match e {
+            UploadError::Storage { source } => Error::Storage(source.to_string()),
+            UploadError::Content { source } => Error::Validation(vec![ValidationError {
+                field: crate::UPLOAD_FIELD.to_string(),
+                message: source.to_string(),
+            }]),
+        }
+    }
+}
+
 #[cfg(any(
     feature = "inertia",
     feature = "api",
@@ -375,3 +411,59 @@ impl From<bytes::BufMut> for Error {
 /// The framework `Result` alias. Every public Arcature function that can fail
 /// returns `Result<T>` (the `T` varies), so a controller writes `Result<Response>`.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(all(test, feature = "uploads"))]
+mod upload_conversion_tests {
+    use super::{Error, ValidationError};
+    use crate::storage::error::{StorageError, StoragePathError};
+    use crate::storage::filename::Extension;
+    use crate::storage::{SniffError, UploadError};
+
+    /// The whole point of the conversion. A file whose bytes disagree with
+    /// its extension is a bad request, and the status code is the only part
+    /// of that a caller can act on.
+    #[test]
+    fn rejected_content_answers_422_on_the_upload_field() {
+        let declared = Extension::parse("jpg").expect("jpg parses");
+        let error = Error::from(UploadError::Content {
+            source: SniffError::Mismatch {
+                declared,
+                sniffed: "text/x-php",
+            },
+        });
+
+        assert_eq!(error.status(), 422);
+        assert_eq!(error.code(), "validation_failed");
+
+        let Error::Validation(failures) = &error else {
+            panic!("content failure must be a validation failure, got {error:?}");
+        };
+        let [ValidationError { field, message }] = failures.as_slice() else {
+            panic!("expected exactly one failure, got {failures:?}");
+        };
+        assert_eq!(field, crate::UPLOAD_FIELD);
+        assert!(
+            message.contains("text/x-php") && message.contains("jpg"),
+            "the message must name both what was claimed and what was found: {message}"
+        );
+    }
+
+    /// The other half, and the reason the two are not collapsed: a backend
+    /// that failed is an outage, and reporting it as a 4xx tells the operator
+    /// nothing is wrong.
+    #[test]
+    fn a_failed_write_answers_500() {
+        let error = Error::from(UploadError::Storage {
+            source: StorageError::Path {
+                source: StoragePathError::Traversal,
+            },
+        });
+
+        assert_eq!(error.status(), 500);
+        assert_eq!(error.code(), "storage_error");
+        assert!(
+            matches!(error, Error::Storage(_)),
+            "storage failure must stay a storage error, got {error:?}"
+        );
+    }
+}

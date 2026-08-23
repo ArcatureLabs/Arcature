@@ -1126,6 +1126,26 @@ therefore its first.
   reason the `cargo geiger` one does: a `#[cfg(windows)]` branch is dead code
   on Linux and counted against it there.
 
+- **An upload failure now converts into the framework error type**, and it
+  converts into two different ones. `UploadError` has been two halves since
+  it landed, and its own documentation says why: `Storage` is the server's
+  problem and belongs in a 5xx, `Content` is the client's and belongs in a
+  4xx, and "collapsing them into one error is how an upload endpoint ends up
+  reporting a rejected file as an outage". Until now nothing acted on that
+  distinction -- `?` did not compile on an upload in a handler returning
+  `Result<Response>`, so every route wrote the split by hand in a `map_err`,
+  on the one path where getting it wrong is invisible: the endpoint still
+  works, and only the status code lies. `UploadError::Content` now becomes a
+  validation failure on `UPLOAD_FIELD`, which is the same RFC 9457 document
+  the extractor already returns when it refuses a file before the handler
+  runs -- a caller cannot tell whether the mismatch was caught on the way in
+  or on the way to disk, which is correct, because it is the same fact about
+  the same file. Nothing from the request is reflected: the message names the
+  extension the file was accepted under, one of a whitelist the application
+  chose, and the media type the bytes were recognized as, which is a
+  `&'static str`. Behind the `uploads` feature, and purely additive -- a new
+  trait implementation on an existing type.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every
