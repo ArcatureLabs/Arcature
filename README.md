@@ -20,6 +20,13 @@ narrower than its name suggests, that is said in
 [the guide](https://arcaturelabs.github.io/Arcature/) and summarised under
 [What is not built yet](#what-is-not-built-yet).
 
+## Two files for AI assistants
+
+[`AGENTS.md`](AGENTS.md) is for an agent working **on this repository**: the
+verification discipline, the environment's failure modes, and the invariants
+that are not obvious from the code. Most of it exists because it was learned
+the expensive way.
+
 ## Writing Arcature with an AI assistant
 
 [`SKILL.md`](SKILL.md) is one file written to be pasted into a coding

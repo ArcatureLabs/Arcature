@@ -30,6 +30,27 @@ therefore its first.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`AGENTS.md`: rules for an agent working on this repository**, as distinct
+  from [`SKILL.md`](SKILL.md), which briefs an agent writing an application
+  *with* Arcature. `CONTRIBUTING.md` already says what a change should look
+  like; this says how to find out whether what you believe is true, and which
+  parts of the environment will lie to you.
+
+  Almost every rule in it was learned the expensive way during the `0.1.2`
+  cycle: that a name resolving is not a claim being true, that `let _ = x`
+  drops immediately, that a doc comment is a claim and not evidence, that a
+  subagent's report has been wrong in both directions, that a disk under 8 GB
+  turns ENOSPC into what look like compile errors, that `exit code 0` from a
+  chained command means nothing without `set -e`, and that `cargo test` stops
+  at the first failing target so a red early step hides the question actually
+  being asked.
+
+  It also records the pattern that found both bugs this release fixes: write
+  documentation describing what the code *does*, and when the prose
+  contradicts a comment beside the code, go and find out which is true.
+
 ## [0.1.2] - 2026-08-23
 
 A patch release: nothing removed, no signature changed, no new feature flag.
