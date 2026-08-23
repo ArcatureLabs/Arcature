@@ -1054,6 +1054,26 @@ therefore its first.
   Under the existing `auth-flows` feature with no new flag and no new
   dependency, since it needs neither a database nor a hash.
 
+- **The scaffold has a home for feature modules.** `arc new` now writes
+  `app/modules/mod.rs`; `graph()` in `app/mod.rs` appends whatever it
+  registers to the scaffold's own `Web` module, and `bootstrap/app.rs` merges
+  its routes into the application's table. It is empty on a fresh project, so
+  nothing changes about what a generated application serves. The rest of
+  `app/` is laid out by kind -- every controller in `app/controllers/`, every
+  service in `app/services/` -- which is the right shape at one feature and
+  the wrong one at ten, when "show me everything billing does" means opening
+  seven directories and knowing which files in each are billing's. A module
+  under `app/modules/` instead owns its controller, service and routes in one
+  directory and declares them in a `module!` block, which the
+  application graph validates at build time. The two layouts coexist
+  deliberately and an application may use either or both. Routes are merged
+  rather than nested, so a module's paths are ordinary application paths that
+  earn no prefix from living in a module -- and two modules claiming the same
+  path is a panic at boot, from axum's own `Router::merge`, rather than a
+  silent last-one-wins. The two marked regions in the file are there for the
+  generator that comes next: it inserts one line into each and touches nothing
+  else, which is what keeps a generator out of the composition root.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

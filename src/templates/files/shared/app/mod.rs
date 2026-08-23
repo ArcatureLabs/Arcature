@@ -12,6 +12,7 @@
 
 pub mod controllers;
 pub mod models;
+pub mod modules;
 pub mod pages;
 pub mod policies;
 pub mod requests;
@@ -70,12 +71,20 @@ pub fn page_contracts() -> arcature::inertia::contracts::ContractArtifact {
 /// binary, which is how `arc typegen`, `arc routes` and `arc build` see the
 /// application without linking it into the tool.
 ///
+/// `Web` first, then whatever `app/modules/` holds. Declaration order is the
+/// order the graph serializes in, so keeping the scaffold's module at the
+/// front means adding a feature module does not reshuffle the UAG artifact
+/// and turn a one-module diff into a whole-file one.
+///
 /// # Panics
 ///
 /// Panics if a module imports something no module exports, or if two modules
-/// share a name. Both are wiring mistakes in the `module!` blocks above and
-/// are the same on every run, so failing at boot is the honest answer.
+/// share a name. Both are wiring mistakes in a `module!` block -- the one
+/// above, or one under `app/modules/` -- and are the same on every run, so
+/// failing at boot is the honest answer.
 #[must_use]
 pub fn graph() -> ApplicationGraph {
-    ApplicationGraph::new(vec![web_module().clone()]).expect("the module graph does not resolve")
+    let mut declared = vec![web_module().clone()];
+    declared.extend(modules::modules());
+    ApplicationGraph::new(declared).expect("the module graph does not resolve")
 }

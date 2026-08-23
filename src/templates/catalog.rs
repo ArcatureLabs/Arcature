@@ -194,6 +194,10 @@ fn shared() -> Vec<TemplateFile> {
             content: include_str!("files/shared/app/models/mod.rs"),
         },
         TemplateFile {
+            path: "app/modules/mod.rs",
+            content: include_str!("files/shared/app/modules/mod.rs"),
+        },
+        TemplateFile {
             path: "app/pages/errors.rs",
             content: include_str!("files/shared/app/pages/errors.rs"),
         },

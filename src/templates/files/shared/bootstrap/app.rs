@@ -108,6 +108,17 @@ pub fn app(options: BootOptions) -> Result<Bootstrapped> {
 
     let mut builder = Application::new()
         .routes(crate::routes::app_routes())
+        // Anything `arc make:module` generated. Merged rather than nested:
+        // a module owns its own `routes!` block, but its paths are ordinary
+        // application paths and get no prefix from living in a module.
+        //
+        // Two modules claiming the same path is a panic at boot, from
+        // axum's own `Router::merge`, not a silent last-one-wins. That is the
+        // right answer and it is worth knowing before it happens: a route
+        // conflict between two features is a decision somebody has to make,
+        // and the alternative is a path that quietly stops going where its
+        // author thinks it goes.
+        .merge_routes(crate::app::modules::routes())
         .bind(&config.bind_addr)
         .port(config.port)
         .database(config.database)
