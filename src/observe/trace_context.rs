@@ -144,19 +144,26 @@ impl TraceParent {
 
     /// The trace id as raw bytes, for handing to an exporter.
     ///
+    /// Gated on `otel` because that is the only caller. Without the gate the
+    /// three accessors below are dead code in a default build, and CI sets
+    /// `RUSTFLAGS: -D warnings`, so the whole library stops compiling.
+    ///
     /// `pub(crate)` and byte-shaped on purpose: the public accessors render
     /// hex for a log field, and an exporter that re-parsed that hex would be
     /// a second spelling of a value we already hold exactly.
+    #[cfg(feature = "otel")]
     pub(crate) fn trace_id_bytes(&self) -> [u8; 16] {
         self.trace_id
     }
 
     /// The parent span id as raw bytes.
+    #[cfg(feature = "otel")]
     pub(crate) fn parent_id_bytes(&self) -> [u8; 8] {
         self.parent_id
     }
 
     /// The raw trace-flags octet.
+    #[cfg(feature = "otel")]
     pub(crate) fn flags(&self) -> u8 {
         self.flags
     }
