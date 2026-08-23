@@ -30,6 +30,43 @@ therefore its first.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-23
+
+Fourteen new subsystems, every one behind a feature flag that is off by
+default, and nothing removed -- so an existing build compiles unchanged and
+links not a byte more. Two behaviours change without being asked for, both
+listed under **Changed** and both spelled out in
+[the upgrade note](docs/src/upgrade.md).
+
+### Issues this release does not close
+
+**[#8](https://github.com/ArcatureLabs/Arcature/issues/8) -- the Rust dev
+loop, 12.4s against a 2.5s target.** Real work landed: a generated application
+no longer carries its dependencies' debug information, and neither does the
+framework's own workspace build. That is a cost paid on every save rather than
+once, because framework generics are monomorphised into the application's own
+crate and their debug info is emitted and linked there every time.
+
+The target is still missed. Scaling the measured split against the issue's own
+quiet reading puts a Cargo invocation near 3.8s -- over by about half again,
+not the fourfold the raw figures first suggested. A one-line handler change
+dirties 2 units out of 489, and neither is `arcature`; the cost is 11%
+type-check, 45% codegen of the application crate, 44% the binary unit and its
+link. Both dominant terms scale with the size of the program rather than the
+size of the diff.
+
+The largest single stage is not Cargo's at all. On Windows the antivirus scan
+of the freshly linked 18.9 MB executable is 5.55s of an 11.20s loop, and it
+happens *after* Cargo exits, so no profiling flag reaches it and
+`cargo --timings` is structurally blind to it. What would close the remainder
+-- `-Zshare-generics`, cranelift, hot-patching instead of relinking -- is
+nightly, platform-specific, or large machinery, and none of it belongs in a
+patch release. Method and tables: [the dev-loop chapter](docs/src/dev-loop.md)
+and the issue.
+
+Every other issue open at the start of this cycle is closed: #3, #4, #5, #6,
+#7, #9, #10 and #11.
+
 ### Added
 
 - **An application encrypter, behind the new off-by-default `crypt`
@@ -2148,5 +2185,6 @@ to find them at runtime.
   endpoint key off `cfg!(debug_assertions)` instead. See the type
   documentation.
 
-[Unreleased]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ArcatureLabs/Arcature/releases/tag/v0.1.0
