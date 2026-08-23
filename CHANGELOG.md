@@ -1477,6 +1477,25 @@ therefore its first.
   the feature goes on working for the well-behaved input a person tries by
   hand.
 
+- **`arc make:model` and `arc make:migration` produce code that compiles.**
+  Neither ever had. SeaORM's derives are written for a hand-rolled entity
+  file in a crate that depends on SeaORM directly: `DeriveEntityModel` and
+  `DeriveRelation` emit paths *relative* to a crate named `sea_orm`
+  (`sea_orm::prelude::EntityName`, `sea_orm::sea_query::ValueType`), and
+  `DeriveMigrationName` emits `impl sea_orm_migration::MigrationName`. An
+  application built on Arcature has neither name in scope -- the scaffold's
+  manifest depends on `arcature`, not on SeaORM -- so the first model or
+  migration a person generated failed with `cannot find crate `sea_orm``.
+  The scaffold itself compiled only because it ships zero of both.
+
+  The fix binds the names rather than adding SeaORM to the generated
+  manifest: `#[model]` opens its module with `use ::arcature::sea_orm;`
+  beside the entity prelude it already had, and the migration blueprint
+  opens with `use arcature::database::sea_orm_migration;` beside its
+  prelude. The alternative would oblige every application that spells one
+  model to carry a second, separately-versioned copy of SeaORM, which is a
+  version-skew bug waiting on a `cargo update`.
+
 ### Security
 
 - **Tampering with a token or a signed URL is proven to fail, one byte at a

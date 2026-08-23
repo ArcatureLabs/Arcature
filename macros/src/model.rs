@@ -125,10 +125,19 @@ fn expand(table: &str, mut item_struct: ItemStruct) -> syn::Result<proc_macro2::
     Ok(quote! {
         #[doc(hidden)]
         #vis mod #module {
-            // `DeriveEntityModel` emits unqualified references to
-            // `EntityTrait`, `PrimaryKeyTrait`, `EnumIter` and friends: it is
-            // written for a hand-rolled entity file that opens with this glob,
-            // so the module has to supply it.
+            // `DeriveEntityModel` and `DeriveRelation` are written for a
+            // hand-rolled entity file: one in a crate that depends on SeaORM
+            // directly and opens with the entity prelude. They emit
+            // unqualified names on that assumption (`EntityTrait`,
+            // `PrimaryKeyTrait`, `EnumIter`) and, for what the prelude does
+            // not carry, paths *relative* to a crate named `sea_orm`
+            // (`sea_orm::prelude::EntityName`, `sea_orm::sea_query::ValueType`).
+            //
+            // An application built on Arcature has neither. Supplying both
+            // here is what keeps `#[model]` from obliging every application
+            // that spells one model to add a second, separately-versioned
+            // copy of SeaORM to its own manifest.
+            use ::arcature::sea_orm;
             use ::arcature::sea_orm::entity::prelude::*;
 
             use super::*;

@@ -224,6 +224,10 @@ fn migration(name: &ArtifactName) -> Artifact {
          //! did -- a rollback that leaves the schema in a state no migration\n\
          //! describes is worse than no rollback at all.\n\
          \n\
+         // `DeriveMigrationName` expands to a path relative to a crate\n\
+         // named `sea_orm_migration`, and the prelude carries names out\n\
+         // of that crate rather than the crate itself.\n\
+         use arcature::database::sea_orm_migration;\n\
          use arcature::database::sea_orm_migration::prelude::*;\n\
          \n\
          /// The `{stem}` schema change.\n\
