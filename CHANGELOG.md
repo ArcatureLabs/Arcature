@@ -1915,6 +1915,34 @@ therefore its first.
   and which are recorded as names -- which is the whole rule for what has to
   be in scope, and for what a typo costs in each.
 
+- **`RateLimit` now documents the one configuration that costs throughput,
+  with the measurement behind it.** The in-memory backend sweeps its bucket
+  table past 8192 entries and drops every bucket that has refilled to
+  capacity. That is what keeps a key space of one-bucket-per-address from
+  growing without bound, and it works -- while buckets refill faster than new
+  addresses arrive. When they do not, it fails in both directions at once:
+  nothing is dropped, so the table grows, and the next request rescans the
+  larger table while holding a blocking mutex on a runtime worker thread.
+
+  A new load profile measures it at 128 connections, one variable per row: no
+  limiter 5370 req/s; a bounded key space under a per-hour quota 4922; an
+  unbounded key space under a *per-second* quota 4923; an unbounded key space
+  under a *per-hour* quota **953**. The third row is the finding -- a wide key
+  space is free, and a wide key space whose buckets cannot refill costs 5.2x.
+  The dangerous combination is the ordinary shape of a login or
+  password-reset throttle.
+
+  No behaviour changes here. `RateLimit`, the deployment guide and the
+  backend's own comments now state it, and name the two ways out that already
+  exist: `RateLimit::redis(cache)`, which keeps no client-side map, or the
+  faster-refilling spelling of the same rate -- `per_minute(600)` and
+  `per_hour(10)` permit nearly the same traffic per hour, but only the second
+  accumulates. Two comments in the backend previously claimed the opposite
+  without qualification: that the critical section is "a hash lookup and three
+  arithmetic operations", and that the sweep keeps an unbounded key space from
+  being an unbounded map. Both are true only above a refill rate neither one
+  mentioned.
+
 
 
 ## [0.1.0]

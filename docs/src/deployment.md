@@ -120,6 +120,26 @@ Redis/Valkey and the quota becomes global. Decide this deliberately:
 defaults to `Refuse` -- the limiter fails closed rather than silently
 becoming no limiter at all.
 
+**A per-hour quota keyed by address is the one combination that costs
+throughput.** The in-memory backend sweeps its bucket table past 8192
+entries and drops every bucket that has refilled to capacity, which is what
+keeps one-bucket-per-IP from growing without bound. It only works while
+buckets refill faster than new addresses arrive. Under a per-hour quota a
+bucket stays ineligible for six minutes, so the sweep drops nothing, the
+table keeps growing, and every subsequent request rescans it while holding a
+blocking mutex. Measured at 128 connections: a fresh key on every request
+costs nothing under a per-second quota and **5.2x throughput** under a
+per-hour one (`tests/load_profile.rs` has the four-row table, one variable
+per row).
+
+That combination is exactly the shape of a login or password-reset throttle,
+so it is worth choosing on purpose. `RateLimit::redis(cache)` avoids it
+entirely -- there is no client-side map to scan, only a per-key expiry the
+server honours. Failing that, prefer the faster-refilling spelling of the
+same rate: `per_minute(600)` and `per_hour(10)` allow nearly the same
+traffic over an hour, but the first refills a spent bucket in a tenth of a
+second and only the second accumulates.
+
 **Realtime fan-out is per-process, and there is no switch.** `Broadcast`
 wraps a `tokio::sync::broadcast` channel, which is a channel between tasks
 inside one process. A message published on instance A reaches only the

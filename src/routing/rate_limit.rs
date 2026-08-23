@@ -260,9 +260,17 @@ struct Bucket {
 
 /// The in-memory bucket table.
 ///
-/// A `std::sync::Mutex` rather than an async one: the critical section is a
-/// hash lookup and three arithmetic operations, so a task never waits on it
-/// long enough for an async mutex to earn its cost.
+/// A `std::sync::Mutex` rather than an async one: the critical section is
+/// normally a hash lookup and three arithmetic operations, so a task never
+/// waits on it long enough for an async mutex to earn its cost.
+///
+/// "Normally" is doing real work in that sentence, and it used to say
+/// nothing at all. Once the table passes [`SWEEP_AT`] the critical section is
+/// a full scan of every entry, on a blocking mutex, on a Tokio worker thread
+/// -- and if the scan is not entitled to drop anything, the next request
+/// scans a table that has grown by one. `tests/load_profile.rs` measures the
+/// consequence and the conditions it needs; [`RateLimit`] carries the summary
+/// a caller has to act on.
 #[derive(Debug, Default)]
 struct MemoryBuckets {
     buckets: Mutex<HashMap<String, Bucket>>,
@@ -281,9 +289,17 @@ impl MemoryBuckets {
 
         if buckets.len() >= SWEEP_AT {
             // A bucket that has refilled to capacity carries no information:
-            // recreating it lazily gives exactly the same answer. Dropping
-            // those is what keeps an unbounded key space (one per IP) from
-            // being an unbounded map.
+            // recreating it lazily gives exactly the same answer.
+            //
+            // Dropping those is what keeps an unbounded key space (one per
+            // IP) from being an unbounded map -- but only while buckets
+            // refill faster than new keys arrive. A key touched once is
+            // ineligible for `1 / refill_per_second`, so under a per-hour
+            // quota it is held for minutes, this scan is entitled to drop
+            // nothing, and it runs again on the next request over a table
+            // one entry larger. Measured at 128 connections: a fresh key
+            // every request costs nothing under a per-second quota and
+            // 5.2x throughput under a per-hour one. See `RateLimit`.
             buckets.retain(|_, bucket| {
                 refilled(
                     bucket.tokens,
@@ -438,6 +454,51 @@ enum Backend {
 /// [`RouteGroup::layer`](crate::routing::RouteGroup::layer), or on one route
 /// with [`Route::layer`](crate::routing::Route::layer). Cloning shares the
 /// buckets, so a value used in two places is still one limit.
+///
+/// # A slow quota over a wide key space is expensive
+///
+/// The in-memory backend keeps one bucket per key and sweeps the table when
+/// it passes 8192 entries, dropping every bucket that has refilled to
+/// capacity. That sweep is what stops a key space of one-per-IP from being an
+/// unbounded map, and it works -- while buckets refill faster than new keys
+/// arrive.
+///
+/// When they do not, it stops working in both directions at once: nothing is
+/// dropped, so the table keeps growing, and the scan runs again on the next
+/// request over the larger table, holding a blocking mutex on a Tokio worker
+/// thread while it does. A key touched once is ineligible for
+/// `1 / refill_per_second` -- a second under [`per_minute(60)`](Self::per_minute),
+/// six minutes under [`per_hour(10)`](Self::per_hour).
+///
+/// Measured at 128 connections, twenty seconds a run, one variable at a time
+/// (`tests/load_profile.rs`):
+///
+/// | | requests/second |
+/// |---|---|
+/// | no limiter | 5370 |
+/// | 1024 keys, per-hour quota | 4922 |
+/// | a fresh key every request, per-second quota | 4923 |
+/// | a fresh key every request, per-hour quota | **953** |
+///
+/// The third row is the point. A wide key space is free; a wide key space
+/// whose buckets cannot refill costs 5.2x throughput. The dangerous
+/// combination is the ordinary shape of a login or password-reset throttle --
+/// a per-hour quota keyed by address -- against traffic that keeps bringing
+/// new addresses.
+///
+/// Two ways out, both available now:
+///
+/// * [`redis`](Self::redis). The Redis backend holds no client-side map at
+///   all; it sets a per-key expiry and lets the server forget. A wide key
+///   space costs it nothing.
+/// * A faster-refilling quota. `per_minute(600)` and `per_hour(10)` permit
+///   nearly the same rate over an hour, but the first refills a spent bucket
+///   in a tenth of a second and the second takes six minutes, and only the
+///   second accumulates.
+///
+/// This is a property of the current in-memory backend rather than a promise
+/// about it, and it is written down here because the number is not something
+/// a reader could derive from the type.
 #[derive(Debug, Clone)]
 pub struct RateLimit {
     quota: Quota,
