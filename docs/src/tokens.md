@@ -1,6 +1,6 @@
 # API tokens
 
-An opaque bearer credential for a client that has no cookie and no session --
+An opaque bearer credential for a client that has no cookie and no session —
 a CLI, a CI job, a mobile app, another service. The client sends
 `Authorization: Bearer <token>` on every request. The framework turns that
 back into a record, or refuses the request.
@@ -21,13 +21,13 @@ the dependency graph: `sha2`, `subtle` and `zeroize` are already pulled in by
 The examples below need a live database, so they are marked `ignore`: they
 are neither compiled nor run. `no_run` would compile them without running
 them, which is the stronger marker, but these name an application's own
-account store and state type -- neither of which exists in this crate -- so
+account store and state type — neither of which exists in this crate — so
 there is nothing here for a compiler to check them against.
 
 ## The property the design exists for
 
 A token is two halves: a public 16-byte id and a secret 32-byte half. The row
-holds the id in the clear -- it is a lookup key, not a credential -- and the
+holds the id in the clear — it is a lookup key, not a credential — and the
 SHA-256 of the secret. The secret itself is never written anywhere.
 
 From `src/tokens/migrations/postgres/0001_api_tokens.sql`:
@@ -82,8 +82,8 @@ connection budget for no reason.
 
 `issue` returns an `IssuedApiToken`: `token()` is the stored record,
 `plaintext()` is the credential, `into_parts()` splits them. The plaintext
-exists exactly once, in memory, in that return value. Nothing -- not this
-module, not a `SELECT`, not a backup -- can produce it again. Losing it means
+exists exactly once, in memory, in that return value. Nothing — not this
+module, not a `SELECT`, not a backup — can produce it again. Losing it means
 issuing another.
 
 `PlaintextToken` is built to make an accidental second copy hard:
@@ -96,12 +96,12 @@ issuing another.
 | `expose()`, not `as_str()` | every call site should read as a decision |
 
 The zeroize is best-effort, not a guarantee. Anything the caller copies the
-string into -- a response body, a format argument, a `String` of its own -- is
+string into — a response body, a format argument, a `String` of its own — is
 outside the type's reach.
 
 The plaintext is `arcpat_` followed by 32 hex characters of id, `_`, and 64
 hex characters of secret: 104 characters in total. `TOKEN_PREFIX` is a public
-const so a secret scanner -- a pre-commit hook, a CI step, a log pipeline --
+const so a secret scanner — a pre-commit hook, a CI step, a log pipeline —
 can recognise an Arcature token in a paste or a diff from one literal. The
 prefix is not a security control; it is what makes one possible.
 
@@ -142,7 +142,7 @@ The unlock is best-effort: if it fails the session is already broken, and
 reporting that instead of the migration's own error would hide the reason the
 caller needs. On MySQL the wait is bounded at ten seconds and the result of
 `GET_LOCK` is not inspected, so a migrator that waited out the timeout
-proceeds anyway -- which converges rather than corrupts, because every
+proceeds anyway — which converges rather than corrupts, because every
 statement in the file is idempotent.
 
 Storage differs where the dialects differ:
@@ -228,8 +228,8 @@ This looks like the password path and is not, and the difference decides the
 algorithm.
 
 A password hash is slow on purpose because a password is low entropy. Users
-pick from a distribution an attacker can enumerate -- a wordlist, a leaked
-corpus, a few billion candidates -- so the only defence a stolen hash has is
+pick from a distribution an attacker can enumerate — a wordlist, a leaked
+corpus, a few billion candidates — so the only defence a stolen hash has is
 that each guess costs real time and memory. Argon2 buys that time. It is the
 right call in `auth::password`, and it stays the right call there.
 
@@ -251,8 +251,8 @@ holding one a denial-of-service primitive against the application.
 
 So: a single SHA-256, with no length-extension risk in this construction (the
 input is a fixed 32 bytes and the digest is never a prefix of a longer
-authenticated message). The reasoning generalises -- hash slowly what humans
-chose, hash quickly what the CSPRNG chose -- and it is why `DbSessionStore`
+authenticated message). The reasoning generalises — hash slowly what humans
+chose, hash quickly what the CSPRNG chose — and it is why `DbSessionStore`
 stores a SHA-256 of a session id as well. The full argument lives at the
 hashing site, `digest_of` in `src/tokens/store.rs`.
 
@@ -267,7 +267,7 @@ let matches: bool = presented_digest.ct_eq(stored.as_slice()).into();
 
 `subtle::ConstantTimeEq` reads every byte every time. A `==` would return at
 the first differing byte. A few hundred nanoseconds, averaged over enough
-requests, is enough to recover a digest one byte at a time -- thirty-two
+requests, is enough to recover a digest one byte at a time — thirty-two
 rounds of two hundred and fifty-six guesses, instead of a search of 2^256.
 
 Two more details of that path. The presented secret is hashed *before* the
@@ -288,8 +288,8 @@ guessable, so "this account exists" is a real step forward, whereas a token id
 is 128 random bits and the secret behind it is 256 more. Learning that some id
 exists costs the same 128-bit search either way.
 
-`authenticate` returns `Ok(None)` for every authentication failure --
-malformed, unknown id, wrong secret, expired -- and an `Err` only when the
+`authenticate` returns `Ok(None)` for every authentication failure —
+malformed, unknown id, wrong secret, expired — and an `Err` only when the
 database fails or a row does not hold what the schema promises.
 
 ## Abilities
@@ -380,8 +380,8 @@ to revoke; `revoke_all_for` reports how many went. The second is the "the
 laptop was stolen" path, and the one to call when a password changes.
 
 `sweep_expired` deletes rows whose expiry has passed and reports how many. It
-reclaims disk. It is not what makes expiry correct -- the predicate in every
-read already does that -- so a deployment that never calls it is secure and
+reclaims disk. It is not what makes expiry correct — the predicate in every
+read already does that — so a deployment that never calls it is secure and
 merely wasteful. Nothing calls it for you; see the limits below.
 
 Reading, for a token-management screen:
@@ -395,7 +395,7 @@ for token in tokens.list_for("user:42").await? {
 `list_for` returns every live token for one subject, newest first, ties broken
 by id (`ORDER BY created_at DESC, id`). `find(id)` reads one. Neither can
 return a plaintext, and neither loads a digest. `ApiTokenId` is safe to show,
-to log, and to accept from a revocation request -- it travels in the header in
+to log, and to accept from a revocation request — it travels in the header in
 the clear next to the secret, and it is not a credential. It parses from and
 prints as 32 lowercase hex characters, via `ApiTokenId::from_hex` and
 `to_hex`.
@@ -410,7 +410,7 @@ decision pretending to be a security one. `database` is required because a
 revocable credential has to live somewhere revocable.
 
 The two sides do not know about each other. `tokenable_id` is a `String` in
-the application's own spelling -- a user id, a tenant id, a service name -- so
+the application's own spelling — a user id, a tenant id, a service name — so
 this module never has an opinion about the shape of an application's primary
 key, and never joins to a users table.
 
@@ -429,7 +429,7 @@ request that authenticates with a header the application handed to a CLI is
 not that request, and there is no cookie for a forged one to ride on.
 
 Two notes about the shape of the exemption. It is keyed on the scheme alone,
-so it is granted before any token is validated -- the request is then still
+so it is granted before any token is validated — the request is then still
 rejected by `ApiAuth` unless it carries a live token, so the exemption skips
 CSRF, not authentication. And a route protected only by a session cookie gains
 nothing from a client that also sends a bearer header; a route that means to
@@ -441,7 +441,7 @@ accept tokens should read `ApiAuth`.
 client registration, no refresh endpoint, no discovery document, and no
 `scope` parameter. Abilities are the application's own strings and mean
 whatever the application decides. The separate `oauth` feature is an OAuth 2
-*client* -- Authorization Code with PKCE against somebody else's provider --
+*client* — Authorization Code with PKCE against somebody else's provider —
 and shares no code with this module.
 
 **No refresh tokens, and no rotation.** The store's only writes are `issue`,
@@ -476,7 +476,7 @@ you want one.
 `migrate_tx`, every method here runs on the pool. A token cannot be issued
 inside a transaction you already hold.
 
-**No serde.** `ApiToken` derives `Clone` and `Debug` only -- not even
+**No serde.** `ApiToken` derives `Clone` and `Debug` only — not even
 `PartialEq`, so two tokens cannot be compared with `==`. `ApiTokenId` and
 `Abilities` add comparison traits. None of the three derives `Serialize`. Rendering a token list into an Inertia
 prop or a JSON body means a struct of the application's own.

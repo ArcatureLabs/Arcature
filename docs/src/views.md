@@ -17,7 +17,7 @@ arcature = { version = "0.1", features = ["views"] }
 
 `views = ["dep:askama"]`. It pulls nothing else.
 
-A generated application already has it on -- `arc new` writes `app/views/`,
+A generated application already has it on — `arc new` writes `app/views/`,
 `templates/layout.html` and `templates/welcome.html`, and lists `"views"` in
 the app's `Cargo.toml`. If every screen in the application is an
 [Inertia](inertia.md) page, remove the feature and those two directories
@@ -58,7 +58,7 @@ it can answer a render failure the way the rest of the framework answers one.
 This is the decision the feature exists to make, so it is worth arguing rather
 than asserting.
 
-A runtime template engine -- minijinja, tera, handlebars -- is two programs
+A runtime template engine — minijinja, tera, handlebars — is two programs
 shipped as a library: a parser that turns template text into a tree, and an
 evaluator that walks the tree against a context and produces output. Both of
 them run inside the request path, because that is when the template is
@@ -67,9 +67,9 @@ rendered.
 That arrangement is what server-side template injection is. SSTI is not a
 parsing bug; it is the engine doing exactly its job on input that reached it
 from the wrong direction. If any string a request controls is handed to the
-parser -- a template chosen by name from a query parameter, a page fragment
+parser — a template chosen by name from a query parameter, a page fragment
 stored in a database and rendered as a template, a subject line assembled with
-`format!` and then passed through the engine -- then the evaluator will
+`format!` and then passed through the engine — then the evaluator will
 evaluate it. An expression language with attribute access and method calls is
 one hop from the host process, which is why SSTI is the shortest route there
 is from a form field to remote code execution.
@@ -81,7 +81,7 @@ and a defence is a thing that can be forgotten in one commit.
 Askama makes the class of bug unreachable instead. The parser runs in the
 proc-macro at build time. The output is Rust. At runtime there is no parser to
 reach, no evaluator to abuse, and no template text in the binary to be
-substituted -- only the statements the compiler emitted. There is nothing to
+substituted — only the statements the compiler emitted. There is nothing to
 forget, because there is nothing there.
 
 The same property has a second effect, which is smaller but is felt daily. A
@@ -124,7 +124,7 @@ pub struct WelcomeView {
 }
 ```
 
-`path` resolves against `templates/` in the crate root -- askama's default
+`path` resolves against `templates/` in the crate root — askama's default
 directory, and with the `config` feature off there is no `askama.toml` that
 could move it.
 
@@ -201,8 +201,8 @@ The scaffold ships a base and one page that extends it. `templates/layout.html`:
 
 Template syntax, inheritance and filters are askama's, and `arcature::view`
 puts nothing in front of them. It is a seam, not a wrapper. The askama crate
-is re-exported as `arcature::askama`, and `Template` -- both the trait and the
-derive macro, which share one name -- comes from `arcature::view::Template` or
+is re-exported as `arcature::askama`, and `Template` — both the trait and the
+derive macro, which share one name — comes from `arcature::view::Template` or
 from the prelude.
 
 ## arc make:view
@@ -215,7 +215,7 @@ writes two files:
 
 | Path | Contents | Registered in a `mod.rs` |
 | --- | --- | --- |
-| `app/views/admin/receipt_view.rs` | `pub struct ReceiptView` with `#[template(path = "admin/receipt.html", askama = arcature::askama)]` | yes -- `pub mod receipt_view;` |
+| `app/views/admin/receipt_view.rs` | `pub struct ReceiptView` with `#[template(path = "admin/receipt.html", askama = arcature::askama)]` | yes — `pub mod receipt_view;` |
 | `templates/admin/receipt.html` | a template extending `layout.html` | no |
 
 The struct is the file stem plus `View`; the template keeps the base name,
@@ -230,7 +230,7 @@ Rust in it.
 
 Two files rather than one is the point of this generator. Askama reads the
 template when the crate compiles, so a view struct whose `path` names a file
-that is not there is not a scaffold with a gap in it -- it is a compile error,
+that is not there is not a scaffold with a gap in it — it is a compile error,
 and the project stops building until somebody writes the half the generator
 declined to. The pair is the artifact.
 
@@ -272,7 +272,7 @@ A fresh `View` carries three things a compiled template does not know:
 | `Content-Language` | **absent** | `.in_locale(&Locale)` (feature `i18n`) |
 
 HTML is the default rather than a guess from the template's extension because
-askama 0.16 does not keep the extension on the compiled type -- `Template` has
+askama 0.16 does not keep the extension on the compiled type — `Template` has
 no `MIME_TYPE` to read. A view over a `.txt` or `.xml` template has to say so:
 
 ```rust
@@ -322,7 +322,7 @@ implementation leaks all three:
   is often the half somebody was mid-edit;
 * the template's path, which is a map of the source tree and of the filesystem
   the process runs on;
-* the value that would not format -- whatever the failing `Display` had
+* the value that would not format — whatever the failing `Display` had
   already written before it gave up, plausibly a session token or a database
   row.
 
@@ -334,7 +334,7 @@ browser. A `Content-Language` a handler declared does not survive onto the
 failure response either: the body is the framework's error document, not the
 page that failed.
 
-The askama message goes to `tracing::error!` -- and this is where the feature
+The askama message goes to `tracing::error!` — and this is where the feature
 graph bites. `tracing` arrives with `observe`, and `views` does not imply it.
 **In a build with `views` and without `observe`, the askama message is
 discarded with nothing recorded anywhere.** The client still gets its
@@ -352,7 +352,7 @@ let response = view(Greeting { locale: locale.clone() })
 ```
 
 The framework does not infer this header, in either direction. A compiled
-template carries no language -- askama resolved it to `write!` calls -- and the
+template carries no language — askama resolved it to `write!` calls — and the
 locale `LocaleLayer` negotiated is what the request *asked* for, which is not
 the same claim as what the bytes in the response are actually in. A handler
 that renders a French template says so; one that renders a template it did not
@@ -360,7 +360,7 @@ translate says nothing, which is better than an untrue header.
 
 Translation itself stays in the template: give the struct a `Locale` field and
 call it. There is no filter and no `{{ t("key") }}` syntax, because adding one
-would mean a lookup the compiler cannot check -- the opposite of the reason
+would mean a lookup the compiler cannot check — the opposite of the reason
 this module exists.
 
 ## Mail bodies from the same templates
@@ -439,7 +439,7 @@ text cannot reach a response body by way of the mail subsystem either.
 
 `Mailable::build` is declared `fn build(&self, email: Email) -> Result<Message,
 EmailError>`. `templated` returns `Result<Message, MailViewError>`, and there
-is no `From<MailViewError> for EmailError` -- `EmailError` is not
+is no `From<MailViewError> for EmailError` — `EmailError` is not
 `#[non_exhaustive]`, so it cannot grow a variant without breaking every
 downstream match.
 
@@ -447,7 +447,7 @@ The consequence is concrete: **a `Mailable` implementation cannot call
 `templated` and use `?`.** This does not compile, and no import fixes it.
 
 `arc make:mail` writes a plain-text `Mailable`, and its comment gives a
-related but different reason -- that a `format!` into an HTML body escapes
+related but different reason — that a `format!` into an HTML body escapes
 nothing, so the HTML half should come from a template. The `templated`
 incompatibility above is not mentioned there. To send a templated mail, build the `Message` outside the trait and
 hand it to the mailer:
@@ -479,7 +479,7 @@ table. It is not a runtime decision and not a per-value one.
 | anything else | none exists | **compile error** |
 
 That last row is worth reading twice. An extension in neither list is not a
-silent fall-through to "no escaping" -- the derive fails with `no escaper
+silent fall-through to "no escaping" — the derive fails with `no escaper
 defined for extension '...'`. A `.rss` or `.csv` template does not build until
 you say what it is, with `escape = "html"` or `escape = "none"`.
 
@@ -518,7 +518,7 @@ are the template author's to handle:
   they are in markup, and the five-character table is not a JavaScript string
   escape. Do not interpolate request data into a `<script>` body. Askama's
   `json` filter would be the tool for handing data to JavaScript, and this
-  build does not have it -- `serde_json` is one of the askama features
+  build does not have it — `serde_json` is one of the askama features
   Arcature leaves off. Encode the value in Rust, or use an Inertia page, which
   is what the prop channel is for.
 * **Unquoted attributes.** `<div class={{ value }}>` is injectable through a
@@ -544,8 +544,8 @@ compiled again.
 reads, which makes rustc track the file as a dependency of the crate: touching
 the `.html` alone is enough to make the next `cargo build` recompile.
 
-**`arc dev` does not notice.** The supervisor's watcher -- see
-[The dev loop](dev-loop.md) -- classifies a change, and only three kinds of
+**`arc dev` does not notice.** The supervisor's watcher — see
+[The dev loop](dev-loop.md) — classifies a change, and only three kinds of
 file mean anything to it:
 
 | Change | Action |
@@ -555,8 +555,8 @@ file mean anything to it:
 | `.env`, `.env.*` | restart, no compile |
 | everything else, templates included | nothing |
 
-That filter is deliberate for the frontend -- a `.tsx` or `.css` edit is Vite's
-business and costs no Rust rebuild -- and an askama template falls on the same
+That filter is deliberate for the frontend — a `.tsx` or `.css` edit is Vite's
+business and costs no Rust rebuild — and an askama template falls on the same
 side of it. Saving a template during `arc dev` produces no rebuild and no
 visible change on refresh. Touch any `.rs` file, or run `cargo build`, to pick
 it up. (The comment in the generated `app/views/mod.rs` says `arc dev` already
@@ -572,8 +572,8 @@ succeeds, because the templates are on the developer's disk, and the image
 build fails on a template it cannot find. The error names a path that plainly
 exists, which is what makes it confusing rather than obvious.
 
-The generated `Dockerfile` -- described in full under
-[Deployment](deployment.md) -- copies it alongside the rest of the sources:
+The generated `Dockerfile` — described in full under
+[Deployment](deployment.md) — copies it alongside the rest of the sources:
 
 ```dockerfile
 COPY src ./src
@@ -594,7 +594,7 @@ production image is dead weight at best.
 
 ### Views and Inertia are both on, and that is fine
 
-A generated application serves both. Inertia renders the application -- the
+A generated application serves both. Inertia renders the application — the
 screens behind sign-in, where the client is already loaded and a JSON page
 object is the cheap answer. Views render the pages that have to work with no
 JavaScript at all: an unsubscribe confirmation, an emailed receipt, an RSS

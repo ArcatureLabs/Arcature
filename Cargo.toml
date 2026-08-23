@@ -401,9 +401,12 @@ notifications-queue = ["notifications", "jobs"]
 # names its own endpoints, and the bundled presets are plain consts.
 oauth = ["dep:oauth2", "dep:url"]
 
-# OpenTelemetry traces over OTLP, plus the Prometheus text endpoint.
-# An operator opt-in: the exporter stack is large and most apps never
-# enable it.
+# OpenTelemetry traces over OTLP. An operator opt-in: the exporter stack is
+# large and most apps never enable it.
+#
+# Not the Prometheus text endpoint, which this comment used to claim.
+# `observe::metrics` is gated on `observe` alone and is reachable without
+# `otel`; the two are separate opt-ins that happen to be read together.
 otel = [
     "observe",
     "dep:opentelemetry",

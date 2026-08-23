@@ -7,7 +7,7 @@ Not enabled by default. `notifications` is absent from the crate's default
 feature list, and so are the three that build on it.
 
 `Notifier` is a value, not a namespace. Nothing in `Application` constructs
-one -- you build it at startup and put it in application state, the same way
+one — you build it at startup and put it in application state, the same way
 you would a `Mail` or a `Jobs`.
 
 ## What a notification is
@@ -56,7 +56,7 @@ a method `via()` forgot is never called.
 Here the channel set is derived rather than declared. A notification reaches a
 channel exactly when that channel's method returns `Some`, so the list *is*
 the methods. The per-recipient decision `via($notifiable)` exists to make is
-still available -- every method receives the `Recipient` -- but it is made in
+still available — every method receives the `Recipient` — but it is made in
 the same place that produces the content.
 
 `to_database` and `to_broadcast` exist whatever features are on, and so do the
@@ -73,10 +73,10 @@ deliberate: an HTML-only email is unreadable in a text client, in a screen
 reader that falls back, and in the preview line every mail app shows, and it
 is one of the older signals a spam filter weighs. `html_body()` is `None`
 until `.html(..)` is called, and the last call wins. The HTML is used
-verbatim -- nothing escapes what a caller interpolates into it.
+verbatim — nothing escapes what a caller interpolates into it.
 
-`DatabaseContent` and `BroadcastContent` are the same pair of fields -- a
-`kind` string and a `serde_json::Value` payload -- and deliberately two types.
+`DatabaseContent` and `BroadcastContent` are the same pair of fields — a
+`kind` string and a `serde_json::Value` payload — and deliberately two types.
 An inbox row is read on purpose and can afford detail; a live push arrives
 unasked, is usually a toast or a badge, and is often smaller. A notification
 that wants them identical builds both from the same value, which is one line;
@@ -89,7 +89,7 @@ exists because `to_database` returns an `Option` and an `Option` has nowhere
 to put an error: a constructor that serialised would turn a `#[serde(..)]`
 mistake into a notification that never appears.
 
-The `kind` is the application's own name -- `"invoice.paid"`, `"mention"` --
+The `kind` is the application's own name — `"invoice.paid"`, `"mention"` —
 and deliberately not a Rust type path. It is stored in a row and switched on
 by a front end, so deriving it from a type name would make `refactor: rename`
 a silent protocol change.
@@ -112,14 +112,14 @@ impl Notifiable for User {
 ```
 
 A `Recipient` is a stable key plus whatever a channel needs to reach them. The
-key is the same shape the rest of the framework uses for a subject -- the
-string an API token is issued to -- so a notification, a token and an audit
+key is the same shape the rest of the framework uses for a subject — the
+string an API token is issued to — so a notification, a token and an audit
 line name the same person the same way. It should be a primary key rather than
 an email address, because the inbox stores it alongside every delivered row.
 
 A fresh `Recipient` has **no** email address; `email_address()` returns `None`
 until `.email(..)` is called, and a second call replaces the first. A
-recipient with no address is ordinary rather than broken -- a notification that
+recipient with no address is ordinary rather than broken — a notification that
 only writes to an inbox needs no way to email anybody.
 
 `recipient()` is called once per send, so it may allocate. It must not query a
@@ -133,7 +133,7 @@ database.
 | Feature | Implies | What it adds |
 | --- | --- | --- |
 | `notifications` | `mail` | `Notification`, `Recipient`, `Notifiable`, `Notifier`, `Delivery`, `Channel`, `NotificationError`, the three content types, and the mail channel |
-| `notifications-db` | `notifications`, `database` | `DatabaseNotifications`, `StoredNotification`, `NotificationId`, `NotificationPool`, `Notifier::with_database` -- plus one table and one migration |
+| `notifications-db` | `notifications`, `database` | `DatabaseNotifications`, `StoredNotification`, `NotificationId`, `NotificationPool`, `Notifier::with_database` — plus one table and one migration |
 | `notifications-broadcast` | `notifications`, `realtime` | `BroadcastChannels`, `PerRecipientChannels`, `BroadcastNotifications`, `Notifier::with_broadcast` |
 | `notifications-queue` | `notifications`, `jobs` | `Notifier::queue`, `NotificationQueue`, `QueuedMail`, `MAIL_JOB`, `register_mail_handler` |
 
@@ -141,7 +141,7 @@ None of the four adds a crate to the dependency graph. `notifications` is
 `mail` plus the unconditional `thiserror`; `notifications-db` rides the `sqlx`
 that `database` already brings, with `serde_json` and `getrandom`
 unconditional; `notifications-broadcast` is `realtime`, which is `tokio`,
-`futures` and `bytes` -- axum is unconditional and no feature turns it on;
+`futures` and `bytes` — axum is unconditional and no feature turns it on;
 `notifications-queue` is `jobs`, which is `database` plus `tokio` and
 `tokio-util`, both of which the default feature set already brings.
 
@@ -149,8 +149,8 @@ unconditional; `notifications-broadcast` is `realtime`, which is `tokio`,
 
 `notifications` implies `mail` rather than splitting a channel-less core into
 its own feature. Mail is the channel a notification system is overwhelmingly
-used for, and the alternative -- a `notifications` that can deliver nothing
-plus a `notifications-mail` on top -- would be two features and two powerset
+used for, and the alternative — a `notifications` that can deliver nothing
+plus a `notifications-mail` on top — would be two features and two powerset
 dimensions to spare a dependency the same application has almost certainly
 already enabled.
 
@@ -195,7 +195,7 @@ wired: every channel is absent until it is given a backing. `has_mail()`,
 `has_database()`, `has_broadcast()` and `has_queue()` report what is there.
 
 `Notifier` is cheap to clone. Its `Debug` prints one boolean per channel and
-nothing from behind them -- a `Mailer` holds SMTP credentials and a pool holds
+nothing from behind them — a `Mailer` holds SMTP credentials and a pool holds
 a database URL, and a `Debug` that printed either would put it in the first
 log line that formats application state.
 
@@ -232,8 +232,8 @@ folding the two together would make `reached(Channel::Mail)` say yes to a row
 in a table.
 
 `Channel::Broadcast` appears in `channels()` only when at least one connection
-actually received the push. Nobody connected is not a failure -- it is the
-ordinary state of a recipient who is not looking at the application -- so it
+actually received the push. Nobody connected is not a failure — it is the
+ordinary state of a recipient who is not looking at the application — so it
 is reported as the channel not being among the ones that ran.
 
 ### Nothing is delivered quietly
@@ -245,9 +245,9 @@ password-reset emails that never arrive.
 
 | Variant | Raised when | Needs |
 | --- | --- | --- |
-| `NotConfigured { channel }` | the notification rendered content for a channel with no backing | -- |
-| `NoAddress { key }` | mail content for a recipient with no email address | -- |
-| `Mail { source }` | the transport refused the message or could not deliver it | -- |
+| `NotConfigured { channel }` | the notification rendered content for a channel with no backing | — |
+| `NoAddress { key }` | mail content for a recipient with no email address | — |
+| `Mail { source }` | the transport refused the message or could not deliver it | — |
 | `Database { source }` | the database rejected a statement or was unreachable | `notifications-db` |
 | `Decode(String)` | a stored row did not hold what the schema promises | `notifications-db` |
 | `Timestamp(String)` | a stored epoch-millisecond value is not a representable time | `notifications-db`, SQLite only |
@@ -274,7 +274,7 @@ uses, so address parsing, the `From` header and the transport's error mapping
 stay in one place. See [Mail](mail.md) for the transport.
 
 Two failures are distinguished. A notification that returns `None` from
-`to_mail` for a recipient with no address is not an error -- it decided mail
+`to_mail` for a recipient with no address is not an error — it decided mail
 does not apply. A notification that returns content anyway for a recipient
 with no address is a contradiction, and raises `NoAddress { key }`.
 
@@ -347,14 +347,14 @@ assert!(inbox.mark_read("user:42", row.id()).await?);
 | `inbox(key, limit)` | that recipient's notifications, newest first, at most `limit` |
 | `unread(key, limit)` | the unread ones only, same order and bound |
 | `unread_count(key)` | `u64`, a `COUNT` rather than the length of a listing |
-| `mark_read(key, id)` | `bool` -- whether the statement changed a row |
+| `mark_read(key, id)` | `bool` — whether the statement changed a row |
 | `mark_all_read(key)` | `u64` rows affected |
-| `delete(key, id)` | `bool` -- whether it existed |
+| `delete(key, id)` | `bool` — whether it existed |
 | `delete_all_for(key)` | `u64` rows affected |
 | `prune_read_before(cutoff)` | `u64` rows affected, across all recipients |
 | `pool()` | the `NotificationPool` underneath |
 
-`NotificationPool` is the application's own pool -- the same `Pool` the
+`NotificationPool` is the application's own pool — the same `Pool` the
 `database` feature exposes. The inbox opens no connection of its own.
 
 There is no unbounded listing. `limit` is mandatory on both readers, because
@@ -368,7 +368,7 @@ not cost the rows.
 
 `mark_read` returning `false` does not say which of three things happened: no
 such notification, somebody else's notification, or one already read. That is
-deliberate -- a handler that could distinguish "not yours" from "does not
+deliberate — a handler that could distinguish "not yours" from "does not
 exist" is an oracle for which ids exist, and none of the three calls for a
 different response. A notification that was already read keeps its original
 read time, because the statement carries `read_at IS NULL`.
@@ -398,7 +398,7 @@ instead: it can only reach rows a recipient has already seen.
 ### Ids are random
 
 A `NotificationId` is 16 bytes from the OS randomness source, with no
-fallback -- an id drawn from a clock is guessable, and `Entropy` is reported
+fallback — an id drawn from a clock is guessable, and `Entropy` is reported
 rather than worked around. `store` draws a fresh id and retries on a clash up
 to eight times before returning `IdCollision`; eight collisions on a 128-bit
 id is not chance, it is a randomness source that is not random.
@@ -429,7 +429,7 @@ quietly empties itself of things nobody has seen is worse than one that grows.
 
 `realtime` offers one thing: a `Broadcast`, a bounded fanout where every
 subscriber receives every message. That is right for "the build status
-changed" and wrong for something addressed to a person -- publishing
+changed" and wrong for something addressed to a person — publishing
 notifications onto one shared `Broadcast` would hand every connected user
 every other user's notifications.
 
@@ -447,7 +447,7 @@ Targeting is then which channel the bytes go into, not a filter applied
 afterwards. There is no code path that puts one recipient's payload into
 another's channel, so there is no rule for a handler to remember.
 
-If you write your own resolver -- grouping by tenant, team or document -- the
+If you write your own resolver — grouping by tenant, team or document — the
 contract is that everything subscribed to the returned channel is entitled to
 see this recipient's notifications. A resolver that maps two people onto one
 channel to save an allocation has turned a targeted notification into a leak,
@@ -467,7 +467,7 @@ assert_eq!(channels.connections("user:1"), 1);
 ```
 
 `new(capacity)` returns `Option<Self>` and gives `None` for a capacity of
-zero -- a channel that can hold nothing drops every message. There is no
+zero — a channel that can hold nothing drops every message. There is no
 default capacity; the argument is mandatory. It is per recipient, and it
 bounds how far one connection may fall behind before it starts missing
 messages. It does not need to be large: a notification the recipient missed is
@@ -482,8 +482,8 @@ free of a lock. `connections(key)`, `len()` and `is_empty()` report the shape;
 count of who is online.
 
 `channel_for` deliberately does not create. A resolver that created a channel
-per push would grow the map once per notification sent to someone offline --
-which is most of them -- and none of those channels would have a subscriber to
+per push would grow the map once per notification sent to someone offline —
+which is most of them — and none of those channels would have a subscriber to
 sweep it away.
 
 `Debug` on `PerRecipientChannels` prints the capacity and the entry count,
@@ -540,7 +540,7 @@ runs them. Both for reasons about correctness rather than taste:
   behind it.
 - The **live push** reaches the connections held by *this* process. A worker
   is a different process and holds none of them, so queueing a push is not
-  deferring it -- it is dropping it.
+  deferring it — it is dropping it.
 
 A queued send is an inline send with one thing moved: the part that leaves the
 machine.
@@ -552,15 +552,15 @@ that may itself be waiting on a DNS lookup become one `INSERT` into a table
 the request is already connected to.
 
 The *variation* goes with it. How long an SMTP conversation takes depends on
-the address at the other end -- whether the domain resolves, whether the server
-greylists, whether the recipient exists -- and a handler that answers a
+the address at the other end — whether the domain resolves, whether the server
+greylists, whether the recipient exists — and a handler that answers a
 registration form at a speed that depends on those things is telling anyone
 with a stopwatch which addresses are already taken. The enqueue costs the same
 for an address that will bounce as for one that will not.
 
 It does **not** make the handler constant-time. The inbox write and the live
-push still happen inline, and password hashing -- the usual reason a
-registration handler is timed -- is somewhere else entirely. This removes one
+push still happen inline, and password hashing — the usual reason a
+registration handler is timed — is somewhere else entirely. This removes one
 oracle, not the category.
 
 ### An email can arrive twice
@@ -571,16 +571,16 @@ worker will claim, and the message is sent again.
 
 That is not a bug that can be fixed here. Handing bytes to a remote server and
 recording that you did are two operations in two systems, and no amount of
-care makes them one. Anything whose *second* delivery is harmful -- a one-time
-code consumed on send, an email that charges a card -- should not rely on the
+care makes them one. Anything whose *second* delivery is harmful — a one-time
+code consumed on send, an email that charges a card — should not rely on the
 send being the only record that it happened.
 
 ### The job, and the worker that runs it
 
 `MAIL_JOB` is the shared identity: kind `"arcature.notifications.mail"`,
 version 1, three attempts. It is public because the two halves live in
-different processes -- the web process enqueues against it, the worker
-registers a handler for it -- and a disagreement of one character would leave
+different processes — the web process enqueues against it, the worker
+registers a handler for it — and a disagreement of one character would leave
 jobs sitting in the table with nobody to run them. The kind is namespaced
 under `arcature.` because the table is shared; an application's own job called
 `mail` would otherwise collide.
@@ -595,14 +595,14 @@ register_mail_handler(&mut registry, mail)?;
 ```
 
 The `Mail` given to the worker need not be the one the web process was built
-with, and usually is not -- once its mail goes through the queue, the web
+with, and usually is not — once its mail goes through the queue, the web
 process may have no SMTP credentials at all. Registering twice returns
 `RegisterError::AlreadyRegistered`, because two registrations mean two
 transports for one job and which one wins is an accident of call order.
 
 Retry classification is the one decision the handler makes. A message the
-transport could not *build* -- a malformed address, a body that is not valid
-MIME -- is permanent; nothing about waiting fixes an address that will not
+transport could not *build* — a malformed address, a body that is not valid
+MIME — is permanent; nothing about waiting fixes an address that will not
 parse. Everything else is retryable, because SMTP reply codes are advisory and
 a 5xx from a misconfigured relay is not the recipient's fault. Retrying a
 genuinely permanent failure costs two extra attempts; treating a temporary one
@@ -610,8 +610,8 @@ as permanent costs the email.
 
 ### What is stored in the row
 
-`QueuedMail` holds the *rendered* email -- `to`, `subject`, `text` and an
-optional `html` -- not the notification.
+`QueuedMail` holds the *rendered* email — `to`, `subject`, `text` and an
+optional `html` — not the notification.
 
 Laravel serializes the notification object and re-renders it in the worker.
 That needs every notification to be serializable, plus a registry mapping a
@@ -638,7 +638,7 @@ transaction is a job that runs for a change that then rolled back.
 that does not exist is not going to appear by the time the job runs, and
 failing now puts the error in the request that caused it instead of in a dead
 job row. `QueueNotConfigured` is likewise loud rather than falling back to an
-inline send -- the fallback would take exactly the latency the caller asked to
+inline send — the fallback would take exactly the latency the caller asked to
 avoid, and only under load, which is when it is least affordable and hardest
 to see.
 
@@ -656,8 +656,8 @@ The generated file implements **all three** channels, because every method on
 indistinguishable from a channel that was considered and declined. Deleting
 the two that do not apply is how the decision gets recorded.
 
-The `kind` string is a named constant -- `const KIND: &str = "invoice.paid"`,
-the file stem with underscores turned into dots -- with the reason beside it.
+The `kind` string is a named constant — `const KIND: &str = "invoice.paid"`,
+the file stem with underscores turned into dots — with the reason beside it.
 It is not derived from the Rust type, so renaming the type stays free and
 changing the protocol stays a migration.
 
@@ -673,7 +673,7 @@ and `notifications-broadcast` to deliver.
 
 **What needs a migration.** Only `notifications-db`. It adds
 `arcature_notifications` and `arcature_notifications_schema_migrations`.
-Enabling the feature does not create them -- call
+Enabling the feature does not create them — call
 `DatabaseNotifications::migrate()` at startup or run the bundled SQL yourself.
 An inbox whose table is missing fails on the first notification, which is the
 same outage discovered later. Nothing else here touches the schema: the mail
@@ -688,7 +688,7 @@ emails are sent. Nothing warns.
 
 `arc queue work` is **not** that something, and reaching for it is the
 mistake this paragraph exists to prevent. It builds a worker with an empty
-registry -- it sweeps expired leases, marks jobs it has no handler for as
+registry — it sweeps expired leases, marks jobs it has no handler for as
 dead, and prints a note saying so. Pointed at a queue of notification mail it
 will discard the rows rather than send them. Real dispatch is the
 application's own in-process worker, through `ApplicationBuilder::jobs`.
@@ -696,12 +696,12 @@ application's own in-process worker, through `ApplicationBuilder::jobs`.
 Registering the handler is a second, separate step: enabling the feature and
 running a worker are not enough on their own, because a worker with no
 registration for `arcature.notifications.mail` leaves the rows exactly where
-they are -- or, with `arc queue work`, does something worse than leave them.
+they are — or, with `arc queue work`, does something worse than leave them.
 
 **The broadcast is per process, and there is no switch.** `Broadcast` wraps a
 `tokio::sync::broadcast`, a channel between tasks inside one process. A push
 from instance A reaches only the connections held by instance A. Nothing
-errors and nothing warns -- subscribers on instance B never see it. This bites
+errors and nothing warns — subscribers on instance B never see it. This bites
 notifications harder than the rest of `realtime`, because a notification is
 exactly the kind of thing an application sends from a background worker, and a
 worker holds none of the web process's sockets: a push from a queue worker
@@ -728,7 +728,7 @@ for that recipient; where the preference is kept is the application's
 decision.
 
 **No templating.** `MailContent` takes strings. The HTML body is used
-verbatim, and nothing escapes what a caller interpolates into it -- an email
+verbatim, and nothing escapes what a caller interpolates into it — an email
 body is a good place to land a phishing link. Render it through a template
 engine that escapes.
 

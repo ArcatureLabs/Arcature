@@ -29,13 +29,17 @@
 - [Authentication](auth.md)
 - [API tokens](tokens.md)
 - [Encryption and signed URLs](crypt.md)
+- [OAuth](oauth.md)
 - [Jobs](jobs.md)
 - [Events](events.md)
 - [Mail](mail.md)
 - [Notifications](notifications.md)
+- [Realtime](realtime.md)
 
 # Operating it
 
+- [API and OpenAPI](api.md)
+- [Observability](observe.md)
 - [Testing](testing.md)
 - [Deployment](deployment.md)
 - [Upgrading](upgrade.md)

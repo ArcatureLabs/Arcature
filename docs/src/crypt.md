@@ -39,7 +39,7 @@ Why each crate is there:
 | --- | --- |
 | `chacha20poly1305` | the AEAD behind `Encrypter`, in its **X** variant |
 | `hmac` + `sha2` | subkey derivation from `APP_KEY`, and the MAC `UrlSigner` computes |
-| `subtle` | `ConstantTimeEq` on the presented signature -- see below |
+| `subtle` | `ConstantTimeEq` on the presented signature — see below |
 | `percent-encoding` | escaping and unescaping query components |
 | `secrecy` + `zeroize` | key material that redacts in `Debug` and wipes on drop |
 
@@ -69,7 +69,7 @@ APP_KEY=<128 lowercase hexadecimal characters>
 | Behaviour | Detail |
 | --- | --- |
 | source | 64 bytes from the OS RNG, via `SessionKey::generate` |
-| encoding | 128 lowercase hex characters, not base64 -- hex has no alphabet variants for a `.env` parser to get wrong, and length alone says whether the value is intact |
+| encoding | 128 lowercase hex characters, not base64 — hex has no alphabet variants for a `.env` parser to get wrong, and length alone says whether the value is intact |
 | default action | rewrite the existing `APP_KEY=` line in `.env`, or append one |
 | re-running | replaces rather than appends, so a `.env` never ends up with three keys and a loader picking one |
 | `--show` | prints and touches nothing, which is what a pipeline wants when the secret belongs in a secret store |
@@ -80,7 +80,7 @@ The command is gated on the `auth` feature, not on `crypt` or `signed-urls`,
 because the key type and the certified RNG behind it live in the auth module.
 `auth` is in `default`, so a generated application has the command. A build
 that turns default features off and asks for `crypt` alone gets `AppKey` and
-no way to mint one from the CLI -- produce 64 bytes from the OS RNG elsewhere
+no way to mint one from the CLI — produce 64 bytes from the OS RNG elsewhere
 and pass them to `AppKey::from_bytes`.
 
 ### Reading the key
@@ -189,7 +189,7 @@ manage and no way for a caller to reuse one.
 
 AES-GCM's nonce is 96 bits. Random nonces there have a birthday bound a busy
 application can actually reach, and a repeat under GCM does not merely leak
-plaintext -- it leaks the authentication subkey, so the attacker gains forgery
+plaintext — it leaks the authentication subkey, so the attacker gains forgery
 as well. The alternative to a 192-bit nonce is asking every caller to own a
 counter that must never repeat across restarts, replicas and rollbacks.
 
@@ -241,8 +241,8 @@ different tokens, by design. An empty plaintext round-trips.
 A token whose bytes have changed returns no plaintext at all. Which error
 depends on where: the version tag is stripped before anything else, so
 altering it gives `DecryptError::UnknownVersion`, and a body that is not
-base64url gives `Malformed`. Everything the cipher actually sees -- nonce,
-ciphertext, tag -- gives `DecryptError::Authentication`. There
+base64url gives `Malformed`. Everything the cipher actually sees — nonce,
+ciphertext, tag — gives `DecryptError::Authentication`. There
 is no partial result and no "decrypted but unverified" path, because a caller
 holding attacker-chosen bytes that look like plaintext is the failure mode an
 AEAD exists to prevent.
@@ -254,10 +254,10 @@ AEAD exists to prevent.
 
 | `DecryptError` | Means |
 | --- | --- |
-| `UnknownVersion` | no version tag this build reads -- not an Arcature token, or minted by a newer release |
+| `UnknownVersion` | no version tag this build reads — not an Arcature token, or minted by a newer release |
 | `Malformed` | not unpadded base64url, or shorter than a nonce plus a tag (40 bytes) |
 | `Authentication` | the tag did not match: altered, or encrypted under a different key |
-| `NotUtf8` | authenticated, but the plaintext is not UTF-8. Only from `decrypt_string`, and not reachable by an attacker -- it means `encrypt` was given bytes and `decrypt_string` was used to read them back |
+| `NotUtf8` | authenticated, but the plaintext is not UTF-8. Only from `decrypt_string`, and not reachable by an attacker — it means `encrypt` was given bytes and `decrypt_string` was used to read them back |
 
 The variants distinguish shapes of failure so an application can tell a stale
 link from an attack in its own logs. None of them is a near-miss: every one
@@ -312,13 +312,13 @@ place of the key.
 | --- | --- |
 | base URL | `AppConfig::base_url()`, which is `http://localhost:3000` on a fresh `AppConfig::new()` and drops any trailing slash |
 | clock | `SystemClock`, the wall clock |
-| deadline from `sign` | **none at all** -- a URL signed with `sign` verifies forever |
+| deadline from `sign` | **none at all** — a URL signed with `sign` verifies forever |
 | deadline from `sign_temporary` | whatever you pass; nothing caps it |
 | MAC | HMAC-SHA256, untruncated, all 32 bytes |
 
 The base URL comes from `APP_URL` rather than from a request's `Host` header
-because a signed link is usually built with no request in scope -- it goes in
-an email, or in a job's output -- and behind a reverse proxy that header is
+because a signed link is usually built with no request in scope — it goes in
+an email, or in a job's output — and behind a reverse proxy that header is
 not authoritative anyway.
 
 `sign` is there for a link whose validity is a property of the target rather
@@ -365,7 +365,7 @@ clock reporting `0` is never past any deadline and every expired link is
 accepted. A machine whose clock has fallen behind the epoch honours links
 forever rather than refusing them.
 
-This is a real if unlikely failure mode -- it needs a system clock set before
+This is a real if unlikely failure mode — it needs a system clock set before
 1970, which in practice means a dead RTC battery or a deliberately wound-back
 container. It is written down rather than fixed because the fix is a decision
 about what an application should do when it cannot tell the time, and that is
@@ -386,7 +386,7 @@ if !bool::from(signature.as_slice().ct_eq(&expected)) {
 
 A byte-by-byte comparison that returns at the first difference is a timing
 oracle. An attacker who can measure it recovers a valid signature one byte at
-a time -- roughly 8,000 guesses instead of 2^256. `ConstantTimeEq` reads every
+a time — roughly 8,000 guesses instead of 2^256. `ConstantTimeEq` reads every
 byte every time, and it is a dependency rather than a five-line loop precisely
 because its job is to be the thing the optimiser is not allowed to turn back
 into an early return. There is no `==` on a signature anywhere in the crate.
@@ -410,8 +410,8 @@ after percent-decoding, so a link a mail client or a redirect has re-escaped
 still verifies; a link that has been *edited* does not.
 
 On the way out, everything outside RFC 3986's unreserved set
-(`A-Za-z0-9-._~`) is percent-encoded -- including `&`, `=`, `+`, `%`, `#`,
-space and every non-ASCII byte -- so a parameter value can never introduce a
+(`A-Za-z0-9-._~`) is percent-encoded — including `&`, `=`, `+`, `%`, `#`,
+space and every non-ASCII byte — so a parameter value can never introduce a
 parameter. A space becomes `%20` and never `+`: `+` is an
 `application/x-www-form-urlencoded` convention, not a URL one, and a verifier
 that undid it would decode a literal `+` in a signed value into something that
@@ -429,7 +429,7 @@ carries.
 | --- | --- |
 | the absolute URL as minted | verifies |
 | the same, stripped to `/path?query` | verifies |
-| the same with `#anything` appended | verifies -- a fragment is never sent to a server, so it is not signed and not checked |
+| the same with `#anything` appended | verifies — a fragment is never sent to a server, so it is not signed and not checked |
 | the query reordered | verifies |
 | any parameter edited | `Mismatch` |
 | `https://example.com.evil/...` | `ForeignOrigin`, decided before any MAC is computed |
@@ -444,8 +444,8 @@ carries.
 
 The origin is not in the MAC because it does not have to be: the URL must sit
 under the configured `APP_URL`, which is checked first. The prefix check
-carries an explicit guard -- the remainder must be empty or start with `/` or
-`?` -- because without it `https://example.com` is a prefix of
+carries an explicit guard — the remainder must be empty or start with `/` or
+`?` — because without it `https://example.com` is a prefix of
 `https://example.com.evil/x`. The comparison is a literal string prefix, so it
 is sensitive to scheme, host case and port.
 
@@ -455,7 +455,7 @@ set them could contradict the signer:
 | Signing input | Result |
 | --- | --- |
 | a parameter named `signature` or `expires` | `ReservedParameter` |
-| a `path` containing `?` or `#` | `QueryInPath` -- pass the query as `params` so it is canonicalised and signed rather than appended unsigned |
+| a `path` containing `?` or `#` | `QueryInPath` — pass the query as `params` so it is canonicalised and signed rather than appended unsigned |
 
 `Mismatch` and `Expired` are worth logging apart. The first is somebody editing
 a link; the second is somebody using a link too late. An application that
@@ -538,7 +538,7 @@ What that means concretely, the day `APP_KEY` changes:
 
 | Outstanding thing | Outcome after rotation |
 | --- | --- |
-| every encrypted token | `DecryptError::Authentication` -- indistinguishable, by design, from a forgery |
+| every encrypted token | `DecryptError::Authentication` — indistinguishable, by design, from a forgery |
 | every signed URL | `SignedUrlError::Mismatch` |
 | every signed session cookie | invalid, because `SessionKey` is the same material |
 
@@ -546,8 +546,8 @@ Nothing in the module reads a second key, so there is no overlap window to
 configure. If you need one, it is yours to build: keep the old `AppKey`
 alongside the new one, try the new one first, fall back to the old, and stop
 falling back once the longest deadline you ever minted has passed. The module
-gives you the pieces for that -- `AppKey::from_bytes`, and an `Encrypter` or
-`UrlSigner` per key -- and none of the policy.
+gives you the pieces for that — `AppKey::from_bytes`, and an `Encrypter` or
+`UrlSigner` per key — and none of the policy.
 
 The corollary is that a deadline you mint is a commitment. A permanent signed
 URL from `sign` outlives every rotation plan you have.
@@ -557,7 +557,7 @@ URL from `sign` outlives every rotation plan you have.
 A signed URL is a bearer token in a query string. Presenting it is the whole
 of proving you may have it, and presenting it twice works exactly as well as
 presenting it once. Nothing is recorded at signing time and nothing is
-consulted at verification time -- that statelessness is what makes the link
+consulted at verification time — that statelessness is what makes the link
 cost one MAC, and it is also what makes it replayable.
 
 It will end up in browser history, in `Referer` headers, in access logs and in
@@ -571,8 +571,8 @@ replay would make worse. A download link is a reasonable thing to sign; "close
 this account" is not.
 
 If a link must be single-use, the application spends it. Record something when
-the link is redeemed -- a nonce parameter marked used, a row's state moved on,
-a version column bumped -- and check that record after `verify` returns `Ok`.
+the link is redeemed — a nonce parameter marked used, a row's state moved on,
+a version column bumped — and check that record after `verify` returns `Ok`.
 `verify` answers "did we issue this, and is it still in date". It cannot
 answer "has this already been used", because it never learns that anything
 was.
@@ -601,9 +601,9 @@ unchanged: the path is not percent-encoded on the way out, and `verify` does
 not percent-decode it on the way in. Both sides MAC the same literal string,
 with leading slashes collapsed to one.
 
-So anything that rewrites the path in transit -- a client that escapes a
+So anything that rewrites the path in transit — a client that escapes a
 space, a proxy that resolves a `..` segment, a router that normalises a
-trailing slash -- produces `Mismatch`. That fails in the safe direction, but
+trailing slash — produces `Mismatch`. That fails in the safe direction, but
 it fails. Build signed paths out of characters that survive a round trip, and
 put anything else in a parameter, where it is escaped and unescaped for you.
 

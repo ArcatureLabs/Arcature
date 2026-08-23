@@ -30,6 +30,34 @@ therefore its first.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Four more guide chapters, closing the last of the undocumented
+  subsystems:** *Realtime*, *Observability*, *OAuth*, and *API and OpenAPI*.
+  Together these cover about 5,150 lines of `src/` that the guide had never
+  mentioned -- realtime appeared only in a deployment caveat, and the word
+  "OpenAPI" did not appear in the guide at all.
+
+  *Observability* spends most of its length on redaction, because that is the
+  part an application is most likely to assume covers more than it does. It
+  states which sinks the deny-list reaches and which it does not, how the
+  matcher folds a name before comparing, and the camelCase gap the tests
+  already pin.
+
+  Every chapter was fact-checked against the source by a separate pass, and
+  the findings were re-verified by hand before anything was changed -- one
+  reported error turned out to be the checker's, not the chapter's.
+
+- **The new chapters use the em dash the rest of the guide uses.** They were
+  written with `--`, which mdBook's smart punctuation renders as an *en* dash,
+  so ten chapters disagreed with the other fifteen on a glyph that appears
+  three hundred times. Prose only: a `--` inside a code block is a flag, and a
+  numeric range keeps its en dash.
+
+- **The `otel` feature comment no longer claims the Prometheus endpoint.**
+  `observe::metrics` is gated on `observe` alone and is reachable without
+  `otel`; the two are separate opt-ins that happen to be read together.
+
 ### Fixed
 
 - **The realtime connection limit now applies to SSE streams, not just to the

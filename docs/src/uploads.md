@@ -5,8 +5,8 @@ bytes, and written to a storage disk under a key derived from those bytes.
 
 Off by default, and that is the security decision rather than a packaging one.
 An upload endpoint is the largest attacker-authored surface a web application
-has -- the filename, the declared content type and the byte count all come
-from the client -- and a build with no upload route has no business carrying a
+has — the filename, the declared content type and the byte count all come
+from the client — and a build with no upload route has no business carrying a
 multipart parser for one.
 
 ## Turning it on
@@ -83,7 +83,7 @@ the body, so it has to be the last handler argument.
 
 | Method | Returns |
 | --- | --- |
-| `filename()` | `&SafeFilename` -- **metadata**: show it, send it in a `Content-Disposition`, never resolve it as a path |
+| `filename()` | `&SafeFilename` — **metadata**: show it, send it in a `Content-Disposition`, never resolve it as a path |
 | `content_type()` | `Option<SniffedType>`, derived from the object, never from the part's header |
 | `bytes()` | `&Bytes` |
 | `byte_len()` | `usize` |
@@ -92,14 +92,14 @@ the body, so it has to be the last handler argument.
 | `store_under(&disk, prefix)` | writes under `<prefix>/ab/cd/<digest>.<ext>` |
 
 Both store methods return a `ContentAddress` and fail with `UploadError`,
-which has exactly two variants: `UploadError::Storage` (the backend failed --
-a 5xx) and `UploadError::Content` (the bytes and the extension disagree -- a
+which has exactly two variants: `UploadError::Storage` (the backend failed —
+a 5xx) and `UploadError::Content` (the bytes and the extension disagree — a
 4xx). They are kept apart so that a disk that is down and a file that was
 refused do not answer with the same status. `From<UploadError> for Error`
 preserves the split, which is why the example uses `?` and not a `map_err`.
 
-`store_under` writes under the prefix, so `address.path()` -- the address on
-its own -- will not find the object afterwards. `address.path_under(PREFIX)`
+`store_under` writes under the prefix, so `address.path()` — the address on
+its own — will not find the object afterwards. `address.path_under(PREFIX)`
 is the key that will.
 
 ### What a refusal looks like
@@ -115,11 +115,11 @@ field validation failure, reported under the fixed key `file`
 | `contents` | 422 | the bytes and the extension disagree |
 
 A body that is not `multipart/form-data` at all is a 415. A bound that was
-crossed is a 413 or a 408 -- see [`MultipartLimits`](#multipartlimits).
+crossed is a 413 or a 408 — see [`MultipartLimits`](#multipartlimits).
 
 The `code` and the message are both fixed strings chosen in the framework.
 Nothing from the request reaches the response body: not the filename, not the
-declared content type, and not the sniffed one -- reporting the last of those
+declared content type, and not the sniffed one — reporting the last of those
 would let an uploader use the endpoint as a free file-type oracle.
 
 ### It buffers, and that is the small-file path
@@ -166,7 +166,7 @@ application has to do on purpose.
 | `AllowedExtensions::images()` | `jpg`, `jpeg`, `png`, `gif`, `webp` |
 | `AllowedExtensions::documents()` | `pdf`, `txt`, `csv` |
 | `AllowedExtensions::new(["JPG", "pdf"])?` | whatever is listed, lowercased; errors on an entry that is not a valid extension |
-| `AllowedExtensions::default()` | empty -- and an empty whitelist stores nothing at all, which is the right behaviour for a misconfiguration |
+| `AllowedExtensions::default()` | empty — and an empty whitelist stores nothing at all, which is the right behaviour for a misconfiguration |
 
 `svg` is deliberately absent from `images()`. An SVG is an XML document that
 may carry script, so serving one inline is a stored-XSS primitive; an
@@ -174,7 +174,7 @@ application that needs SVG adds it knowingly with `.with("svg")?`.
 
 It is a whitelist and never a blacklist. A blacklist of dangerous extensions
 is a list of the ones somebody thought of, and the interesting ones are always
-the other ones -- `.phtml`, `.php7`, `.cgi`, `.jsp`, `.svgz`, `.htaccess`.
+the other ones — `.phtml`, `.php7`, `.cgi`, `.jsp`, `.svgz`, `.htaccess`.
 
 The rest of the surface: `contains(&extension)`, `iter()`, `len()`,
 `is_empty()`, and `with(extension)` to add one.
@@ -219,7 +219,7 @@ when its presence is itself the attack: the C0 and C1 controls, DEL, the bidi
 overrides and isolates, the zero-width joiners, the word joiner, the
 byte-order mark, the blank-rendering separators and the Unicode tag block.
 Nobody names a holiday photo with a right-to-left override in it. The
-variation selectors are deliberately *not* fatal -- they occur beside emoji in
+variation selectors are deliberately *not* fatal — they occur beside emoji in
 names people really have.
 
 The whole name is fitted inside `MAX_FILENAME_BYTES` (255, the per-component
@@ -227,14 +227,14 @@ limit on ext4, XFS, APFS and NTFS alike) by truncating the stem on a character
 boundary. The extension is never truncated: half an extension is a different
 file type.
 
-`FilenameError` is the coarse reason the parse failed -- `Empty`, `TooLong`,
+`FilenameError` is the coarse reason the parse failed — `Empty`, `TooLong`,
 `ControlChar`, `Traversal`, `MissingExtension`, `InvalidExtension`,
 `ExtensionNotAllowed`, `EmptyStem`, `ReservedName`. It is coarse on purpose:
 the caller reports a fixed string to the client, never the offending input.
 
 The name that comes out is still metadata. `StoragePath::from_filename` exists
 for the case where a sanitized name really is the key, and it produces exactly
-one path segment -- but two users still collide on it, and one overwrites the
+one path segment — but two users still collide on it, and one overwrites the
 other. Where the key does not have to be human-readable, use the content
 address and keep the filename for the download header.
 
@@ -246,7 +246,7 @@ a separate way to exhaust a process.
 
 | Setting | Default | Const | What it stops |
 | --- | --- | --- | --- |
-| `fields` | 32 | `DEFAULT_FIELDS` | fifty thousand two-byte parts inside a 1 MiB body -- the cost of a part is a header parse and an allocation, not its length |
+| `fields` | 32 | `DEFAULT_FIELDS` | fifty thousand two-byte parts inside a 1 MiB body — the cost of a part is a header parse and an allocation, not its length |
 | `field_bytes` | 8 MiB | `DEFAULT_FIELD_BYTES` | one part that is the entire budget. Deliberately below the total |
 | `total_bytes` | 16 MiB | `DEFAULT_TOTAL_BYTES` | one request that fills the disk or the heap |
 | `read_timeout` | 30 s | `DEFAULT_READ_TIMEOUT` | a byte a minute, holding a task and a socket open |
@@ -254,7 +254,7 @@ a separate way to exhaust a process.
 **These apply with no layer installed.** `MultipartLimits::from_extensions`
 never returns `None`; it falls back to `MultipartLimits::new()`, the values
 above. There is no way to end up with *no* bound, and nothing here reads any
-value as unlimited -- `with_fields(0)` means the body may contain no parts at
+value as unlimited — `with_fields(0)` means the body may contain no parts at
 all, and that is what it does.
 
 Override them per route:
@@ -363,7 +363,7 @@ resolve. Neither substitutes for the other.
 The digest exists only after the last byte has gone past, so bytes go to a
 unique transient key under `STAGING_PREFIX` (`_staging`) first and are moved
 onto the content-addressed key afterwards. The staging key is process id,
-wall-clock nanoseconds and a process-local counter -- never anything the
+wall-clock nanoseconds and a process-local counter — never anything the
 client sent.
 
 ```rust,ignore
@@ -382,8 +382,8 @@ memory, which is what makes the size caps a policy rather than the only thing
 standing between a request and the heap. The one exception is the sniff
 buffer, at most 512 bytes, readable as `head()`.
 
-`finish(extension)` closes the object -- the close is what completes it on an
-S3-compatible backend, and it happens before the move -- then moves it onto
+`finish(extension)` closes the object — the close is what completes it on an
+S3-compatible backend, and it happens before the move — then moves it onto
 its content-addressed key. If something is already at the destination the
 staging copy is deleted instead. That is not an optimization: the key *is* the
 digest, so an object already there has exactly these bytes, and overwriting it
@@ -404,7 +404,7 @@ upload un-closed. There is no `Drop` that can fix that, because both fixes are
 ### It is not access control
 
 A digest is unguessable in practice, but "unguessable URL" is not
-authorization -- it leaks through referrers, logs and browser history like any
+authorization — it leaks through referrers, logs and browser history like any
 other URL. Authorize the download.
 
 ## The declared `Content-Type` is carried and never believed
@@ -424,11 +424,11 @@ magic numbers and returns `Option<SniffedType>`, which carries both the
 canonical `extension()` and the `mime()`. `verify(bytes, &extension)` holds
 the two to a symmetric agreement:
 
-* An extension with a known signature -- `png`, `jpg`, `pdf`, `docx`, `mp4`,
-  and the rest of the table -- **must** sniff to that signature. Bytes that
+* An extension with a known signature — `png`, `jpg`, `pdf`, `docx`, `mp4`,
+  and the rest of the table — **must** sniff to that signature. Bytes that
   sniff to nothing are refused, not waved through: "unrecognized" is exactly
   what a PHP script renamed `.jpg` looks like.
-* An extension with no signature -- `txt`, `csv`, an application's own -- must
+* An extension with no signature — `txt`, `csv`, an application's own — must
   sniff to *nothing*. If a `.txt` upload's first bytes are a PE header or a
   zip local-file header, the extension and the content disagree just as
   loudly, in the other direction.
@@ -453,7 +453,7 @@ Accepting an upload safely and serving it safely are two different jobs, and
 doing the first perfectly buys nothing if the second hands the file to a
 browser as a document. A stored file served inline is content the attacker
 wrote, on the application's own origin, with the application's cookies
-attached -- stored XSS with extra steps.
+attached — stored XSS with extra steps.
 
 ```rust,ignore
 use arcature::http::download::Attachment;
@@ -488,7 +488,7 @@ is there because the cost of being wrong is stored XSS on the application's
 own origin.
 
 `Attachment::from_disk(&disk, &path)` reads only the leading 512 bytes up
-front, to decide the media type, and streams the remainder -- so the response
+front, to decide the media type, and streams the remainder — so the response
 costs one buffer rather than one object. It returns `StorageError` when the
 object cannot be stat'd or read, *including* when it does not exist, which a
 handler should translate into a 404 rather than passing through.
@@ -498,11 +498,11 @@ time and stored beside the object; it takes a `SniffedType` and there is
 deliberately no way to set an arbitrary string, so every media type this
 response can carry is one some bytes were recognized as.
 
-`with_filename` takes a `SafeFilename` rather than a `&str` on purpose -- a
+`with_filename` takes a `SafeFilename` rather than a `&str` on purpose — a
 string parameter would be a header-injection hole waiting for the one caller
 who forgot. An ASCII name goes out once, as `filename="report.pdf"`. A name that is
-*not* ASCII goes out twice per RFC 6266 -- the plain form plus an RFC 5987
-`filename*=UTF-8''` -- because a name with diacritics is not representable in
+*not* ASCII goes out twice per RFC 6266 — the plain form plus an RFC 5987
+`filename*=UTF-8''` — because a name with diacritics is not representable in
 the first form and silently mangling it is worse than sending both. The
 extended form is only worth sending when the plain one lost something.
 
@@ -512,13 +512,13 @@ extended form is only worth sending when the plain one lost something.
 
 axum wraps a request body in `http_body_util::Limited` at **2 MiB** unless the
 application raises `DefaultBodyLimit`. **Arcature never touches
-`DefaultBodyLimit`** -- grep the crate and the only mentions are in prose. So
+`DefaultBodyLimit`** — grep the crate and the only mentions are in prose. So
 on a default build the effective ceiling on an upload is 2 MiB, not the 16 MiB
 `DEFAULT_TOTAL_BYTES` above, and a 5 MiB photograph is refused by axum before
 `MultipartLimits` has seen a byte of it.
 
 That failure arrives as `MultipartError::Parse` wrapping axum's
-`StreamReadFailed`, and takes the status axum gives it -- which is also a
+`StreamReadFailed`, and takes the status axum gives it — which is also a
 **413**. axum downcasts the inner error to `http_body_util::LengthLimitError`
 and answers `PAYLOAD_TOO_LARGE`, so a client cannot tell which of the two caps
 refused it from the status alone. Only the `detail` string differs. An
@@ -533,7 +533,7 @@ framework, and the generated application's `bootstrap/app.rs` sets it to
 needs to: a body over one of them is refused without being buffered.
 
 `MultipartLimits` is the inner bound that knows the body has *parts*. Carrying
-a total there as well is not redundant -- an application that never configured
+a total there as well is not redundant — an application that never configured
 stage 12 still gets one, and one that did gets to make a single upload route
 stricter than the rest of the application without loosening anything.
 
@@ -564,7 +564,7 @@ comparison has no state for hostile bytes to drive.
 
 So if an application needs an image's dimensions, a thumbnail, a re-encode or
 a strip of EXIF, that work belongs in a queue worker with its own memory bound
-and its own timeout -- see [Jobs](jobs.md) -- and not in the handler. Put the
+and its own timeout — see [Jobs](jobs.md) — and not in the handler. Put the
 bytes on a disk, put the key in the payload, and let something that is allowed
 to crash do the decoding.
 
