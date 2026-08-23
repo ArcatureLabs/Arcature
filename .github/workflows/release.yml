@@ -297,7 +297,22 @@ jobs:
 
   release:
     name: Attach the binaries to the release
-    needs: [verify, binaries]
+    # `publish` is in here for ordering, not because anything below reads its
+    # output. Without it this job only needed `binaries`, so the GitHub
+    # release page went up as soon as the cross-builds finished -- whether or
+    # not the crates ever reached crates.io.
+    #
+    # That happened on `v0.1.1`. The `crates-io` environment holds `publish`
+    # for a reviewer, and while it waited there was a public release page
+    # offering binaries for a version `cargo add` could not resolve. A failed
+    # publish would have left exactly the same thing behind, permanently.
+    #
+    # It is the mirror of the trap the runbook already warns about under
+    # "Tagging and pushing": a tag ahead of its branch produces a release
+    # nobody can find the source for, and a release ahead of its publish
+    # produces one nobody can install. Both are cheap to prevent by ordering
+    # and expensive to notice afterwards, because everything is green.
+    needs: [verify, binaries, publish]
     runs-on: ubuntu-latest
     # The one job in this file that writes: `gh release create` and
     # `gh release upload` are both contents-scoped.
