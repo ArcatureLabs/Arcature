@@ -35,6 +35,44 @@ Requirements: Rust **1.97.1** or newer (edition 2024). Anything that uses the
 database or the job queue needs one of PostgreSQL 17, MySQL 8 or SQLite --
 picked at build time, one per build.
 
+### Optional subsystems
+
+`cargo add arcature` gives you routing, Inertia, SeaORM, auth, validation,
+cache, storage, mail, jobs, events, observability and realtime. The
+capabilities below are **off by default** and named individually, because each
+one costs something a build that does not use it should not pay -- a parser on
+the request path, a table and a migration, or a cipher somebody then has to
+own a rotation story for. The reasoning for each is written above it in
+`Cargo.toml`; the short version:
+
+| Feature | What you get |
+|---|---|
+| `auth-flows` | Sign-in decisions that are wrong in ways nothing reports: constant-time account lookup, login throttling, password confirmation |
+| `auth-reset` | One-time password-reset links, stored as a digest |
+| `auth-remember` | Rotating remember-me tokens, with theft detection |
+| `api-tokens` | Hashed bearer tokens for clients with no cookie -- a CLI, a CI job, another service |
+| `crypt` | `Encrypter`: XChaCha20-Poly1305 over a versioned, self-describing token |
+| `signed-urls` | `UrlSigner`: links that carry their own origin proof and deadline |
+| `uploads` | Multipart bodies, filename sanitizing, content-addressed names, magic-byte sniffing |
+| `views` | Compiled HTML views via Askama -- no expression evaluator in the request path |
+| `i18n` | Fluent catalogs, locale negotiation against a whitelist |
+| `session-store-db` | Sessions in your database, so a deploy is not a mass logout |
+| `notifications` | One event, one recipient, many channels |
+| `notifications-db` | The in-app inbox channel |
+| `notifications-broadcast` | The live-push channel, over WebSocket/SSE |
+| `notifications-queue` | Mail delivery handed to the job queue instead of the request |
+| `otel`, `storage-s3`, `oauth` | OTLP traces, S3-compatible object storage, OAuth 2 with PKCE |
+
+Five bring a table and a migration: `auth-reset`, `auth-remember`,
+`api-tokens`, `notifications-db`, `session-store-db`.
+
+`fullstack` is not "everything", despite the name. It adds `uploads`, `views`,
+`storage-s3` and the tooling features (`cli`, `templates`, `dev-proxy`, `uag`)
+to the defaults, and leaves every row above it off -- so a `fullstack` build
+still has no password-reset table, no encrypter and no notifications. Name
+what you want. The [upgrade note](docs/src/upgrade.md) says what each feature
+costs and, for `auth-reset`, what it deliberately does not cover.
+
 ## Quick start
 
 ```rust
