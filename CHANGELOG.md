@@ -1263,6 +1263,19 @@ therefore its first.
   and a glob would delete the one `use` line telling a reviewer that a
   file touches the security-critical half of a sign-in screen.
 
+- **The password-reset store is exercised against a live database.** A new
+  round-trip suite behind `test-kit` runs `auth-reset`'s statements against a
+  real server rather than compiling them: that a link redeems exactly once,
+  that a lapsed one is refused before any sweep runs, that a wrong secret
+  reaches the row and does not spend it, that revocation and the sweep each
+  reach what they name and nothing else, that two concurrent redemptions of
+  one link spend it once, that a taken id is reported as zero rows rather
+  than as an error -- the assumption `issue`'s retry loop rests on, and a
+  different statement in each dialect -- and that the table holds a SHA-256
+  digest and never the link. It skips when no test database is configured,
+  and fails rather than skips when `ARCATURE_REQUIRE_TEST_DB` says one was
+  promised.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every
