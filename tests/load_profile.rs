@@ -72,9 +72,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use arcature::{Application, ApplicationBuilder};
 use arcature::routing::{KeySource, RateLimit, Route, Routes};
 use arcature::test_kit::TestApp;
+use arcature::{Application, ApplicationBuilder};
 use axum::Router;
 use axum::http::HeaderName;
 
@@ -107,21 +107,25 @@ async fn slow() -> &'static str {
 /// test is wrong to fail.
 static ARRIVED: AtomicU64 = AtomicU64::new(0);
 
-/// Roughly the shape of a scaffolded application's pipeline: request ids,
-/// access logging, panic catching, security headers, a body limit.
+/// Roughly the shape of a scaffolded application's pipeline: a request id,
+/// panic catching, and a body limit.
 ///
 /// Not the scaffold's handlers -- see the module documentation for why, and
 /// for what that leaves unproven.
 fn scaffold_shaped() -> ApplicationBuilder<()> {
-    Application::<()>::new()
-        .routes(Routes::new(vec![
-            Route::get("/", hello),
-            Route::get("/health/ready", hello),
-            Route::get("/slow", slow),
-        ]))
-        .request_id()
-        .catch_panic()
-        .body_limit(64 * 1024)
+    let builder = Application::<()>::new().routes(Routes::new(vec![
+        Route::get("/", hello),
+        Route::get("/health/ready", hello),
+        Route::get("/slow", slow),
+    ]));
+    // `request_id` is the one layer here behind a feature. It is in the
+    // default set, so the load job gets it; gating rather than requiring
+    // `observe` keeps this binary compiling in the reduced feature sets the
+    // `database` and `drivers` jobs build, where a test that will not compile
+    // is indistinguishable from one that fails.
+    #[cfg(feature = "observe")]
+    let builder = builder.request_id();
+    builder.catch_panic().body_limit(64 * 1024)
 }
 
 /// The paths the sustained run cycles through.
@@ -140,7 +144,9 @@ async fn serve_with_drain(router: Router) -> (String, tokio::sync::oneshot::Send
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("an ephemeral port should bind");
-    let address = listener.local_addr().expect("a bound listener has an address");
+    let address = listener
+        .local_addr()
+        .expect("a bound listener has an address");
     let (signal, wait) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
         let _ = axum::serve(listener, router.into_make_service())
@@ -194,7 +200,10 @@ async fn the_harness_records_what_it_claims_to() {
         run.percentile(99.0),
         run.percentile(100.0),
     );
-    assert!(p50 <= p95 && p95 <= p99 && p99 <= max, "{p50:?} {p95:?} {p99:?} {max:?}");
+    assert!(
+        p50 <= p95 && p95 <= p99 && p99 <= max,
+        "{p50:?} {p95:?} {p99:?} {max:?}"
+    );
     assert!(p50 > Duration::ZERO, "a request cannot have taken no time");
 
     assert!(
@@ -241,7 +250,11 @@ async fn a_flood_on_one_key_is_refused_without_taking_out_another_caller() {
     let polite_ok = Arc::new(AtomicU64::new(0));
     let polite_bad = Arc::new(AtomicU64::new(0));
     let polite = {
-        let (base, ok, bad) = (base.clone(), Arc::clone(&polite_ok), Arc::clone(&polite_bad));
+        let (base, ok, bad) = (
+            base.clone(),
+            Arc::clone(&polite_ok),
+            Arc::clone(&polite_bad),
+        );
         tokio::spawn(async move {
             let client = reqwest::Client::new();
             for _ in 0..20 {
@@ -287,7 +300,11 @@ async fn a_flood_on_one_key_is_refused_without_taking_out_another_caller() {
         .filter(|(status, _)| **status >= 500)
         .map(|(_, count)| count)
         .sum();
-    assert_eq!(server_errors, 0, "overload produced a 5xx: {:?}", run.statuses);
+    assert_eq!(
+        server_errors, 0,
+        "overload produced a 5xx: {:?}",
+        run.statuses
+    );
 
     assert_eq!(
         polite_bad.load(Ordering::Relaxed),
@@ -342,7 +359,9 @@ async fn shutdown_finishes_the_requests_it_had_already_accepted() {
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    signal.send(()).expect("the server task should still be listening");
+    signal
+        .send(())
+        .expect("the server task should still be listening");
 
     let mut drained = 0;
     for request in in_flight {
@@ -350,10 +369,16 @@ async fn shutdown_finishes_the_requests_it_had_already_accepted() {
             .await
             .expect("an in-flight request task should not panic")
             .expect("an accepted request should be answered, not cut");
-        assert_eq!(status, 200, "an in-flight request was answered with {status}");
+        assert_eq!(
+            status, 200,
+            "an in-flight request was answered with {status}"
+        );
         drained += 1;
     }
-    assert_eq!(drained, 24, "shutdown dropped requests it had already accepted");
+    assert_eq!(
+        drained, 24,
+        "shutdown dropped requests it had already accepted"
+    );
 
     // And the socket is closed: draining is not the same as staying open.
     let after = reqwest::Client::new()
@@ -400,36 +425,24 @@ async fn a_sustained_run_holds_its_footprint_flat() {
     // Flatness, not a ceiling. The generator's own allocations are in the
     // same process, so an absolute bound would be measuring the harness; what
     // a leak looks like is a last quarter higher than a first quarter.
-    match run.rss_quarters() {
-        Some((first, last)) => {
-            let growth = load::percent_change(first, last);
-            assert!(
-                growth < 10.0,
-                "resident memory grew {growth:.1}% across the run ({:.1} MiB \
-                 -> {:.1} MiB): a leak proportional to request count looks \
-                 exactly like this",
-                first / 1_048_576.0,
-                last / 1_048_576.0,
-            );
-        }
-        None => assert!(
-            !cfg!(target_os = "linux"),
-            "resident memory could not be sampled on a Linux host",
-        ),
+    if let Some((first, last)) = sampled(run.rss_quarters(), "resident memory") {
+        let growth = load::percent_change(first, last);
+        assert!(
+            growth < 10.0,
+            "resident memory grew {growth:.1}% across the run ({:.1} MiB \
+             -> {:.1} MiB): a leak proportional to request count looks \
+             exactly like this",
+            first / 1_048_576.0,
+            last / 1_048_576.0,
+        );
     }
-    match run.descriptor_quarters() {
-        Some((first, last)) => {
-            assert!(
-                last <= first + 8.0,
-                "the process held {last:.1} descriptors at the end against \
-                 {first:.1} at the start: a socket that is accepted and never \
-                 closed looks exactly like this",
-            );
-        }
-        None => assert!(
-            !cfg!(target_os = "linux"),
-            "descriptors could not be counted on a Linux host",
-        ),
+    if let Some((first, last)) = sampled(run.descriptor_quarters(), "descriptors") {
+        assert!(
+            last <= first + 8.0,
+            "the process held {last:.1} descriptors at the end against \
+             {first:.1} at the start: a socket that is accepted and never \
+             closed looks exactly like this",
+        );
     }
 
     report.push('\n');
@@ -498,8 +511,7 @@ async fn a_wide_key_space_is_measured_against_a_control() {
     // table. This is the control that separates "the key space is wide" from
     // "the sweep cannot evict anything".
     let fast_refill = || {
-        RateLimit::per_second(1_000_000)
-            .by(KeySource::Header(HeaderName::from_static(KEY_HEADER)))
+        RateLimit::per_second(1_000_000).by(KeySource::Header(HeaderName::from_static(KEY_HEADER)))
     };
     let seconds = Duration::from_secs(20);
 
@@ -508,26 +520,40 @@ async fn a_wide_key_space_is_measured_against_a_control() {
         let server = app.serve().await.expect("an ephemeral port should bind");
         let profile = Profile::sustained(vec!["/".to_owned()]).duration(seconds);
         let run = load::run(&server.base_url(), &profile).await;
-        (run.report("Key space control: no rate limiter at all", &profile), run)
+        (
+            run.report("Key space control: no rate limiter at all", &profile),
+            run,
+        )
     };
 
     // 1024 keys: comfortably under the 8192-entry sweep threshold, so this
     // run pays for the limiter and never pays for a sweep.
     let bounded = {
-        let app = TestApp::new(scaffold_shaped().rate_limit(slow_refill()).build_stateless());
+        let app = TestApp::new(
+            scaffold_shaped()
+                .rate_limit(slow_refill())
+                .build_stateless(),
+        );
         let server = app.serve().await.expect("an ephemeral port should bind");
         let profile = Profile::sustained(vec!["/".to_owned()])
             .duration(seconds)
             .key_space(KEY_HEADER, Some(1024));
         let run = load::run(&server.base_url(), &profile).await;
         (
-            run.report("Key space bounded: 1024 keys, below the sweep threshold", &profile),
+            run.report(
+                "Key space bounded: 1024 keys, below the sweep threshold",
+                &profile,
+            ),
             run,
         )
     };
 
     let evictable = {
-        let app = TestApp::new(scaffold_shaped().rate_limit(fast_refill()).build_stateless());
+        let app = TestApp::new(
+            scaffold_shaped()
+                .rate_limit(fast_refill())
+                .build_stateless(),
+        );
         let server = app.serve().await.expect("an ephemeral port should bind");
         let profile = Profile::sustained(vec!["/".to_owned()])
             .duration(seconds)
@@ -543,7 +569,11 @@ async fn a_wide_key_space_is_measured_against_a_control() {
     };
 
     let unbounded = {
-        let app = TestApp::new(scaffold_shaped().rate_limit(slow_refill()).build_stateless());
+        let app = TestApp::new(
+            scaffold_shaped()
+                .rate_limit(slow_refill())
+                .build_stateless(),
+        );
         let server = app.serve().await.expect("an ephemeral port should bind");
         let profile = Profile::sustained(vec!["/".to_owned()])
             .duration(seconds)
@@ -634,6 +664,30 @@ async fn a_wide_key_space_is_measured_against_a_control() {
     report.push_str(&attribution);
     write_report(&report);
     eprintln!("{report}");
+}
+
+/// Pass a sampled series through, or fail if this platform should have had
+/// one.
+///
+/// Absence means two different things and they must not be conflated. Off
+/// Linux the samplers cannot read `/proc` and there is genuinely nothing to
+/// check, so the caller skips its assertion. On Linux absence means the
+/// sampler is broken, and skipping would turn a broken leak check into a
+/// silent pass -- which is the exact failure this whole file exists to avoid
+/// elsewhere.
+///
+/// Written as a function taking `cfg!` as a runtime condition rather than as
+/// a `#[cfg]` in each caller: the `#[cfg]` version leaves an empty match arm
+/// off Linux, so the same code lints on one platform and not the other, and a
+/// warning that only appears on somebody else's machine is a warning nobody
+/// fixes.
+fn sampled(quarters: Option<(f64, f64)>, what: &str) -> Option<(f64, f64)> {
+    assert!(
+        !(quarters.is_none() && cfg!(target_os = "linux")),
+        "{what} could not be sampled on a Linux host, where /proc should have \
+         answered: the leak check would otherwise pass without checking",
+    );
+    quarters
 }
 
 /// Append a block to the fresh report at the workspace root.

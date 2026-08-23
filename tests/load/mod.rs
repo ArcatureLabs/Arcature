@@ -393,7 +393,10 @@ impl Run {
         }
         let quarter = values.len() / 4;
         let mean = |slice: &[u64]| slice.iter().sum::<u64>() as f64 / slice.len() as f64;
-        Some((mean(&values[..quarter]), mean(&values[values.len() - quarter..])))
+        Some((
+            mean(&values[..quarter]),
+            mean(&values[values.len() - quarter..]),
+        ))
     }
 
     /// First-quarter and last-quarter mean resident bytes.
@@ -507,7 +510,10 @@ pub fn percent_change(first: f64, last: f64) -> f64 {
 /// condition a saturated pool or an unbounded queue shows up under. A
 /// closed-loop generator that paced itself would be measuring its own pacing.
 pub async fn run(base_url: &str, profile: &Profile) -> Run {
-    assert!(profile.connections > 0, "a run needs at least one connection");
+    assert!(
+        profile.connections > 0,
+        "a run needs at least one connection"
+    );
     assert!(!profile.paths.is_empty(), "a run needs at least one path");
 
     let profile_connections = profile.connections;
@@ -617,8 +623,9 @@ pub async fn run(base_url: &str, profile: &Profile) -> Run {
     let mut statuses: BTreeMap<u16, u64> = BTreeMap::new();
     let mut transport_errors = 0;
     for worker in workers {
-        let (worker_latencies, worker_statuses, worker_errors) =
-            worker.await.expect("a load worker to finish without panicking");
+        let (worker_latencies, worker_statuses, worker_errors) = worker
+            .await
+            .expect("a load worker to finish without panicking");
         latencies.extend(worker_latencies);
         for (status, count) in worker_statuses {
             *statuses.entry(status).or_default() += count;
@@ -626,7 +633,9 @@ pub async fn run(base_url: &str, profile: &Profile) -> Run {
         transport_errors += worker_errors;
     }
     stop.store(true, Ordering::Relaxed);
-    let samples = sampler.await.expect("the sampler to finish without panicking");
+    let samples = sampler
+        .await
+        .expect("the sampler to finish without panicking");
 
     latencies.sort_unstable();
     Run {
