@@ -1242,6 +1242,26 @@ therefore its first.
   reset table is created by `PasswordResets::migrate()` and not by this
   migration, and the route collection is not mounted until
   `bootstrap/app.rs` merges it.
+- **The prelude carries what a handler actually reaches for.** Fourteen
+  names were missing that a controller could not be written without, so
+  every generated file opened with `use arcature::prelude::*;` and then a
+  handful of hand-written lines re-importing things the prelude was the
+  obvious home for. Added: `ClientIp` and `axum::extract::Extension` (a
+  handler that rate-limits or audits by address needs both or neither);
+  the `serde_json` module, so `serde_json::json!` resolves from an
+  application's own crate; `insert`, `update`, `find_by_pk`, `Transaction`
+  and `sea_orm::ActiveValue` behind `database`, which are the write half
+  of what `Model::query` starts; and `UserLoader`, `Current`,
+  `OptionalCurrent`, `PasswordHasher` and `PasswordHashString` behind
+  `auth`, `UserLoader` being the half of the session contract that says
+  how to read an id back into an account.
+
+  Two omissions are deliberate. `database::delete` stays out because the
+  routing constructor `delete` is already in the prelude and exporting
+  both would be an ambiguity in the prelude itself. `auth::flows` stays
+  out because `flows::CredentialChecker` names the layer it belongs to,
+  and a glob would delete the one `use` line telling a reviewer that a
+  file touches the security-critical half of a sign-in screen.
 
 ### Changed
 

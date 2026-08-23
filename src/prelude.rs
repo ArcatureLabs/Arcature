@@ -13,7 +13,7 @@
 pub use crate::application::{Application, ApplicationBuilder, Lifecycle, Resources};
 pub use crate::config::{AppConfig, AppEnvironment, env_or, env_required};
 pub use crate::error::{Error, Result, ValidationError, bad_request, forbidden, not_found};
-pub use crate::http::{RedirectResponse, no_content, redirect, text};
+pub use crate::http::{ClientIp, RedirectResponse, no_content, redirect, text};
 pub use crate::routing::{
     KeySource, Middleware, Next, RateLimit, Route, RouteGroup, RouterState, Routes,
 };
@@ -27,7 +27,7 @@ pub use crate::proxy::{ProxyAction, ProxyRequest};
 pub use crate::{any, delete, from_fn, get, head, options, patch, post, put};
 
 // Common Axum extractors and response types, re-exported through Arcature.
-pub use crate::axum::extract::{Path, State};
+pub use crate::axum::extract::{Extension, Path, State};
 pub use crate::axum::http::{HeaderMap, StatusCode, Uri};
 pub use crate::axum::response::{IntoResponse, Redirect, Response};
 
@@ -48,6 +48,11 @@ pub use crate::http::json;
 ))]
 pub use serde::{Deserialize, Serialize};
 
+// `serde_json` as a module, not as names: `json!` is reached through a
+// path (`serde_json::json!`), so what a handler needs in scope is the
+// module. Unconditional, because the dependency is.
+pub use crate::serde_json;
+
 // --- Capability entry points (one primary type per enabled subsystem) -----
 
 #[cfg(feature = "inertia")]
@@ -59,13 +64,31 @@ pub use crate::inertia;
 
 // `Model` is in the glob because it is what makes `User::query(&db)`
 // resolve -- the trait carries the method, so a model type is inert without
-// it in scope.
+// it in scope. `insert`, `update` and `find_by_pk` are the write half of
+// what `Model::query` starts, and `ActiveValue` is how a row is handed to
+// them, so a model is half a model without the four.
+//
+// `database::delete` is deliberately *not* here: the routing constructor
+// `delete` is already in this prelude, and re-exporting both would be an
+// ambiguity in the prelude itself. Reach for it as `database::delete`.
 #[cfg(feature = "database")]
-pub use crate::database::{DatabaseConfig, Db, Model};
+pub use crate::database::sea_orm::ActiveValue;
+#[cfg(feature = "database")]
+pub use crate::database::{DatabaseConfig, Db, Model, Transaction, find_by_pk, insert, update};
 
+// `AuthUser` and `UserLoader` are the pair a session needs: one says
+// what to store, the other says how to read it back. An application
+// implements both or signs nobody in.
+//
+// `auth::flows` is deliberately absent. Those types keep their module
+// for the reason given at `auth::flows` itself -- `flows::CredentialChecker`
+// names the layer it belongs to, and that is what a reviewer needs to
+// see -- and a prelude glob would delete the one `use` line saying a
+// file touches the security-critical half of a sign-in screen.
 #[cfg(feature = "auth")]
 pub use crate::auth::{
-    Auth, AuthManager, AuthUser, Flash, FlashLevel, OptionalAuth, Policy, Session,
+    Auth, AuthManager, AuthUser, Current, Flash, FlashLevel, OptionalAuth, OptionalCurrent,
+    PasswordHashString, PasswordHasher, Policy, Session, UserLoader,
 };
 
 #[cfg(feature = "validation")]
