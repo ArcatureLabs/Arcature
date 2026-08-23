@@ -333,12 +333,22 @@ fn compiler() -> Option<Command> {
 }
 
 /// Type-check `files` (relative to `dir`) and return `tsc`'s own output.
+///
+/// The module settings are the scaffold's own, copied from
+/// `src/templates/files/*/tsconfig.json`: `ESNext` modules resolved the way a
+/// bundler resolves them. Type-checking the generated table under settings no
+/// scaffold uses would prove something about a configuration nobody ships.
+///
+/// They are also the only settings that survive. `--moduleResolution node`
+/// was the `node10` algorithm under an older name, and TypeScript 6 removed
+/// it: a compiler found on `PATH` rather than pinned rejects the flag itself,
+/// which reads as the generated helper failing to type-check.
 fn typecheck(dir: &Path, files: &[String]) -> (bool, String) {
     let mut command = compiler().expect("a compiler was found");
     command
         .current_dir(dir)
         .args(["--noEmit", "--strict", "--target", "es2020"])
-        .args(["--module", "commonjs", "--moduleResolution", "node"])
+        .args(["--module", "esnext", "--moduleResolution", "bundler"])
         .args(files);
     let output = command.output().expect("tsc runs");
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
