@@ -1096,6 +1096,36 @@ therefore its first.
   file a kind wrote, and `blueprint::plan_all` plans them; `run`, `generate`
   and `plan` keep answering with the primary artifact.
 
+- **Test coverage is measured against a recorded floor.** Every other check
+  in this repository asks whether the code still works. `just coverage` asks
+  whether anything is still watching it, which is the question nobody thinks
+  to ask until a suite has quietly stopped covering something: a test deleted
+  along with the code it tested leaves no trace in a green build, and a
+  module that lands with its tests deferred looks exactly like one that
+  landed with them. `cargo llvm-cov` runs the suite instrumented over the
+  default feature set plus every off-by-default feature that nothing else
+  runs -- the same list the `Off-by-default features` job carries -- and
+  `coverage-baseline.<host-target>.txt` holds the accepted line-coverage
+  floor. A new `Test coverage` job runs it on the pull-request path and
+  `CI success` requires it; a run that goes red uploads the per-file summary
+  so the answer does not cost a second instrumented build.
+
+  Two decisions are worth the reader's disagreement. **Lines, not regions**:
+  regions are the more informative reading and also the one that moves when
+  nothing did, because they come out of MIR instrumentation, so a toolchain
+  release can shift the percentage with no change to this crate -- and a
+  baseline that goes red on a `rustc` bump teaches people to raise it without
+  reading it. **A band, not a floor**: the check fails below the recorded
+  number *and* once the real number has climbed five points above it, because
+  a floor nobody raises stops describing the suite. Left alone it drifts to
+  sixty while coverage is eighty, and by then a change can delete a fifth of
+  the tests and stay green. `just coverage-accept` records the measured
+  number less one point, which leaves a regression almost no room and an
+  improvement four points of it. The band's width is the honest statement of
+  what this gate does not catch. The baseline carries the host target for the
+  reason the `cargo geiger` one does: a `#[cfg(windows)]` branch is dead code
+  on Linux and counted against it there.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

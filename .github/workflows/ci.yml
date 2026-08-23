@@ -403,6 +403,63 @@ jobs:
           cargo test --no-fail-fast --features
           crypt,signed-urls,uploads,views,i18n,storage-s3,auth-flows,auth-reset,api-tokens,notifications,notifications-db,notifications-broadcast,notifications-queue
 
+  coverage:
+    name: Test coverage
+    runs-on: ubuntu-latest
+
+    # Every other job here asks "does this still work". This one asks "is
+    # anything still watching", which is the question that goes unasked until
+    # a suite has quietly stopped covering something. A test deleted along
+    # with the code it tested leaves no trace in a green build; a module that
+    # lands with its tests deferred looks identical to one that landed with
+    # them.
+    #
+    # The gate is a floor with a ceiling, and the ceiling is the half that
+    # keeps it honest -- a floor nobody raises stops describing the suite
+    # within a few months. `just coverage` explains the band; the short
+    # version is that going red on a large improvement costs one command,
+    # once per five points, and buys a floor that still means something a
+    # year from now.
+    #
+    # On the pull-request path rather than a weekly cron, unlike `geiger`.
+    # The two look similar -- both are instrumented cold builds, both diff
+    # against a committed baseline -- but they answer questions on different
+    # clocks. Unsafe code arrives in the dependency graph, on the graph's
+    # schedule, and a week's latency costs nothing because nobody in this
+    # repository wrote it. Coverage moves with the diff in front of you, and
+    # a week's latency means the pull request that dropped it has been merged
+    # and built on.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+
+      # `just` for the reason `geiger.yml` gives: the baseline is a number
+      # produced by a particular feature set and a particular set of flags,
+      # so the recipe that records it and the job that checks it have to be
+      # the same text. Spelt out by hand here, the first change to either
+      # side would report a flag difference as a coverage difference.
+      - uses: taiki-e/install-action@a2a5f6e99e1a31540baa0468acfa302cff0f359f # v2.86.4
+        with:
+          tool: just,cargo-llvm-cov
+
+      - name: Check coverage against the accepted floor
+        run: just coverage
+
+      # The percentage says something moved; this says where. Rerunning an
+      # instrumented build locally to find out costs a cold build, and the
+      # run that just went red already has the per-file breakdown.
+      - name: Upload the coverage summary
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage-report.txt
+          if-no-files-found: warn
+
   typescript:
     name: Generated TypeScript
     runs-on: ubuntu-latest
@@ -652,6 +709,7 @@ jobs:
       - oauth
       - telemetry
       - optional
+      - coverage
       - typescript
       - scaffold
       - deny

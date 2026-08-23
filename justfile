@@ -270,6 +270,141 @@ _geiger-report out:
     echo "cargo-geiger exited $status without producing a usable report" >&2
     exit 1
 
+# Coverage. `cargo llvm-cov` runs the suite under LLVM's source-based
+# instrumentation and reports which lines the tests actually executed.
+#
+# `coverage-baseline.<host-target>.txt` holds one number: the accepted floor
+# for line coverage. `just coverage` fails below it -- and fails again once
+# the real number has climbed five points above it. The second half is the
+# half that matters. A floor nobody raises stops meaning anything: coverage
+# drifts up to eighty while the file still says sixty, and by then a change
+# can delete a fifth of the suite and stay green. Going red on a large
+# improvement is annoying exactly once per five points, and the fix is one
+# command.
+#
+# The band is therefore the honest statement of what this gate does not
+# catch. `just coverage-accept` records the measured number less one point,
+# which leaves a point of room below and four above: a regression gets almost
+# none, an improvement gets room to accumulate before anybody has to touch the
+# file. A floor set at the measured number exactly would go red on ordinary
+# movement -- a module landing before its tests, a dependency bump that
+# changes an inlining decision -- and a gate that cries wolf gets turned off,
+# which catches nothing at all.
+#
+# Lines, not regions or functions. All three are printed and regions are the
+# more informative reading, but regions are also the one that moves when
+# nothing did: they come out of MIR instrumentation, so a toolchain release
+# that shifts a region boundary shifts the percentage with no change to this
+# crate. A baseline that goes red on a rustc bump teaches people to raise it
+# without reading it.
+#
+# The baseline is named after the host target for the reason the geiger one
+# is: the reading is target-shaped. A `#[cfg(windows)]` branch is dead code on
+# Linux and counted against it there, so a developer accepting a local number
+# would otherwise overwrite the floor the deployment target is held to.
+#
+# Needs `cargo install cargo-llvm-cov`.
+
+# Check line coverage against the recorded floor for this host target.
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    baseline="coverage-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    just _coverage-run
+    actual="$(just _coverage-total)"
+    if [ ! -f "$baseline" ]; then
+        # Not a failure of the check; the check having nothing to compare
+        # against. It says what it measured so the first run on a new target
+        # hands back the number instead of asking for a second one.
+        echo "no baseline for this target yet -- line coverage measured $actual%" >&2
+        echo "run 'just coverage-accept', review $baseline and commit it" >&2
+        exit 1
+    fi
+    floor="$(tr -d ' \t\r\n' < "$baseline")"
+    case "$(awk -v a="$actual" -v f="$floor" 'BEGIN {
+        if (a + 0 < f + 0) print "below"
+        else if (a + 0 >= f + 5) print "above"
+        else print "inside"
+    }')" in
+        below)
+            echo "line coverage $actual% is below the floor of $floor% in $baseline" >&2
+            exit 1
+            ;;
+        above)
+            echo "line coverage $actual% has outgrown the floor of $floor% in $baseline" >&2
+            echo "run 'just coverage-accept' and commit the new number" >&2
+            exit 1
+            ;;
+    esac
+    rm -f coverage-report.txt
+    echo "line coverage $actual% sits in the band above $floor%"
+
+# Record the current line coverage, less a point, as the accepted floor.
+coverage-accept:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    baseline="coverage-baseline.$(rustc -vV | sed -n 's/^host: //p').txt"
+    if [ ! -f coverage-report.txt ]; then
+        just _coverage-run
+    fi
+    actual="$(just _coverage-total)"
+    floor="$(awk -v a="$actual" 'BEGIN { f = a - 1; if (f < 0) f = 0; printf "%.2f", f }')"
+    printf '%s\n' "$floor" > "$baseline"
+    rm -f coverage-report.txt
+    echo "measured $actual% -- recorded $baseline at $floor%"
+
+# The instrumented run. One place, so the gate and the accept cannot disagree
+# about which tests were counted.
+#
+# The feature set is the default one plus every off-by-default feature that
+# nothing else runs -- the same list the `optional` job in CI carries, and for
+# the same reason. Measuring the default set alone would report a number for
+# part of the crate and print it as the crate's. The other two drivers stay
+# out because they cannot share a build with `db-postgres`, and `database` is
+# where their SQL meets a real server anyway.
+#
+# Adding a feature to the crate means adding it here.
+_coverage-run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    feats=crypt,signed-urls,uploads,views,i18n,storage-s3,auth-flows,auth-reset,api-tokens
+    feats=$feats,notifications,notifications-db,notifications-broadcast,notifications-queue
+    # `clean` first: profile data from an earlier run with a different feature
+    # set is still on disk and still gets merged, so a stale `.profraw` reads
+    # as coverage that nothing in this run produced.
+    cargo llvm-cov clean --workspace
+    # `--no-report` collects and stops, so the report below is a separate step
+    # that can be re-read without running the suite again. `--no-fail-fast`
+    # for the reason it appears everywhere else here: a stop at the first
+    # failing target leaves the rest of the suite unexecuted, and unexecuted
+    # reads as uncovered.
+    cargo llvm-cov --no-report --no-fail-fast --features "$feats"
+    cargo llvm-cov report --summary-only | tee coverage-report.txt
+
+# The one number, read out of the report `_coverage-run` left behind.
+#
+# `@` because both recipes above call it for one number, and just echoes a
+# recipe body before running it. The echo goes to stderr so it cannot corrupt
+# the answer, but a wall of shell printed twice around a single percentage is
+# noise in front of the one line anybody reads.
+@_coverage-total:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Field 10 of the TOTAL row is the line-coverage percentage. The branch
+    # columns cargo-llvm-cov added later sit to the right of it, so they can
+    # come and go without moving it -- but a layout change would still land
+    # here, which is what the guard is for. A floor read out of the wrong
+    # column is worse than no floor at all.
+    total="$(awk '$1 == "TOTAL" { gsub(/%/, "", $10); print $10 }' coverage-report.txt)"
+    case "$total" in
+        ''|*[!0-9.]*)
+            echo "could not read a line-coverage percentage from the summary" >&2
+            echo "the TOTAL row is at the end of coverage-report.txt; check its columns" >&2
+            exit 1
+            ;;
+    esac
+    printf '%s\n' "$total"
+
 # Generate an application with `arc new` and compile it.
 #
 # This is the check that four empty packages under `examples/` used to stand in

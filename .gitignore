@@ -35,6 +35,13 @@ dist/
 # answer is `unsafe-baseline.<host-target>.txt`, which is committed.
 /unsafe-report.txt
 
+# `just coverage` leaves its summary here for the same reason, and reads the
+# percentage back out of it -- so a run that went red can be re-read, and
+# `just coverage-accept` can record the number without instrumenting the
+# suite a second time. The accepted answer is
+# `coverage-baseline.<host-target>.txt`, which is committed.
+/coverage-report.txt
+
 # Agent worktrees. `git worktree add .claude/worktrees/<name>` puts a whole
 # checkout in here, and an unignored one turns `git add -A` into a commit
 # containing a gitlink to a branch that exists on nobody else's machine.
