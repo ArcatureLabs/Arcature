@@ -159,7 +159,10 @@ async fn a_second_sse_stream_is_refused_while_the_first_is_still_held() {
     // A request with no `Origin` header is denied by every policy, so the
     // header is part of the setup rather than part of what is being tested.
     let mut headers = HeaderMap::new();
-    headers.insert("origin", "https://app.test".parse().expect("a valid header"));
+    headers.insert(
+        "origin",
+        "https://app.test".parse().expect("a valid header"),
+    );
 
     let first = endpoint().handle(headers.clone(), String::new()).await;
     assert_eq!(
