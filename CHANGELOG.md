@@ -30,6 +30,37 @@ therefore its first.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-23
+
+A patch release: nothing removed, no signature changed, no new feature flag.
+
+Two behaviours change without a compiler error, and both are cases of a
+control finally doing what its configuration always said. An SSE connection
+now counts against the connection limit for as long as it is open rather than
+for the instant it was admitted, and a log line written inside a handler now
+carries the request id. [The upgrade note](docs/src/upgrade.md) has the
+detail, including what to re-check if you sized `max_connections` against the
+limit while it was not being enforced.
+
+Both bugs were found the same way, and it is worth recording because it was
+not the way anyone was looking for them: by writing guide chapters that
+described what the code *does* rather than what it was meant to do, and then
+checking the source when the chapter and a code comment disagreed. In both
+cases the comment was wrong and the chapter was right.
+
+### Issues this release does not close
+
+**[#8](https://github.com/ArcatureLabs/Arcature/issues/8) — the Rust dev
+loop.** Measured on an idle machine for the first time this cycle: about 4.4s
+against a 2.5s target, over by roughly 1.8x rather than the fourfold the
+earlier saturated figures suggested. A warm `cargo check` is 1.6s, so
+type-checking the edit is inside the budget and everything above it is code
+generation and linking for the whole program. The largest single stage is not
+Cargo's at all -- an antivirus scan of the freshly linked binary, after Cargo
+has exited, where no profiling flag reaches it. What would close the rest is
+nightly, platform-specific, or large machinery. Method and tables in
+[the dev-loop chapter](docs/src/dev-loop.md).
+
 ### Documentation
 
 - **`SKILL.md`: one file to hand an AI coding assistant.** Fetchable raw from
@@ -2364,6 +2395,7 @@ to find them at runtime.
   endpoint key off `cfg!(debug_assertions)` instead. See the type
   documentation.
 
-[Unreleased]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ArcatureLabs/Arcature/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ArcatureLabs/Arcature/releases/tag/v0.1.0

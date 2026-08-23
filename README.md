@@ -198,7 +198,7 @@ exactly one of `db-postgres` / `db-sqlite` / `db-mysql` belongs in a build.
 
 ### Versioning
 
-Arcature follows semantic versioning. Current version `0.1.1`, readable as
+Arcature follows semantic versioning. Current version `0.1.2`, readable as
 `arcature::FRAMEWORK_VERSION`.
 
 Being in `0.x` shifts SemVer one field left, and Cargo agrees: the breaking

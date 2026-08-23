@@ -183,7 +183,7 @@ Arcature is versioned `MAJOR.MINOR.PATCH`, starting at `0.1.0`.
 | `MINOR` | A compatible addition — and, while `MAJOR` is `0`, a breaking change too. |
 | `PATCH` | Something is fixed compatibly. |
 
-The current version is `0.1.1`, readable at runtime as
+The current version is `0.1.2`, readable at runtime as
 `arcature::FRAMEWORK_VERSION`.
 
 The row that matters is the middle one. Cargo treats the leftmost non-zero

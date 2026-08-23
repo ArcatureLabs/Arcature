@@ -9,8 +9,8 @@ a fact is surprising, the reason is given, because a rule without a reason is a
 rule a model discards under pressure.
 
 ```
-crate      arcature 0.1.1        crates.io, Apache-2.0
-macros     arcature-macros 0.1.1 versioned in lockstep, not a separate product
+crate      arcature 0.1.2        crates.io, Apache-2.0
+macros     arcature-macros 0.1.2 versioned in lockstep, not a separate product
 rust       1.97.1 minimum, edition 2024
 guide      https://arcaturelabs.github.io/Arcature/
 api        https://docs.rs/arcature
