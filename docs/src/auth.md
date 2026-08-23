@@ -351,3 +351,15 @@ HMAC, SHA-2 and TLS come from RustCrypto, `cookie`, and the certified rustls
 plus aws-lc-rs path. The screens: `auth::flows` owns the decisions behind a
 sign-in form and `arc make:auth` writes the handlers, but nothing in this
 module renders a page.
+
+## Clients that have no cookie
+
+Everything above assumes a browser holding a session. For a CLI, a CI job or
+another service, the `api-tokens` feature issues an opaque bearer credential
+instead: the plaintext is shown once, the database holds only a SHA-256
+digest, and lookup is constant-time. Tokens carry abilities and an expiry.
+
+It is deliberately independent of `auth` -- an API with no passwords and no
+sessions may still hand out a token, and should not be made to compile a
+password hasher to do it. CSRF also steps aside for a request carrying
+`Authorization: Bearer`, because a bearer request is not a browser-driven one.

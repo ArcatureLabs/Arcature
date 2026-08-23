@@ -204,3 +204,31 @@ In development, Vite runs in `middlewareMode` with no TCP port of its own and
 the Rust process forwards to it over an IPC endpoint. There is one port in
 development and one in production, and no `localhost:5173` fallback. See
 [ADR 0003](decisions.md) and [Deployment](deployment.md).
+
+## When a page does not need JavaScript
+
+Inertia is for the application. For pages that are just HTML -- a marketing
+page, a confirmation screen, an email body -- the `views` feature renders
+Askama templates instead, and costs the client nothing.
+
+Askama compiles a template into Rust at build time, so there is no expression
+evaluator anywhere in the request path and server-side template injection is
+structurally absent rather than defended against. The trade is that editing a
+template means rebuilding, and that a Dockerfile has to `COPY templates`
+before `cargo build`. `arc make:view <name>` writes a view struct and its
+template together.
+
+The two mix freely: an application can serve Inertia pages behind sign-in and
+compiled views in front of it.
+
+## More than one language
+
+The `i18n` feature adds Fluent translation catalogs and puts the negotiated
+locale where both renderers can reach it -- Inertia props and view context
+alike, so a page does not have to know which one it is.
+
+Fluent rather than a `HashMap<String, String>`, because the map is wrong the
+moment a language has more than two plural forms. The negotiation reads
+`Accept-Language` and any override you allow, and matches it against the
+locales you registered: a locale string never becomes a path, so a hostile
+`Accept-Language` selects nothing rather than reaching the filesystem.

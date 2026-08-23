@@ -119,3 +119,16 @@ start with a capture transport.
 
 SMTP, TLS, or cryptography. The lettre crate is re-exported as
 `arcature::mail::lettre`.
+## Notifications sit on top of this
+
+Mail is one channel. The `notifications` feature adds the layer above it: one
+event, told to one person, over whichever channels apply -- mail plus an
+in-app inbox (`notifications-db`), a live push over WebSocket/SSE
+(`notifications-broadcast`), or mail handed to the job queue so the send does
+not happen inside the request (`notifications-queue`).
+
+Reach for it when the same event has to arrive more than one way, or when
+"who gets told what" is a decision worth writing down once. A single
+transactional mail is what this chapter already covers. `arc make:notification
+<name>` writes the starting point.
+
