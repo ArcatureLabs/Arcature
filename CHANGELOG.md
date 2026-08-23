@@ -30,6 +30,27 @@ therefore its first.
 
 ## [Unreleased]
 
+### Changed
+
+- **Issue #8 is closed, and the dev loop has a measured number instead of a
+  target nobody had checked.** Both figures in that issue -- 12.4s and 2.5s --
+  were recorded without a method, so the gap between them was two numbers
+  nobody could reproduce. On an idle machine a one-line handler rebuild is
+  **about 4.4s**, of which 1.6s is type-checking; the rest is code generation
+  and linking for the whole program and does not shrink when the diff does.
+
+  Everything reachable from inside this repository shipped over `0.1.1` and
+  `0.1.2`: dependency debug information off in both the workspace and the
+  scaffold, `build-override` at `opt-level = 2` for the macro stack,
+  `rust-lld` as the Windows linker, and `arc doctor` reporting the antivirus
+  condition. The 4.4s is measured with all of it in place.
+
+  What remains is outside stable Rust or outside the framework:
+  `-Zshare-generics`, cranelift, hot-patching instead of relinking, or an
+  antivirus exclusion a library can report and cannot set. The issue is
+  closed rather than carried, because keeping it open would not make any of
+  those more available.
+
 ### Fixed
 
 - **An incoming `traceparent` now becomes the exported trace id, not just a
