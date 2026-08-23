@@ -30,6 +30,26 @@ therefore its first.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The realtime connection limit now applies to SSE streams, not just to the
+  moment one is admitted.** `SseEndpoint::handle` acquired a `ConnectionGuard`
+  and then wrote `let _ = guard;` with the comment "held for the lifetime of
+  the stream". `_` is not a binding, so the guard dropped on that line: the cap
+  gated admission and nothing after it, and an application could hold any
+  number of concurrent SSE streams open against a limit of one. The guard now
+  rides in the stream's state, which is what the WebSocket path has always
+  done by moving it into the connection task.
+
+  **This changes behaviour for an application that was over its own cap
+  without knowing.** A `ShutdownConfig::new(n)` that previously admitted an
+  unbounded number of SSE connections now refuses the `n + 1`th with a `503`,
+  which is what its documentation always said it did.
+
+  Nothing caught this because nothing tested it -- `Registry` carries no unit
+  tests and no suite opened two streams at once. A regression test now does,
+  and it fails against the old code rather than merely passing against the new.
+
 ### Changed
 
 - **The recorded baselines moved out of the repository root into

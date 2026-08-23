@@ -121,3 +121,70 @@ fn verified_origin_accepts_ascii() {
     let header = axum::http::HeaderValue::from_static("https://example.com");
     assert!(VerifiedOrigin::from_header(&header).is_some());
 }
+
+/// A held SSE response holds its connection guard, so the limit means
+/// something after admission.
+///
+/// This is a regression test with a specific bug behind it. `SseEndpoint::handle`
+/// used to end its setup with `let _ = guard;`, carrying the comment "held for
+/// the lifetime of the stream". `_` is not a binding, so the guard dropped on
+/// that line and the cap gated the instant of admission and nothing after it:
+/// an application could hold any number of concurrent streams open against a
+/// limit of one. The WebSocket path never had the bug -- it moves its guard
+/// into the connection task -- and the difference between the two is what the
+/// assertion below is really pinning.
+///
+/// Nothing caught it because nothing tested it: `Registry` carries no unit
+/// tests and no suite opened two streams at once.
+#[tokio::test]
+async fn a_second_sse_stream_is_refused_while_the_first_is_still_held() {
+    use arcature::realtime::{Registry, ShutdownConfig, SseEndpoint, SseLimits};
+    use axum::http::{HeaderMap, StatusCode};
+
+    let broadcast = Broadcast::new(16).expect("capacity is non-zero");
+    let registry = Registry::new();
+    // One connection, so the second admission is the assertion.
+    let shutdown = ShutdownConfig::new(1);
+
+    let allowed = VerifiedOrigin::from_trusted("https://app.test");
+    let endpoint = || {
+        SseEndpoint::new(
+            broadcast.clone(),
+            OriginPolicy::allow_exact(allowed.clone()),
+            registry.clone(),
+            SseLimits::conservative(),
+            shutdown.clone(),
+        )
+    };
+    // A request with no `Origin` header is denied by every policy, so the
+    // header is part of the setup rather than part of what is being tested.
+    let mut headers = HeaderMap::new();
+    headers.insert("origin", "https://app.test".parse().expect("a valid header"));
+
+    let first = endpoint().handle(headers.clone(), String::new()).await;
+    assert_eq!(
+        first.status(),
+        StatusCode::OK,
+        "the first stream should be admitted",
+    );
+
+    // `first` is still alive here, so its guard must still be counted.
+    let second = endpoint().handle(headers.clone(), String::new()).await;
+    assert_eq!(
+        second.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "a second stream was admitted against a cap of one: the first stream's \
+         guard is not being held for the stream's lifetime",
+    );
+
+    // And the cap is released once the stream is gone, or the limit would be
+    // a one-way door rather than a limit.
+    drop(first);
+    drop(second);
+    let third = endpoint().handle(headers, String::new()).await;
+    assert_eq!(
+        third.status(),
+        StatusCode::OK,
+        "dropping both responses should have freed the slot",
+    );
+}

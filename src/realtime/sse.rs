@@ -90,7 +90,6 @@ impl SseEndpoint {
         let limits = self.limits;
         let sub = self.broadcast.subscribe();
         let shutdown = self.shutdown.clone();
-        let _ = guard; // held for the lifetime of the stream
 
         let retry = Duration::from_millis(limits.retry_ms);
         let keep_alive = KeepAlive::new()
@@ -101,29 +100,39 @@ impl SseEndpoint {
         // subsequent events are broadcast payloads.
         let preamble =
             stream::once(async move { Ok::<_, Infallible>(Event::default().retry(retry)) });
-        let events = stream::unfold((sub, shutdown), move |(mut sub, shutdown)| async move {
-            if shutdown.is_draining() {
-                return None;
-            }
-            match sub.recv().await {
-                Ok(payload) => {
-                    let data = std::str::from_utf8(payload.as_bytes())
-                        .unwrap_or("")
-                        .to_string();
-                    let event = Event::default().data(data);
-                    Some((Ok(event), (sub, shutdown)))
+        // The connection guard rides in the stream's state, which is what
+        // makes the connection limit mean anything. `let _ = guard;` here
+        // dropped it on the spot -- `_` is not a binding -- so the cap
+        // gated the instant of admission and nothing after it, and an
+        // application could hold any number of concurrent SSE streams open
+        // against a limit of one. The WebSocket path always moved its guard
+        // into the connection task; this one now does the equivalent.
+        let events = stream::unfold(
+            (sub, shutdown, guard),
+            move |(mut sub, shutdown, guard)| async move {
+                if shutdown.is_draining() {
+                    return None;
                 }
-                Err(ChannelError::Closed) => None,
-                Err(ChannelError::Lagged) => {
-                    let event = Event::default().comment("lagged");
-                    Some((Ok(event), (sub, shutdown)))
+                match sub.recv().await {
+                    Ok(payload) => {
+                        let data = std::str::from_utf8(payload.as_bytes())
+                            .unwrap_or("")
+                            .to_string();
+                        let event = Event::default().data(data);
+                        Some((Ok(event), (sub, shutdown, guard)))
+                    }
+                    Err(ChannelError::Closed) => None,
+                    Err(ChannelError::Lagged) => {
+                        let event = Event::default().comment("lagged");
+                        Some((Ok(event), (sub, shutdown, guard)))
+                    }
+                    Err(ChannelError::Full) => {
+                        let event = Event::default().comment("full");
+                        Some((Ok(event), (sub, shutdown, guard)))
+                    }
                 }
-                Err(ChannelError::Full) => {
-                    let event = Event::default().comment("full");
-                    Some((Ok(event), (sub, shutdown)))
-                }
-            }
-        });
+            },
+        );
 
         let stream = preamble.chain(events);
         Sse::new(stream).keep_alive(keep_alive).into_response()
