@@ -1,0 +1,128 @@
+# Load profile baseline -- x86_64-unknown-linux-gnu
+#
+# Recorded from CI run 32621241202 on 2026-08-23, the GitHub-hosted
+# ubuntu-latest runner. This file is a RECORD, not a gate. Nothing reads it
+# back and no check compares against it, unlike `unsafe-baseline.*.txt` and
+# `coverage-baseline.*.txt`.
+#
+# That is deliberate. Throughput and latency here describe the runner at least
+# as much as they describe the code -- the same `cargo clippy` in this
+# repository took 49m54s on a busy machine and 3m34s on an idle one -- so a
+# threshold on these figures would fail on a busy afternoon and pass on a
+# quiet one regardless of the diff. What `tests/load_profile.rs` *does* assert
+# is the set of claims that survive a slow machine: zero errors inside
+# capacity, flat resident memory and descriptor count, a flood on one
+# rate-limit key that spares a caller on another, and a shutdown that finishes
+# what it accepted.
+#
+# The percentiles are bucket lower bounds (see `Histogram`), under-reporting
+# by at most one part in eight. The maximum is exact.
+#
+# To refresh: run the `load` CI job and download its `load-report` artifact,
+# or `ARCATURE_LOAD=1 cargo test --features test-kit --test load_profile --
+# --test-threads=1` on a Linux host, and replace everything below this header.
+
+## Sustained: 128 connections, no rate limit
+
+connections     128
+duration        60.2s (after 5.0s warm-up)
+requests        452320 completed, 0 transport failures
+throughput      7517 req/s
+samples         113 over 56.4s
+error rate      0.0000%
+latency p50     16.38ms
+latency p95     22.53ms
+latency p99     26.62ms
+latency max     40.73ms
+statuses        200x452320
+resident        37.8 MiB first quarter -> 38.2 MiB last quarter (+1.0%)
+descriptors     269.0 first quarter -> 269.0 last quarter (+0.0%)
+
+## Key space control: no rate limiter at all
+
+connections     128
+duration        20.2s (after 5.0s warm-up)
+requests        149306 completed, 0 transport failures
+throughput      7396 req/s
+samples         34 over 16.6s
+error rate      0.0000%
+latency p50     16.38ms
+latency p95     22.53ms
+latency p99     26.62ms
+latency max     49.31ms
+statuses        200x149306
+resident        38.0 MiB first quarter -> 38.1 MiB last quarter (+0.3%)
+descriptors     268.9 first quarter -> 269.0 last quarter (+0.0%)
+
+## Key space bounded: 1024 keys, below the sweep threshold
+
+connections     128
+duration        20.0s (after 5.0s warm-up)
+requests        137741 completed, 0 transport failures
+throughput      6871 req/s
+samples         34 over 16.6s
+error rate      0.0000%
+latency p50     16.38ms
+latency p95     24.58ms
+latency p99     28.67ms
+latency max     48.95ms
+statuses        200x137741
+resident        38.8 MiB first quarter -> 38.9 MiB last quarter (+0.1%)
+descriptors     268.9 first quarter -> 269.0 last quarter (+0.0%)
+
+## Key space unbounded, fast refill: the sweep can drop what it sees
+
+connections     128
+duration        20.2s (after 5.0s warm-up)
+requests        137125 completed, 0 transport failures
+throughput      6786 req/s
+samples         34 over 16.6s
+error rate      0.0000%
+latency p50     16.38ms
+latency p95     24.58ms
+latency p99     28.67ms
+latency max     50.87ms
+statuses        200x137125
+resident        39.8 MiB first quarter -> 39.9 MiB last quarter (+0.3%)
+descriptors     268.9 first quarter -> 269.0 last quarter (+0.0%)
+
+## Key space unbounded, slow refill: the sweep may drop nothing
+
+connections     128
+duration        20.1s (after 5.0s warm-up)
+requests        24120 completed, 0 transport failures
+throughput      1201 req/s
+samples         37 over 18.6s
+error rate      0.0000%
+latency p50     98.30ms
+latency p95     163.84ms
+latency p99     196.61ms
+latency max     270.87ms
+statuses        200x24120
+resident        41.7 MiB first quarter -> 43.5 MiB last quarter (+4.2%)
+descriptors     268.9 first quarter -> 269.0 last quarter (+0.0%)
+
+## What the four rows above attribute
+
+no limiter                   7396 req/s
+bounded keys, slow refill    6871 req/s   (-7.1% vs no limiter)
+unbounded keys, fast refill  6786 req/s   (-1.2% vs bounded)
+unbounded keys, slow refill  1201 req/s   (-82.3% vs fast refill)
+
+Two variables, four runs, one moving at a time. Read down the second
+column:
+
+* the limiter on a bounded key space is free;
+* an unbounded key space is also nearly free -- so long as the sweep
+can drop what it looks at;
+* the cost is entirely in the last step, where a slow refill means
+the sweep examines every entry and is entitled to evict none, then
+does it again on the next request over a table that grew.
+
+So the hazard is not "many keys". It is many keys *and* a quota
+whose refill is slower than the run, which is the shape of every
+per-hour login or password-reset throttle. A per-minute or
+per-second quota over the same key space does not pay it.
+
+All four runs are 20s at 128 connections against the same route.
+

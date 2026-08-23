@@ -366,7 +366,7 @@ refilled to capacity -- which bounds the table only while buckets refill
 faster than new keys arrive. Under a quota whose refill is slower than that,
 the sweep is entitled to drop nothing, so it rescans a growing table on every
 request while holding a blocking mutex. Measured at 128 connections: a fresh
-key on every request costs nothing under a per-second quota and **5.2x
+key on every request costs nothing under a per-second quota and **5.6x
 throughput** under a per-hour one. A per-hour quota keyed by address is the
 ordinary shape of a login or password-reset throttle, so an attacker who can
 present many distinct keys can degrade a service that is otherwise limiting

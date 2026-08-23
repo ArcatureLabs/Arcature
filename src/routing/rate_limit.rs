@@ -299,7 +299,7 @@ impl MemoryBuckets {
             // nothing, and it runs again on the next request over a table
             // one entry larger. Measured at 128 connections: a fresh key
             // every request costs nothing under a per-second quota and
-            // 5.2x throughput under a per-hour one. See `RateLimit`.
+            // 5.6x throughput under a per-hour one. See `RateLimit`.
             buckets.retain(|_, bucket| {
                 refilled(
                     bucket.tokens,
@@ -475,13 +475,13 @@ enum Backend {
 ///
 /// | | requests/second |
 /// |---|---|
-/// | no limiter | 5370 |
-/// | 1024 keys, per-hour quota | 4922 |
-/// | a fresh key every request, per-second quota | 4923 |
-/// | a fresh key every request, per-hour quota | **953** |
+/// | no limiter | 7396 |
+/// | 1024 keys, per-hour quota | 6871 |
+/// | a fresh key every request, per-second quota | 6786 |
+/// | a fresh key every request, per-hour quota | **1201** |
 ///
 /// The third row is the point. A wide key space is free; a wide key space
-/// whose buckets cannot refill costs 5.2x throughput. The dangerous
+/// whose buckets cannot refill costs 5.6x throughput. The dangerous
 /// combination is the ordinary shape of a login or password-reset throttle --
 /// a per-hour quota keyed by address -- against traffic that keeps bringing
 /// new addresses.

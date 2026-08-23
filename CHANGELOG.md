@@ -1925,10 +1925,12 @@ therefore its first.
   larger table while holding a blocking mutex on a runtime worker thread.
 
   A new load profile measures it at 128 connections, one variable per row: no
-  limiter 5370 req/s; a bounded key space under a per-hour quota 4922; an
-  unbounded key space under a *per-second* quota 4923; an unbounded key space
-  under a *per-hour* quota **953**. The third row is the finding -- a wide key
-  space is free, and a wide key space whose buckets cannot refill costs 5.2x.
+  limiter 7396 req/s; a bounded key space under a per-hour quota 6871; an
+  unbounded key space under a *per-second* quota 6786; an unbounded key space
+  under a *per-hour* quota **1201**. The third row is the finding -- a wide key
+  space is free, and a wide key space whose buckets cannot refill costs 5.6x.
+  Resident memory agrees on its own: that fourth run is the only one of the
+  four whose footprint moved, +4.2% against +0.1% to +0.3%.
   The dangerous combination is the ordinary shape of a login or
   password-reset throttle.
 
