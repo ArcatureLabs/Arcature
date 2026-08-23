@@ -1275,6 +1275,18 @@ therefore its first.
   digest and never the link. It skips when no test database is configured,
   and fails rather than skips when `ARCATURE_REQUIRE_TEST_DB` says one was
   promised.
+- **The API token store is exercised against a live database.** A second
+  round-trip suite behind `test-kit` runs `api-tokens`' seven runtime
+  statements against a real server: that `FIND` and `AUTHENTICATE` differ by
+  exactly the `secret_digest` column -- asserted against the column names the
+  *server* reports, so a `SELECT *` could not pass it -- and therefore that no
+  read but an authentication can load a digest at all; that `abilities`
+  survives the round trip through `JSONB`, `JSON` and `TEXT`, empty set and
+  wildcard included; that `LIST_FOR` really orders `created_at DESC, id`, so
+  a page of tokens does not reshuffle between requests; that an expired token
+  neither authenticates nor lists before any sweep runs; that `DELETE`,
+  `DELETE_FOR` and `DELETE_EXPIRED` each reach what they name and nothing
+  else; and that the row holds a SHA-256 digest and never a working token.
 
 ### Changed
 

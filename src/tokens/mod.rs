@@ -74,6 +74,11 @@ mod migrate;
 mod store;
 mod token;
 
+// Needs `test-kit` for the "is a test database configured, and is it safe to
+// write to" decision, which lives there and must have exactly one spelling.
+#[cfg(all(test, feature = "test-kit"))]
+mod tests;
+
 pub use dialect::TokenPool;
 pub use error::ApiTokenError;
 pub use extract::ApiAuth;
