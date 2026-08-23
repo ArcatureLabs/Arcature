@@ -49,9 +49,20 @@
 //! Sampling the *test process* is correct here rather than a compromise:
 //! [`TestApp::serve`](arcature::test_kit::TestApp::serve) runs the server on a
 //! task in this process, so the server's memory and the server's sockets are
-//! this process's memory and sockets. The load generator's own allocations
-//! are in the number too, which is why the check is "flat from a quarter of
-//! the way in", not "below a constant".
+//! this process's memory and sockets.
+//!
+//! It does mean the generator is inside its own measurement, and the first
+//! Linux run proved that is not something a comparison can be reasoned around.
+//! The check is a last quarter against a first quarter rather than a bound
+//! against a constant, which handles a generator with a *fixed* overhead --
+//! and handles a generator that grows not at all, because linear growth is
+//! precisely what a quartile comparison is built to detect. Keeping every
+//! latency in a vector was therefore a leak the leak check reported as a leak:
+//! 38.9 MiB to 47.5 MiB across sixty seconds, against a server holding no
+//! per-request state. See [`Histogram`], which is the fix and the argument
+//! for it. Anything added to this harness later has to keep that property:
+//! per-request state in the generator is indistinguishable from per-request
+//! state in the framework.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -301,11 +312,157 @@ fn open_files() -> Option<u64> {
     None
 }
 
+/// Sub-buckets per power of two. Eight gives at most 12.5% relative error.
+const SUB_BITS: u32 = 3;
+const SUB: usize = 1 << SUB_BITS;
+/// Powers of two covered, in microseconds: up to roughly thirteen days.
+const OCTAVES: usize = 40;
+
+/// A latency distribution in constant memory.
+///
+/// # Why not a vector of every latency
+///
+/// The obvious implementation keeps every measurement and sorts at the end,
+/// which gives exact percentiles. It also grows by sixteen bytes per request
+/// for the length of the run, inside the very process whose resident memory
+/// this harness asserts is flat -- so at a few thousand requests a second the
+/// generator allocates several megabytes over a minute, monotonically, and
+/// the leak check reports it as a leak.
+///
+/// That is not a hypothetical. The first Linux run of the sustained profile
+/// failed on exactly this: 38.9 MiB to 47.5 MiB, 22.1% growth, against a
+/// server holding no per-request state at all. An instrument whose own cost
+/// grows with what it measures cannot be used to decide whether the thing it
+/// measures grows.
+///
+/// So: log-spaced buckets over microseconds, `OCTAVES * SUB` of them, eight
+/// bytes each. Two and a half kilobytes, allocated once, never resized.
+///
+/// The trade is exactness. A percentile read out of a bucket is that bucket's
+/// lower bound, so a reported figure is a slight under-estimate, by at most
+/// one part in eight. That is affordable precisely because these numbers are
+/// recorded and not asserted -- a 12.5% band on a figure nobody gates on
+/// costs nothing, while 8 MiB of drift on a figure everybody gates on costs
+/// the whole check.
+pub struct Histogram {
+    buckets: Box<[u64]>,
+    count: u64,
+    max: Duration,
+}
+
+impl std::fmt::Debug for Histogram {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Histogram")
+            .field("count", &self.count)
+            .field("max", &self.max)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for Histogram {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Histogram {
+    /// An empty histogram. This is the only allocation it ever makes.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            buckets: vec![0; OCTAVES * SUB].into_boxed_slice(),
+            count: 0,
+            max: Duration::ZERO,
+        }
+    }
+
+    /// Which bucket `micros` falls in.
+    ///
+    /// Below `SUB` every value is its own bucket, so short latencies are
+    /// exact. Above it, the top `SUB_BITS` significant bits pick the
+    /// sub-bucket within the value's octave, which is the standard
+    /// constant-relative-error layout.
+    fn index(micros: u64) -> usize {
+        if micros < SUB as u64 {
+            return micros as usize;
+        }
+        let octave = 63 - micros.leading_zeros() as usize;
+        let shift = octave - SUB_BITS as usize;
+        let sub = ((micros >> shift) as usize) & (SUB - 1);
+        let slot = (octave - SUB_BITS as usize + 1) * SUB + sub;
+        slot.min(OCTAVES * SUB - 1)
+    }
+
+    /// The lowest latency a bucket can hold, which is what it reports.
+    fn lower_bound(index: usize) -> u64 {
+        if index < SUB {
+            return index as u64;
+        }
+        let octave = index / SUB + SUB_BITS as usize - 1;
+        let sub = (index % SUB) as u64;
+        let shift = octave - SUB_BITS as usize;
+        (SUB as u64 + sub) << shift
+    }
+
+    /// Record one measurement.
+    pub fn record(&mut self, latency: Duration) {
+        let micros = u64::try_from(latency.as_micros()).unwrap_or(u64::MAX);
+        self.buckets[Self::index(micros)] += 1;
+        self.count += 1;
+        self.max = self.max.max(latency);
+    }
+
+    /// Fold another histogram into this one.
+    pub fn merge(&mut self, other: &Self) {
+        for (mine, theirs) in self.buckets.iter_mut().zip(other.buckets.iter()) {
+            *mine += *theirs;
+        }
+        self.count += other.count;
+        self.max = self.max.max(other.max);
+    }
+
+    /// How many measurements went in.
+    #[must_use]
+    pub fn count(&self) -> u64 {
+        self.count
+    }
+
+    /// The largest measurement, kept exactly.
+    ///
+    /// Exact rather than bucketed because the maximum is the one figure a
+    /// reader treats as a specific event rather than as a summary.
+    #[must_use]
+    pub fn max(&self) -> Duration {
+        self.max
+    }
+
+    /// The latency at percentile `p`, by nearest rank over the buckets.
+    #[must_use]
+    pub fn percentile(&self, p: f64) -> Duration {
+        if self.count == 0 {
+            return Duration::ZERO;
+        }
+        if p >= 100.0 {
+            return self.max;
+        }
+        let rank = ((p / 100.0) * self.count as f64).ceil().max(1.0) as u64;
+        let mut seen = 0u64;
+        for (index, hits) in self.buckets.iter().enumerate() {
+            seen += *hits;
+            if seen >= rank {
+                return Duration::from_micros(Self::lower_bound(index));
+            }
+        }
+        self.max
+    }
+}
+
 /// What one run produced.
 #[derive(Debug)]
 pub struct Run {
-    /// Every completed request's latency, sorted ascending.
-    latencies: Vec<Duration>,
+    /// The latency distribution, in constant memory. See [`Histogram`].
+    latencies: Histogram,
     /// How many responses arrived with each status.
     pub statuses: BTreeMap<u16, u64>,
     /// Requests that never produced a status: refused, reset, timed out.
@@ -365,19 +522,16 @@ impl Run {
         self.completed() as f64 / seconds
     }
 
-    /// The latency at percentile `p`, by nearest rank.
+    /// The latency at percentile `p`, by nearest rank over the buckets.
     ///
-    /// Nearest rank rather than interpolation because an interpolated p99 is
-    /// a number no request actually experienced, and the whole point of a
-    /// tail percentile is to name a request that happened.
+    /// Nearest rank rather than interpolation because an interpolated p99 is a
+    /// number no request experienced. Bucketed rather than exact because the
+    /// exact version leaks into the leak check -- see [`Histogram`] -- so a
+    /// figure here is the containing bucket's lower bound, under-reporting by
+    /// at most one part in eight. `percentile(100.0)` is the true maximum.
     #[must_use]
     pub fn percentile(&self, p: f64) -> Duration {
-        if self.latencies.is_empty() {
-            return Duration::ZERO;
-        }
-        let rank = ((p / 100.0) * self.latencies.len() as f64).ceil() as usize;
-        let index = rank.clamp(1, self.latencies.len()) - 1;
-        self.latencies[index]
+        self.latencies.percentile(p)
     }
 
     /// Mean of the first and last quarter of a sampled series.
@@ -543,7 +697,7 @@ pub async fn run(base_url: &str, profile: &Profile) -> Run {
         let headers = profile.headers.clone();
         let key_space = profile.key_space.clone();
         workers.push(tokio::spawn(async move {
-            let mut latencies = Vec::new();
+            let mut latencies = Histogram::new();
             let mut statuses: BTreeMap<u16, u64> = BTreeMap::new();
             let mut transport_errors = 0u64;
             // Workers start at different points in the path list so a mix is
@@ -585,7 +739,7 @@ pub async fn run(base_url: &str, profile: &Profile) -> Run {
                     Ok(response) => {
                         if measuring {
                             *statuses.entry(response.status().as_u16()).or_default() += 1;
-                            latencies.push(waited);
+                            latencies.record(waited);
                         }
                         // The body has to be drained for the connection to be
                         // reusable; leaving it undrained would turn every
@@ -619,14 +773,14 @@ pub async fn run(base_url: &str, profile: &Profile) -> Run {
     };
 
     let started = measure_from;
-    let mut latencies = Vec::new();
+    let mut latencies = Histogram::new();
     let mut statuses: BTreeMap<u16, u64> = BTreeMap::new();
     let mut transport_errors = 0;
     for worker in workers {
         let (worker_latencies, worker_statuses, worker_errors) = worker
             .await
             .expect("a load worker to finish without panicking");
-        latencies.extend(worker_latencies);
+        latencies.merge(&worker_latencies);
         for (status, count) in worker_statuses {
             *statuses.entry(status).or_default() += count;
         }
@@ -637,12 +791,135 @@ pub async fn run(base_url: &str, profile: &Profile) -> Run {
         .await
         .expect("the sampler to finish without panicking");
 
-    latencies.sort_unstable();
     Run {
         latencies,
         statuses,
         transport_errors,
         elapsed: started.elapsed(),
         samples,
+    }
+}
+
+#[cfg(test)]
+mod histogram_tests {
+    use super::{Histogram, OCTAVES, SUB};
+    use std::time::Duration;
+
+    /// Every bucket index must be reachable and ordered, or a percentile is
+    /// reading a bucket that does not correspond to the latency it names.
+    #[test]
+    fn bucket_lower_bounds_are_strictly_increasing() {
+        let mut previous = None;
+        for index in 0..OCTAVES * SUB {
+            let bound = Histogram::lower_bound(index);
+            if let Some(previous) = previous {
+                assert!(
+                    bound > previous,
+                    "bucket {index} starts at {bound}, not above {previous}",
+                );
+            }
+            previous = Some(bound);
+        }
+    }
+
+    /// A value must land in a bucket whose range contains it. This is the
+    /// property everything else rests on: if `index` and `lower_bound`
+    /// disagree, percentiles are wrong in a way no other test would notice.
+    #[test]
+    fn every_value_lands_in_a_bucket_that_contains_it() {
+        let mut probes: Vec<u64> = (0..64).collect();
+        for shift in 3..40 {
+            for offset in [0u64, 1, 7, 100] {
+                probes.push((1u64 << shift) + offset);
+                probes.push((1u64 << shift) - 1 - offset.min((1 << shift) - 1));
+            }
+        }
+        for value in probes {
+            let index = Histogram::index(value);
+            let low = Histogram::lower_bound(index);
+            assert!(low <= value, "{value} landed in a bucket starting at {low}");
+            let next = Histogram::lower_bound(index + 1);
+            assert!(
+                value < next,
+                "{value} landed in a bucket ending at {next}, which excludes it",
+            );
+        }
+    }
+
+    /// Relative error is bounded, which is the whole claim the exactness
+    /// trade-off rests on.
+    #[test]
+    fn a_bucket_under_reports_by_at_most_one_part_in_eight() {
+        for value in [8u64, 9, 1_000, 12_345, 999_999, 1 << 30] {
+            let low = Histogram::lower_bound(Histogram::index(value));
+            let error = (value - low) as f64 / value as f64;
+            assert!(error < 1.0 / SUB as f64, "{value} -> {low} is {error}");
+        }
+    }
+
+    #[test]
+    fn percentiles_track_a_known_distribution() {
+        let mut histogram = Histogram::new();
+        // 1..=1000 milliseconds, one each.
+        for millis in 1..=1000u64 {
+            histogram.record(Duration::from_millis(millis));
+        }
+        assert_eq!(histogram.count(), 1000);
+        assert_eq!(histogram.max(), Duration::from_millis(1000));
+
+        for (p, expected) in [(50.0, 500u64), (95.0, 950), (99.0, 990)] {
+            let got = histogram.percentile(p).as_millis() as u64;
+            let error = (expected - got) as f64 / expected as f64;
+            assert!(
+                got <= expected && error < 1.0 / SUB as f64,
+                "p{p} reported {got}ms against {expected}ms",
+            );
+        }
+        assert_eq!(histogram.percentile(100.0), Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn merging_is_the_same_as_recording_into_one() {
+        let (mut left, mut right, mut both) =
+            (Histogram::new(), Histogram::new(), Histogram::new());
+        for millis in 1..=100u64 {
+            if millis % 2 == 0 {
+                left.record(Duration::from_millis(millis));
+            } else {
+                right.record(Duration::from_millis(millis));
+            }
+            both.record(Duration::from_millis(millis));
+        }
+        left.merge(&right);
+        assert_eq!(left.count(), both.count());
+        assert_eq!(left.max(), both.max());
+        for p in [50.0, 90.0, 99.0, 100.0] {
+            assert_eq!(left.percentile(p), both.percentile(p), "p{p}");
+        }
+    }
+
+    /// The reason this type exists: its footprint does not depend on how many
+    /// measurements it holds.
+    #[test]
+    fn memory_does_not_grow_with_the_number_of_measurements() {
+        let mut histogram = Histogram::new();
+        let before = histogram.buckets.len();
+        for micros in 0..200_000u64 {
+            histogram.record(Duration::from_micros(micros));
+        }
+        assert_eq!(
+            histogram.buckets.len(),
+            before,
+            "the bucket array was resized, which is the growth this type exists to avoid",
+        );
+        assert_eq!(histogram.count(), 200_000);
+    }
+
+    #[test]
+    fn an_empty_histogram_reports_zero_rather_than_panicking() {
+        let histogram = Histogram::new();
+        assert_eq!(histogram.count(), 0);
+        assert_eq!(histogram.percentile(50.0), Duration::ZERO);
+        assert_eq!(histogram.percentile(100.0), Duration::ZERO);
     }
 }
