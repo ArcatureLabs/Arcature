@@ -12,8 +12,8 @@
 //! The crate depends on clap with `default-features = false` and the manifest
 //! does not enable clap's `derive` feature, so `#[derive(Parser)]` does not
 //! exist in this build. The builder is also the better fit for the `make:*`
-//! family: eighteen near-identical subcommands come out of one loop over
-//! [`MakeKind::ALL`] instead of eighteen hand-written variants that could
+//! family: nineteen near-identical subcommands come out of one loop over
+//! [`MakeKind::ALL`] instead of nineteen hand-written variants that could
 //! drift apart.
 
 use std::ffi::OsString;
@@ -244,7 +244,7 @@ impl DbAction {
 
 /// The kind of artifact `arc make:<kind>` writes.
 ///
-/// One enum rather than eighteen subcommand variants: every `make:*` command
+/// One enum rather than nineteen subcommand variants: every `make:*` command
 /// takes the same single `<name>` argument and differs only in which
 /// blueprint it renders, so the difference belongs in data, not in the shape
 /// of the dispatcher.
@@ -287,6 +287,8 @@ pub enum MakeKind {
     Seeder,
     /// A multi-channel notification under `app/notifications/`.
     Notification,
+    /// A mailable under `app/mail/`.
+    Mail,
 }
 
 impl MakeKind {
@@ -310,6 +312,7 @@ impl MakeKind {
         Self::Factory,
         Self::Seeder,
         Self::Notification,
+        Self::Mail,
     ];
 
     /// The bare kind name, as it appears after `make:`.
@@ -334,6 +337,7 @@ impl MakeKind {
             Self::Factory => "factory",
             Self::Seeder => "seeder",
             Self::Notification => "notification",
+            Self::Mail => "mail",
         }
     }
 
@@ -366,6 +370,7 @@ impl MakeKind {
             Self::Factory => "make:factory",
             Self::Seeder => "make:seeder",
             Self::Notification => "make:notification",
+            Self::Mail => "make:mail",
         }
     }
 
@@ -392,6 +397,7 @@ impl MakeKind {
             Self::Factory => "Generate a model factory in database/factories",
             Self::Seeder => "Generate a database seeder in database/seeders",
             Self::Notification => "Generate a notification in app/notifications",
+            Self::Mail => "Generate a mailable in app/mail",
         }
     }
 

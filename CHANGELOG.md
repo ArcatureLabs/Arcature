@@ -1160,6 +1160,20 @@ therefore its first.
   reason beside it: it is not derived from the Rust type, so renaming the type
   stays free and changing the protocol stays a migration.
 
+- **`arc make:mail`.** The nineteenth kind, and unlike the eighteenth its
+  output compiles in a fresh application, because `mail` is already in the
+  feature list `arc new` writes. The generated mailable is plain text and
+  says in a comment that this is deliberate: `Email::alternative` would add
+  an HTML part, but nothing escapes what a `format!` interpolates into it,
+  and a `format!` into an HTML body is the same mistake in an email as it
+  is in a page -- so the comment points at rendering the HTML half from an
+  askama template, where the engine escapes it. The file also carries no
+  `use arcature::prelude::*`, and says why in its own module documentation
+  rather than only in the generator: the prelude exports a one-parameter
+  `Result<T>` alias that would shadow the two-parameter `Result` that
+  `Mailable::build` is required to return, so the person who later adds
+  that import out of habit reads the reason in the file they are editing.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

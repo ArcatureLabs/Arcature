@@ -1,7 +1,7 @@
 //! What each `arc make:<kind>` writes, and where.
 //!
-//! One function per kind would spread eighteen near-identical decisions
-//! across eighteen places, so instead [`plan`] answers all of them: the
+//! One function per kind would spread nineteen near-identical decisions
+//! across nineteen places, so instead [`plan`] answers all of them: the
 //! destination path, the file body, whether a sibling `mod.rs` should learn
 //! about the new file, and any follow-up the generator cannot do for the
 //! developer.
@@ -69,12 +69,13 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
         MakeKind::Factory => rust(name, "database/factories", "Factory", factory),
         MakeKind::Seeder => rust(name, "database/seeders", "Seeder", seeder),
         MakeKind::Notification => notification(name),
+        MakeKind::Mail => rust(name, "app/mail", "", mailable),
     }
 }
 
 /// Every file `kind` + `name` produces, primary artifact first.
 ///
-/// Seventeen of the eighteen kinds write one file, and [`plan`] is the older,
+/// Eighteen of the nineteen kinds write one file, and [`plan`] is the older,
 /// narrower way to ask for one of those. `module` is the exception: a module
 /// is a directory whose entire point is that the controller, the service and
 /// the routes sit together, and a directory holding one of the three is not a
@@ -665,6 +666,44 @@ fn notification(name: &ArtifactName) -> Artifact {
                 .to_string(),
         ],
     }
+}
+
+fn mailable(r: &Rendered) -> String {
+    let Rendered { type_name, .. } = r;
+    format!(
+        "//! The `{type_name}` mailable.\n\
+         //!\n\
+         //! There is no `use arcature::prelude::*` here, and its absence is\n\
+         //! load-bearing: the prelude exports a one-parameter `Result<T>`\n\
+         //! alias, which would shadow the two-parameter `Result` that\n\
+         //! `Mailable::build` is required to return.\n\
+         \n\
+         use arcature::mail::lettre::Message;\n\
+         use arcature::mail::{{Email, EmailError, Mailable}};\n\
+         \n\
+         /// Everything this email says, in the fields it says it from.\n\
+         pub struct {type_name} {{\n\
+         \x20   pub name: String,\n\
+         }}\n\
+         \n\
+         impl Mailable for {type_name} {{\n\
+         \x20   fn build(&self, email: Email) -> Result<Message, EmailError> {{\n\
+         \x20       // `From` and `To` are already set by\n\
+         \x20       // `Mail::to(..).send(..)`; the rest is this type's\n\
+         \x20       // decision.\n\
+         \x20       //\n\
+         \x20       // Plain text only, deliberately. `.alternative(plain,\n\
+         \x20       // html)` adds an HTML part, but nothing escapes what you\n\
+         \x20       // interpolate into it -- a `format!` into an HTML body is\n\
+         \x20       // the same mistake in an email as it is in a page. Render\n\
+         \x20       // the HTML half from an askama template and let the\n\
+         \x20       // template engine escape it.\n\
+         \x20       email\n\
+         \x20           .subject(\"{type_name}\")\n\
+         \x20           .plain(format!(\"Hello, {{}}.\", self.name))\n\
+         \x20   }}\n\
+         }}\n"
+    )
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
 //!
 //! # One file, except when the thing is not one file
 //!
-//! Seventeen of the eighteen kinds write a single file, and [`run`] is the way
+//! Eighteen of the nineteen kinds write a single file, and [`run`] is the way
 //! to ask for one. `module` writes four, because a directory holding a
 //! controller but no service and no routes is not a module — it is a
 //! controller in an oddly named directory. [`run_all`] is the honest answer
