@@ -16,8 +16,8 @@
 //! - `arc serve [--bind <addr>] [--port <n>]` — run the current application.
 //! - `arc migrate [--dsn <url>]` — run pending migrations.
 //! - `arc schedule [--dsn <url>]` — run the job scheduler.
-//! - `arc make:<kind> <name>` — generate a source file (twenty kinds;
-//!   `make:module` writes a directory of four).
+//! - `arc make:<kind> <name>` — generate a source file (twenty-one kinds;
+//!   `make:module` writes a directory of four and `make:view` writes two).
 //! - `arc key:generate [--show]` — mint the application key (`auth`).
 //! - `arc storage:link` — link `storage/app/public` into `public/storage`.
 //! - `arc db:seed | db:fresh | db:reset [--dsn <url>] [--force]` — database lifecycle.

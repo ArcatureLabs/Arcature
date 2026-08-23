@@ -413,7 +413,7 @@ logged by accident.
 | `arc serve` | Run the application (`--bind`, `--port`). |
 | `arc migrate` | Run pending migrations. |
 | `arc schedule` | Run the scheduler. |
-| `arc make:<kind> <name>` | Generate an artifact. 20 kinds: module, controller, model, migration, request, resource, policy, service, job, event, listener, middleware, command, page, test, factory, seeder, notification, mail, view. `module` writes a directory of four files and `view` writes a struct plus its template; the rest write one apiece. |
+| `arc make:<kind> <name>` | Generate an artifact. 21 kinds: module, controller, model, migration, request, resource, policy, service, job, event, listener, middleware, command, page, test, factory, seeder, notification, mail, view, upload. `module` writes a directory of four files and `view` writes a struct plus its template; the rest write one apiece. |
 | `arc key:generate` | Generate the session key. |
 | `arc storage:link` | Link `public/storage` to the local disk. |
 | `arc db:seed`, `db:fresh`, `db:reset` | Database lifecycle. |

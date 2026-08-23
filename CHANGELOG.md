@@ -1188,6 +1188,26 @@ therefore its first.
   API and neither is `#[non_exhaustive]`, so growing either one a field is
   a breaking change and growing a module a function is not.
 
+- **`arc make:upload`.** The twenty-first kind, and the last of the five
+  the new subsystems were missing. It writes an upload endpoint into
+  `app/controllers/<name>_upload_controller.rs` -- `_upload_controller`
+  and not `_controller`, because `make:controller avatar` and
+  `make:upload avatar` would otherwise be the same path and the second
+  one would refuse to write rather than sit beside the first. The handler
+  stores under a `const PREFIX`, and says why it is a constant: nothing
+  that arrived on the request is ever a prefix. It uses `?` on
+  `store_under` rather than a `map_err`, which is only correct because
+  `From<UploadError> for Error` keeps the split `UploadError` was written
+  to preserve -- a disk that is down answers 500, a file whose bytes
+  disagree with its extension answers 422. And it reads the stored key
+  back with `path_under(PREFIX)` rather than `path()`, since the object
+  was written under the prefix and only the prefixed key finds it again.
+  Two notes ship with the artifact: `uploads` is not in the feature list
+  `arc new` writes, and a route with no `UploadPolicy` layer accepts
+  images and nothing else -- the default is fail-closed, so the layer is
+  what a route needs to accept anything wider, not what it needs to be
+  safe.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

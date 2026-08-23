@@ -12,8 +12,8 @@
 //! The crate depends on clap with `default-features = false` and the manifest
 //! does not enable clap's `derive` feature, so `#[derive(Parser)]` does not
 //! exist in this build. The builder is also the better fit for the `make:*`
-//! family: twenty near-identical subcommands come out of one loop over
-//! [`MakeKind::ALL`] instead of twenty hand-written variants that could
+//! family: twenty-one near-identical subcommands come out of one loop over
+//! [`MakeKind::ALL`] instead of twenty-one hand-written variants that could
 //! drift apart.
 
 use std::ffi::OsString;
@@ -244,7 +244,7 @@ impl DbAction {
 
 /// The kind of artifact `arc make:<kind>` writes.
 ///
-/// One enum rather than twenty subcommand variants: every `make:*` command
+/// One enum rather than twenty-one subcommand variants: every `make:*` command
 /// takes the same single `<name>` argument and differs only in which
 /// blueprint it renders, so the difference belongs in data, not in the shape
 /// of the dispatcher.
@@ -291,6 +291,8 @@ pub enum MakeKind {
     Mail,
     /// A server-rendered view under `app/views/`, and its template.
     View,
+    /// An upload endpoint under `app/controllers/`.
+    Upload,
 }
 
 impl MakeKind {
@@ -316,6 +318,7 @@ impl MakeKind {
         Self::Notification,
         Self::Mail,
         Self::View,
+        Self::Upload,
     ];
 
     /// The bare kind name, as it appears after `make:`.
@@ -342,6 +345,7 @@ impl MakeKind {
             Self::Notification => "notification",
             Self::Mail => "mail",
             Self::View => "view",
+            Self::Upload => "upload",
         }
     }
 
@@ -376,6 +380,7 @@ impl MakeKind {
             Self::Notification => "make:notification",
             Self::Mail => "make:mail",
             Self::View => "make:view",
+            Self::Upload => "make:upload",
         }
     }
 
@@ -404,6 +409,7 @@ impl MakeKind {
             Self::Notification => "Generate a notification in app/notifications",
             Self::Mail => "Generate a mailable in app/mail",
             Self::View => "Generate a view in app/views and its template",
+            Self::Upload => "Generate an upload controller in app/controllers",
         }
     }
 

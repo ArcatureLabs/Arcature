@@ -1,7 +1,7 @@
 //! What each `arc make:<kind>` writes, and where.
 //!
-//! One function per kind would spread twenty near-identical decisions
-//! across twenty places, so instead [`plan`] answers all of them: the
+//! One function per kind would spread twenty-one near-identical decisions
+//! across twenty-one places, so instead [`plan`] answers all of them: the
 //! destination path, the file body, whether a sibling `mod.rs` should learn
 //! about the new file, and any follow-up the generator cannot do for the
 //! developer.
@@ -17,12 +17,12 @@
 //! because a scaffold that silently omits the binding is worse than one that
 //! fails to compile until it is pointed somewhere real.
 //!
-//! `notification` compiles only once the application enables the feature its
-//! imports live behind, which a fresh `arc new` does not. The alternative was
-//! to have the generator edit `Cargo.toml`, and a generator that reaches into
-//! the manifest is a generator that can break a build it was never pointed
-//! at. The artifact's notes say which feature and why, and adding it is one
-//! line.
+//! `notification` and `upload` compile only once the application enables the
+//! feature their imports live behind, which a fresh `arc new` does not. The
+//! alternative was to have the generator edit `Cargo.toml`, and a generator
+//! that reaches into the manifest is a generator that can break a build it
+//! was never pointed at. Each artifact's notes say which feature and why, and
+//! adding it is one line.
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -71,12 +71,13 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
         MakeKind::Notification => notification(name),
         MakeKind::Mail => rust(name, "app/mail", "", mailable),
         MakeKind::View => rust(name, "app/views", "View", view_struct),
+        MakeKind::Upload => upload(name),
     }
 }
 
 /// Every file `kind` + `name` produces, primary artifact first.
 ///
-/// Eighteen of the twenty kinds write one file, and [`plan`] is the older,
+/// Nineteen of the twenty-one kinds write one file, and [`plan`] is the older,
 /// narrower way to ask for one of those. Two kinds are not one file, for the
 /// same underlying reason: what they produce is not a file, it is a set of
 /// files that only means anything together.
@@ -816,6 +817,109 @@ fn view_template(r: &Rendered) -> String {
          </main>\n\
          {{% endblock %}}\n"
     )
+}
+
+fn upload(name: &ArtifactName) -> Artifact {
+    // Not the bare `Controller` suffix: `make:controller avatar` and
+    // `make:upload avatar` would then be the same path, and the second one
+    // would refuse to write rather than sit beside the first.
+    let r = Rendered::new(name, "UploadController");
+    let Rendered {
+        stem,
+        type_name,
+        slash_path,
+        ..
+    } = &r;
+
+    let contents = format!(
+        "//! The `{type_name}`: one upload endpoint for `{slash_path}`.\n\
+         //!\n\
+         //! Every check `arcature::validation::upload` documents has already\n\
+         //! run by the time this handler's body starts -- the filename is\n\
+         //! sanitized, the bytes were sniffed, and the extension is one the\n\
+         //! policy allows. What is left here is where the bytes go and what\n\
+         //! the response says.\n\
+         \n\
+         use arcature::prelude::*;\n\
+         use arcature::serde_json;\n\
+         use arcature::storage::StorageError;\n\
+         use arcature::validation::upload::UploadedFile;\n\
+         \n\
+         use crate::bootstrap::AppState;\n\
+         \n\
+         /// The disk sub-tree these uploads live under.\n\
+         ///\n\
+         /// A constant, and the application's own string. Nothing that\n\
+         /// arrived on the request is ever a prefix -- that is the whole\n\
+         /// reason this is not a parameter.\n\
+         const PREFIX: &str = \"{slash_path}\";\n\
+         \n\
+         /// The `{slash_path}` upload controller.\n\
+         pub struct {type_name};\n\
+         \n\
+         #[controller]\n\
+         impl {type_name} {{\n\
+         \x20   /// Accept one file and store it under its content address.\n\
+         \x20   ///\n\
+         \x20   /// Register this as a `post` route. With no `UploadPolicy`\n\
+         \x20   /// layer on it the route still refuses everything outside\n\
+         \x20   /// `AllowedExtensions::images()`, because the default is\n\
+         \x20   /// fail-closed on purpose -- so a route that takes documents\n\
+         \x20   /// needs the layer, and one that takes images does not.\n\
+         \x20   ///\n\
+         \x20   /// `UploadedFile` implements `FromRequest`, not\n\
+         \x20   /// `FromRequestParts`: it consumes the body, so it has to be\n\
+         \x20   /// the last argument.\n\
+         \x20   pub async fn store(\n\
+         \x20       State(state): State<AppState>,\n\
+         \x20       upload: UploadedFile,\n\
+         \x20   ) -> Result<Response> {{\n\
+         \x20       let storage = state.storage.as_ref().ok_or_else(|| {{\n\
+         \x20           Error::Storage(\"no storage disk is configured\".to_string())\n\
+         \x20       }})?;\n\
+         \n\
+         \x20       // `?` rather than a `map_err`: `UploadError` splits the\n\
+         \x20       // server's problem from the client's, and\n\
+         \x20       // `From<UploadError> for Error` keeps that split. A disk\n\
+         \x20       // that is down answers 500; a file whose bytes disagree\n\
+         \x20       // with its extension answers 422.\n\
+         \x20       let address =\n\
+         \x20           upload.store_under(&storage.default_disk(), PREFIX).await?;\n\
+         \n\
+         \x20       // `address.path()` is the key without the prefix, and the\n\
+         \x20       // object was written under one -- so this, not that, is\n\
+         \x20       // the name that finds the bytes again.\n\
+         \x20       let key = address.path_under(PREFIX).map_err(StorageError::from)?;\n\
+         \n\
+         \x20       Ok((\n\
+         \x20           StatusCode::CREATED,\n\
+         \x20           json(serde_json::json!({{\n\
+         \x20               \"path\": key.as_str(),\n\
+         \x20               \"bytes\": address.byte_len(),\n\
+         \x20               // Metadata, and only ever metadata: show it, send\n\
+         \x20               // it in a `Content-Disposition`, never resolve it\n\
+         \x20               // as a path.\n\
+         \x20               \"filename\": upload.filename().to_string(),\n\
+         \x20           }})),\n\
+         \x20       )\n\
+         \x20           .into_response())\n\
+         \x20   }}\n\
+         }}\n"
+    );
+
+    Artifact {
+        path: destination("app/controllers", name, stem),
+        contents,
+        register_module: true,
+        notes: vec![
+            "uploads are behind the `uploads` feature; add it to the application's \
+             `arcature` dependency before building"
+                .to_string(),
+            "an `UploadPolicy` layer decides which extensions the route accepts; \
+             with no layer the route accepts images and nothing else"
+                .to_string(),
+        ],
+    }
 }
 
 // ---------------------------------------------------------------------------
