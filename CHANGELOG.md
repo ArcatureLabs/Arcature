@@ -32,6 +32,29 @@ therefore its first.
 
 ### Documentation
 
+- **`SKILL.md`: one file to hand an AI coding assistant.** Fetchable raw from
+  `main`, and written to be read once by a model that has never seen the
+  framework. It is not a tutorial -- roughly half of it is the set of things a
+  model gets wrong from API names alone, each with the reason, because a rule
+  without a reason is a rule a model discards under pressure.
+
+  Fifteen of those are listed explicitly: that `fullstack` is not all
+  features, that `--all-features` is designed to fail, that `body_limit` and
+  `timeout` are unset by default, that axum's own 2 MiB cap bites before the
+  16 MiB multipart total, that `arc queue work` dispatches nothing, that
+  `arc migrate` and `./app --migrate` are not the same command, that a
+  per-hour rate limit over a wide key space costs 5.6x throughput, that
+  redaction reaches neither span attributes nor metric labels, that
+  `auth-reset` leaves other sessions signed in, that a pre-epoch clock makes
+  `UrlSigner` fail open, and that overload on a default build produces slow
+  200s rather than a 503.
+
+  Every number in it was extracted from the source rather than recalled: the
+  feature table from `[features]`, the 23 pipeline stages from the deployment
+  chapter, the 22 generator kinds from the CLI parser, and the prelude count,
+  worker concurrency, pool size and `ProblemKind` count each checked
+  individually.
+
 - **Four more guide chapters, closing the last of the undocumented
   subsystems:** *Realtime*, *Observability*, *OAuth*, and *API and OpenAPI*.
   Together these cover about 5,150 lines of `src/` that the guide had never

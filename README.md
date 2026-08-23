@@ -20,6 +20,22 @@ narrower than its name suggests, that is said in
 [the guide](https://arcaturelabs.github.io/Arcature/) and summarised under
 [What is not built yet](#what-is-not-built-yet).
 
+## Writing Arcature with an AI assistant
+
+[`SKILL.md`](SKILL.md) is one file written to be pasted into a coding
+assistant before you ask it for Arcature code. Grab it raw:
+
+```
+https://raw.githubusercontent.com/ArcatureLabs/Arcature/main/SKILL.md
+```
+
+It is not a tutorial. Most of it is the set of things a model gets wrong from
+API names alone: that eighteen of forty-one features are on and the rest are
+not, that `fullstack` is not all of them, that `body_limit` and `timeout` are
+unset by default, that `arc queue work` dispatches nothing, that redaction does
+not reach span attributes. An assistant that has read it stops generating code
+that compiles and is wrong.
+
 ## Install
 
 ```sh
