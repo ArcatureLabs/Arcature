@@ -50,9 +50,13 @@
 //!
 //! # What does not live here
 //!
-//! The user table, the form, the HTML, the routes, and the redirect targets.
-//! Those are the application's, and `arc new` scaffolds them. This module is
-//! the part that has to be right rather than the part that has to be yours.
+//! The user table, the handlers, the routes, and the HTML. Those are the
+//! application's. `arc new` writes none of them -- a fresh scaffold has no
+//! user table and no sign-in route -- and `arc make:auth <name>` writes all
+//! but the last: an account model, three controllers, a route collection and
+//! a migration, headless, with the screens left to `arc make:page` and
+//! `arc make:view`. This module is the part that has to be right rather than
+//! the part that has to be yours.
 
 mod confirm;
 mod credentials;
