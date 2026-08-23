@@ -238,8 +238,11 @@ different tokens, by design. An empty plaintext round-trips.
 
 ### It fails closed
 
-A token whose bytes have changed anywhere -- version tag, nonce, ciphertext,
-tag -- returns `DecryptError::Authentication` and no plaintext at all. There
+A token whose bytes have changed returns no plaintext at all. Which error
+depends on where: the version tag is stripped before anything else, so
+altering it gives `DecryptError::UnknownVersion`, and a body that is not
+base64url gives `Malformed`. Everything the cipher actually sees -- nonce,
+ciphertext, tag -- gives `DecryptError::Authentication`. There
 is no partial result and no "decrypted but unverified" path, because a caller
 holding attacker-chosen bytes that look like plaintext is the failure mode an
 AEAD exists to prevent.
@@ -356,10 +359,19 @@ assert_eq!(at(130).verify(&url), Ok(()));
 assert_eq!(at(131).verify(&url), Err(SignedUrlError::Expired));
 ```
 
-`SystemClock` reads a pre-epoch wall clock as `0`, which makes every deadline
-in the past and every temporary link invalid. That is the safe direction to
-fail: a machine whose clock has fallen off the epoch should refuse links, not
-honour them forever.
+`SystemClock` reads a pre-epoch wall clock as `0`, and **that fails open, not
+closed**. The expiry check is `if self.clock.now_unix() > expires_at`, so a
+clock reporting `0` is never past any deadline and every expired link is
+accepted. A machine whose clock has fallen behind the epoch honours links
+forever rather than refusing them.
+
+This is a real if unlikely failure mode -- it needs a system clock set before
+1970, which in practice means a dead RTC battery or a deliberately wound-back
+container. It is written down rather than fixed because the fix is a decision
+about what an application should do when it cannot tell the time, and that is
+not the signer's call to make. If it matters to you, supply your own
+[`Clock`](https://docs.rs/arcature/latest/arcature/crypt/trait.Clock.html)
+that refuses rather than returning a sentinel.
 
 ### Constant-time comparison
 

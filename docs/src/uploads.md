@@ -23,7 +23,7 @@ arcature = { version = "0.1", features = ["uploads"] }
 | `validation` | the extractor lives beside the other validated extractors and reports RFC 9457 problem details |
 | `storage-fs` | an upload is written to a storage disk, never to a path the request named |
 | `dep:tokio` | one thing only: `tokio::time::timeout`. A byte cap cannot express "the client stopped sending", because a request that never finishes never exceeds anything |
-| `unicode-normalization` | an attacker-authored filename goes into NFC before any check looks at it |
+| `unicode-normalization` | an attacker-authored filename goes into NFC before the reserved-name and extension checks look at it |
 | `sha2` | the content address |
 | `infer` | the magic-number table |
 
@@ -500,10 +500,11 @@ response can carry is one some bytes were recognized as.
 
 `with_filename` takes a `SafeFilename` rather than a `&str` on purpose -- a
 string parameter would be a header-injection hole waiting for the one caller
-who forgot. The value goes out twice per RFC 6266: an ASCII-only `filename=`
-for old parsers and an RFC 5987 `filename*=UTF-8''` for everything since,
-because a name with diacritics is not representable in the first form and
-silently mangling it is worse than sending both.
+who forgot. An ASCII name goes out once, as `filename="report.pdf"`. A name that is
+*not* ASCII goes out twice per RFC 6266 -- the plain form plus an RFC 5987
+`filename*=UTF-8''` -- because a name with diacritics is not representable in
+the first form and silently mangling it is worse than sending both. The
+extended form is only worth sending when the plain one lost something.
 
 ## Limits
 
@@ -517,9 +518,12 @@ on a default build the effective ceiling on an upload is 2 MiB, not the 16 MiB
 `MultipartLimits` has seen a byte of it.
 
 That failure arrives as `MultipartError::Parse` wrapping axum's
-`StreamReadFailed`, and takes the status axum gives it -- not the 413 the
-`MultipartLimits` totals produce. An application that accepts files larger
-than 2 MiB has to raise the axum limit itself.
+`StreamReadFailed`, and takes the status axum gives it -- which is also a
+**413**. axum downcasts the inner error to `http_body_util::LengthLimitError`
+and answers `PAYLOAD_TOO_LARGE`, so a client cannot tell which of the two caps
+refused it from the status alone. Only the `detail` string differs. An
+application that accepts files larger than 2 MiB has to raise the axum limit
+itself.
 
 Stage 12 of the request pipeline is a separate, third cap:
 `tower-http`'s `RequestBodyLimitLayer`, applied only when the application

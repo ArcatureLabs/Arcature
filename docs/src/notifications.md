@@ -140,9 +140,10 @@ database.
 None of the four adds a crate to the dependency graph. `notifications` is
 `mail` plus the unconditional `thiserror`; `notifications-db` rides the `sqlx`
 that `database` already brings, with `serde_json` and `getrandom`
-unconditional; `notifications-broadcast` is `realtime`, which is `tokio` and
-`axum`; `notifications-queue` is `jobs`, which is `database` plus the
-`tokio`/`tokio-util` that `server` already brings.
+unconditional; `notifications-broadcast` is `realtime`, which is `tokio`,
+`futures` and `bytes` -- axum is unconditional and no feature turns it on;
+`notifications-queue` is `jobs`, which is `database` plus `tokio` and
+`tokio-util`, both of which the default feature set already brings.
 
 ### Why four and not one
 
@@ -681,12 +682,21 @@ channel has no storage, the broadcast channel has none, and
 through `jobs.migrate()`.
 
 **What needs a worker process.** Only `notifications-queue`. `Notifier::queue`
-writes a row and returns; if nothing runs `arc queue work` -- or a `Worker`
-whose registry had `register_mail_handler` called on it -- the rows accumulate
-and none of the emails are sent. Nothing warns. Registering the handler is a
-second, separate step: enabling the feature and running a worker are not
-enough on their own, because a worker with no registration for
-`arcature.notifications.mail` leaves the rows exactly where they are.
+writes a row and returns; unless something runs a `Worker` whose registry had
+`register_mail_handler` called on it, the rows accumulate and none of the
+emails are sent. Nothing warns.
+
+`arc queue work` is **not** that something, and reaching for it is the
+mistake this paragraph exists to prevent. It builds a worker with an empty
+registry -- it sweeps expired leases, marks jobs it has no handler for as
+dead, and prints a note saying so. Pointed at a queue of notification mail it
+will discard the rows rather than send them. Real dispatch is the
+application's own in-process worker, through `ApplicationBuilder::jobs`.
+
+Registering the handler is a second, separate step: enabling the feature and
+running a worker are not enough on their own, because a worker with no
+registration for `arcature.notifications.mail` leaves the rows exactly where
+they are -- or, with `arc queue work`, does something worse than leave them.
 
 **The broadcast is per process, and there is no switch.** `Broadcast` wraps a
 `tokio::sync::broadcast`, a channel between tasks inside one process. A push

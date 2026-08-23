@@ -35,7 +35,7 @@ can see from application code.
 
 | Askama feature | Consequence of it being off |
 | --- | --- |
-| `config` | No `askama.toml` is read. The template directory, the syntax and the escaper table are the defaults. |
+| `config` | TOML parsing is off, so an `askama.toml` is a compile error rather than a config file. Arcature ships none, so the template directory, the syntax and the escaper table are the defaults. |
 | `urlencode` | There is no `urlencode` or `urlencode_strict` filter. |
 | `serde_json` | There is no `json` or `json_pretty` filter. |
 | `code-in-doc` | `#[template(in_doc = true)]` is unavailable. |
@@ -446,8 +446,10 @@ downstream match.
 The consequence is concrete: **a `Mailable` implementation cannot call
 `templated` and use `?`.** This does not compile, and no import fixes it.
 
-`arc make:mail` writes a plain-text `Mailable` for that reason, with a comment
-saying so. To send a templated mail, build the `Message` outside the trait and
+`arc make:mail` writes a plain-text `Mailable`, and its comment gives a
+related but different reason -- that a `format!` into an HTML body escapes
+nothing, so the HTML half should come from a template. The `templated`
+incompatibility above is not mentioned there. To send a templated mail, build the `Message` outside the trait and
 hand it to the mailer:
 
 ```rust,ignore

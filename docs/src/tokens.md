@@ -18,8 +18,11 @@ the dependency graph: `sha2`, `subtle` and `zeroize` are already pulled in by
 `session-store-db`, `crypt` and `signed-urls`, and the randomness comes from
 `getrandom`, which is unconditional.
 
-The examples below need a live database, so they are marked `ignore` and are
-compiled rather than run, the same way the module's own doc examples are.
+The examples below need a live database, so they are marked `ignore`: they
+are neither compiled nor run. `no_run` would compile them without running
+them, which is the stronger marker, but these name an application's own
+account store and state type -- neither of which exists in this crate -- so
+there is nothing here for a compiler to check them against.
 
 ## The property the design exists for
 
@@ -473,8 +476,9 @@ you want one.
 `migrate_tx`, every method here runs on the pool. A token cannot be issued
 inside a transaction you already hold.
 
-**No serde.** `ApiToken`, `ApiTokenId` and `Abilities` derive `Clone`, `Debug`
-and comparison traits, not `Serialize`. Rendering a token list into an Inertia
+**No serde.** `ApiToken` derives `Clone` and `Debug` only -- not even
+`PartialEq`, so two tokens cannot be compared with `==`. `ApiTokenId` and
+`Abilities` add comparison traits. None of the three derives `Serialize`. Rendering a token list into an Inertia
 prop or a JSON body means a struct of the application's own.
 
 **No relationship to a user row.** `tokenable_id` has no foreign key and no
