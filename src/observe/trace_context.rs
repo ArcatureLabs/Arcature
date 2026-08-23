@@ -19,6 +19,7 @@ use axum::extract::Request;
 use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use axum::response::Response;
 use tower::{Layer, Service};
+use tracing::Instrument as _;
 
 /// The `traceparent` header name.
 pub const TRACEPARENT: HeaderName = HeaderName::from_static("traceparent");
@@ -139,6 +140,25 @@ impl TraceParent {
     #[must_use]
     pub fn parent_id(&self) -> String {
         hex(&self.parent_id)
+    }
+
+    /// The trace id as raw bytes, for handing to an exporter.
+    ///
+    /// `pub(crate)` and byte-shaped on purpose: the public accessors render
+    /// hex for a log field, and an exporter that re-parsed that hex would be
+    /// a second spelling of a value we already hold exactly.
+    pub(crate) fn trace_id_bytes(&self) -> [u8; 16] {
+        self.trace_id
+    }
+
+    /// The parent span id as raw bytes.
+    pub(crate) fn parent_id_bytes(&self) -> [u8; 8] {
+        self.parent_id
+    }
+
+    /// The raw trace-flags octet.
+    pub(crate) fn flags(&self) -> u8 {
+        self.flags
     }
 
     /// Whether the sampled flag is set.
@@ -351,6 +371,17 @@ where
         let trace_id = context.parent().trace_id();
         let parent_span_id = context.parent().parent_id();
         let continued = context.continued();
+        // Raw bytes for the OTLP parent below; the accessors above render hex
+        // for the log fields, and re-parsing our own hex would be a second
+        // spelling of the same value.
+        #[cfg(feature = "otel")]
+        let parent_trace_bytes = context.parent().trace_id_bytes();
+        #[cfg(feature = "otel")]
+        let parent_span_bytes = context.parent().parent_id_bytes();
+        #[cfg(feature = "otel")]
+        let parent_flags = context.parent().flags();
+        #[cfg(feature = "otel")]
+        let state = context.state().cloned();
         request.extensions_mut().insert(context);
 
         // Swap in the clone and drive the original: only the original is
@@ -364,8 +395,67 @@ where
                 parent_span_id = %parent_span_id,
                 continued_trace = continued,
             );
-            let _entered = span.enter();
-            inner.call(request).await
+
+            // Join the exported trace to the caller's, not just the log line
+            // to it. Without this the ids above are strings on a log record
+            // and nothing more: `tracing-opentelemetry` mints its own trace
+            // id for the span it exports, so a request arriving with a
+            // `traceparent` opens a *new* trace at this service and the two
+            // halves of a distributed trace never meet in the backend.
+            //
+            // Only when the parent is real. Calling this for an invented root
+            // would export a remote parent span that never existed, which is
+            // worse than a root: a backend would draw an edge to nothing.
+            #[cfg(feature = "otel")]
+            if continued {
+                use std::str::FromStr as _;
+
+                use opentelemetry::trace::{
+                    SpanContext, SpanId, TraceContextExt as _, TraceFlags, TraceId, TraceState,
+                };
+                use tracing_opentelemetry::OpenTelemetrySpanExt as _;
+
+                // A `tracestate` we already validated on the way in can still
+                // be one this exporter refuses; dropping it costs vendor
+                // metadata and keeps the parent, which is the half that
+                // joins the trace.
+                let state = state
+                    .as_ref()
+                    .map(std::string::ToString::to_string)
+                    .and_then(|raw| TraceState::from_str(&raw).ok())
+                    .unwrap_or_default();
+
+                let remote = SpanContext::new(
+                    TraceId::from_bytes(parent_trace_bytes),
+                    SpanId::from_bytes(parent_span_bytes),
+                    TraceFlags::new(parent_flags),
+                    // Remote: this parent ran in another process, and a
+                    // backend uses the flag to tell a joined trace from one
+                    // whose parent it should have seen itself.
+                    true,
+                    state,
+                );
+                // Before the span is entered, which is why this sits above
+                // the `.instrument(..)` below: `set_parent` refuses with
+                // `AlreadyStarted` once a context has been taken for the
+                // span, and would then be a silent no-op.
+                //
+                // Every way this can fail is benign here and none of them is
+                // worth a log line on the request path. `LayerNotFound` is
+                // the ordinary case of a build with `otel` compiled and no
+                // telemetry pipeline running; the others mean the span was
+                // filtered out or already started, and in all three the span
+                // simply is not exported, so there is no trace for a parent
+                // to be missing from.
+                let _ =
+                    span.set_parent(opentelemetry::Context::new().with_remote_span_context(remote));
+            }
+
+            // `Instrument`, not `span.enter()`. A guard stays entered across
+            // every await point below, including the ones where this task is
+            // parked and another request is running on the thread, so it
+            // would attribute other requests' spans to this trace.
+            inner.call(request).instrument(span).await
         })
     }
 }

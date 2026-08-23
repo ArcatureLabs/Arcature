@@ -538,21 +538,36 @@ one trace id, a child names its parent's span id, a three-level nesting
 arrives as a chain rather than a fan, and a span field arrives as an
 attribute.
 
-### The two id spaces do not meet
+### The two id spaces meet, under `otel`
 
-`TraceContextLayer` and the OTLP exporter both deal in trace ids, and they are
-not the same ids.
+`TraceContextLayer` and the OTLP exporter both deal in trace ids, and joining
+them is the point of a distributed trace.
 
-Nothing in this crate calls `set_parent`, registers a propagator, or hands the
-parsed `traceparent` to the OpenTelemetry context. The ids the exporter puts
-on a span are the SDK's own. The inbound W3C ids reach the collector only as
-the string attributes `trace_id` and `parent_span_id` on the
-`arcature.request` span, because `tracing` fields become OTLP attributes.
+When `otel` is on and the request carried a usable `traceparent`, the layer
+calls `set_parent` with a remote `SpanContext` built from the parsed ids, so
+the span it exports **is** part of the caller's trace rather than the root of
+a new one. The `tracestate` travels with it when the exporter accepts it. The
+`traceparent` is also still recorded as the `trace_id` and `parent_span_id`
+attributes, which is what correlates a log line.
 
-So: `TraceContextLayer` gives you correlation *in your logs* against the ids
-your upstream used. It does not join your exported spans to an upstream
-trace. An application that needs a remote parent honoured in the exported
-trace wires `tracing_opentelemetry`'s span extension itself.
+This did not always hold, and the failure was invisible from the log side.
+The layer parsed the header and opened a span carrying the ids as *fields*,
+and never called `set_parent` — so `tracing-opentelemetry` minted a fresh
+trace id for the exported span. A request arriving with a `traceparent`
+started a new trace at this service, and the two halves never met in the
+backend, while every log line looked correct.
+`an_incoming_traceparent_becomes_the_exported_trace_id` in
+`tests/observe_otlp.rs` reads the id off the span the collector holds rather
+than off a log field, because reading the field would pass against the bug.
+
+Two details worth knowing. The parent is only set when the trace was
+*continued*: inventing a remote parent for a root would have a backend draw
+an edge to a span that never existed. And `set_parent` is called before the
+span is entered, because it refuses with `AlreadyStarted` afterwards and
+would be a silent no-op.
+
+Without `otel`, none of this compiles in, and the layer is what it always was
+— correlation in your logs against the ids your upstream used.
 
 ## Redaction
 
@@ -823,8 +838,10 @@ crate consults it to decide whether to record or export.
 are pinned with the `trace` feature and nothing else; metrics leave as
 Prometheus text or not at all.
 
-**Join an upstream W3C trace to the exported spans.** No propagator is
-registered and `set_parent` is never called.
+**Register a propagator.** The inbound join is done directly with
+`set_parent` rather than through a global `TextMapPropagator`, and outbound
+headers come from `TraceContext::outbound_headers`. Nothing installs a global
+propagator, so a third-party client that expects to find one injects nothing.
 
 **Write to a file, rotate, or ship.** Both formats go to standard error. The
 process manager owns the file, and every mainstream one already does this

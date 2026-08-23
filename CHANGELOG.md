@@ -30,6 +30,37 @@ therefore its first.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An incoming `traceparent` now becomes the exported trace id, not just a
+  string on a log line.** `TraceContextLayer` parsed the header and opened a
+  span carrying `trace_id` and `parent_span_id` as fields, but never called
+  `set_parent` -- so `tracing-opentelemetry` minted a fresh trace id for the
+  span it exported. A request arriving with a `traceparent` started a **new**
+  trace at this service, and the caller's half and this half never met in the
+  backend.
+
+  The log side looked correct throughout, which is why it survived: the ids
+  were present, on a record nothing joined on. Under `otel`, the layer now
+  builds a remote `SpanContext` from the parsed ids and sets it as the span's
+  parent, carrying the `tracestate` when the exporter accepts it.
+
+  Only for a *continued* trace: inventing a remote parent for a root would
+  have a backend draw an edge to a span that never existed. And the call
+  happens before the span is entered, because `set_parent` refuses with
+  `AlreadyStarted` afterwards and would be a silent no-op.
+
+- **`TraceContextService` no longer holds a span guard across an await.** It
+  ended with `let _entered = span.enter(); inner.call(request).await`, and in
+  async code that guard stays entered across every await point in the
+  handler -- including the ones where the task is parked and another request
+  is running on the thread, which attributes other requests' work to this
+  trace. It now attaches the span with `Instrument`, as the access log does.
+
+  That is the third instance of this shape in one module family, after the
+  SSE connection guard and the access-log span in `0.1.2`. `AGENTS.md` names
+  the pattern.
+
 ### Documentation
 
 - **`AGENTS.md`: rules for an agent working on this repository**, as distinct

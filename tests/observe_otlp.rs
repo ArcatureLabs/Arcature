@@ -287,3 +287,99 @@ collector_test! {
             .expect("the shutdown ran to completion rather than panicking");
     }
 }
+
+collector_test! {
+    /// An incoming `traceparent` becomes the *exported* trace id, not just a
+    /// string on a log line.
+    ///
+    /// This is the property distributed tracing is for and it was missing.
+    /// `TraceContextLayer` parsed the header, opened a span carrying
+    /// `trace_id` and `parent_span_id` as fields, and never called
+    /// `set_parent` -- so `tracing-opentelemetry` minted a fresh trace id for
+    /// the span it exported. A request arriving with a `traceparent` opened a
+    /// *new* trace at this service, and the caller's half and this half never
+    /// met in the backend. The log line looked right, which is what made it
+    /// survive: the ids were there, on a record nothing joined on.
+    ///
+    /// The assertion therefore reads the id off the span the collector holds,
+    /// not off a log field. Reading the field would pass against the bug.
+    async fn an_incoming_traceparent_becomes_the_exported_trace_id() {
+        use arcature::observe::{TraceContext, TraceContextLayer};
+        use axum::Router;
+        use axum::body::Body;
+        use axum::http::Request;
+        use axum::routing::get;
+        use tower::ServiceExt as _;
+
+        // A caller's trace, chosen so it is unmistakable in the output.
+        const TRACEPARENT: &str =
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        const TRACE_ID: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
+        const PARENT_SPAN: &str = "00f067aa0ba902b7";
+
+        let collector = RunningCollector::start().await;
+        let telemetry = Telemetry::builder("arcature-otlp-continued")
+            .endpoint(collector.endpoint())
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("the OTLP pipeline builds");
+        let subscriber = tracing_subscriber::registry().with(telemetry.tracing_layer());
+        let dispatch = tracing::Dispatch::new(subscriber);
+
+        let router = Router::new()
+            .route(
+                "/checkout",
+                get(|| async {
+                    // The context must reach the handler as well as the span.
+                    tracing::info!("inside the handler");
+                    "ok"
+                }),
+            )
+            .layer(TraceContextLayer);
+
+        let request = Request::builder()
+            .uri("/checkout")
+            .header("traceparent", TRACEPARENT)
+            .body(Body::empty())
+            .expect("a well-formed request");
+
+        // `with_subscriber` on the future rather than `with_default`: the
+        // router is polled across await points and may resume on another
+        // thread, where a thread-local subscriber would not be installed.
+        {
+            use tracing::instrument::WithSubscriber as _;
+            let status = async move {
+                router.oneshot(request).await.expect("the router answered").status()
+            }
+            .with_subscriber(dispatch)
+            .await;
+            assert_eq!(status, axum::http::StatusCode::OK);
+        }
+
+        tokio::task::spawn_blocking(move || telemetry.shutdown())
+            .await
+            .expect("the shutdown ran to completion")
+            .expect("the exporter flushed and stopped cleanly");
+
+        let spans = collector.wait_for_spans(1).await;
+        let request_span = named(&spans, "arcature.request");
+
+        assert_eq!(
+            hex(&request_span.trace_id),
+            TRACE_ID,
+            "the exported span opened a new trace instead of joining the \
+             caller's. `set_parent` is what links them; the `trace_id` field \
+             on the log line is not.",
+        );
+        assert_eq!(
+            hex(&request_span.parent_span_id),
+            PARENT_SPAN,
+            "the exported span has no remote parent, so a backend cannot draw \
+             the edge from the caller's span to this one",
+        );
+
+        // And the extension still reaches application code, which is the
+        // other half of what the layer is for.
+        let _ = TraceContext::from_headers(&axum::http::HeaderMap::new());
+    }
+}
