@@ -10,8 +10,8 @@ Symbols:
 
 Functions  Expressions  Impls  Traits  Methods  Dependency
 
-0/0        0/0          0/0    0/0     0/0      ?  arcature 0.1.2
-0/0        0/0          0/0    0/0     0/0      ?  |-- arcature-macros 0.1.2
+0/0        0/0          0/0    0/0     0/0      ?  arcature 0.1.3
+0/0        0/0          0/0    0/0     0/0      ?  |-- arcature-macros 0.1.3
 0/0        14/14        0/0    0/0     3/3      !  |   |-- proc-macro2 1.0.107
 0/0        4/4          0/0    0/0     0/0      !  |   |   `-- unicode-ident 1.0.24
 0/0        0/0          0/0    0/0     0/0      ?  |   |-- quote 1.0.47
