@@ -139,8 +139,11 @@ let layer = config.into_layer(store)?;
 `SessionConfig::dev(key)` relaxes `Secure` for plain HTTP in development.
 `arc key:generate` produces a signing key.
 
-The store is yours to choose: any `tower_sessions::SessionStore`. Arcature
-does not pick one by default.
+The store is yours to choose: any `tower_sessions::SessionStore`. Behind
+`session-store-db`, `DbSessionStore` keeps sessions in the application's own
+database, which is what stops a deploy from signing everybody out; the
+scaffold wires it. Swap it for `MemoryStore` in a test, or for anything else
+implementing the trait.
 
 From a handler:
 
@@ -160,6 +163,51 @@ pub async fn handler(session: Session) -> Result<Response> {
 `Flash` writes one-shot messages read and cleared on the next request:
 `flash.success(..)`, `.error(..)`, `.warning(..)`, `.info(..)`, and
 `flash.messages()` to read them.
+
+## Sign-in flows
+
+Everything above is a seam: hash a password, bind a user to a session,
+authorize an action. A sign-in screen is those seams plus a handful of small
+decisions where the obvious implementation is wrong in a way nothing tells
+you about. `auth::flows`, behind `auth-flows` and off by default, owns that
+handful and nothing else.
+
+| Type | What the naive version leaks |
+| --- | --- |
+| `CredentialChecker` | Skipping the Argon2 verification when the address is unknown turns response *time* into a working list of who has an account. |
+| `EmailVerification` | A link bound to the account rather than to the address verifies whichever address the account holds when it is clicked. |
+| `LoginThrottle` | Counting failures per account misses the actual attack, which is one guess each against ten thousand accounts; counting them per account *only* also hands anybody a way to lock anybody else out. |
+| `PasswordConfirmation` | A boolean in the session says a password was proved at some point, never says when, and is inherited by whoever holds the session next. |
+| `PasswordResets` (`auth-reset`) | Checking "is this token valid?" and then deleting it is two statements with a gap, and two requests carrying the same link both pass the check. |
+| `RememberTokens` (`auth-remember`) | A cookie that does not rotate cannot tell a returning user from a stolen one. |
+
+Each type documents its own attack in full. This is the half of a sign-in
+form that is the same in every application, and the half where being wrong is
+silent — which together is the whole reason it is here rather than in yours.
+
+### Scaffolding the other half
+
+The account table, the handlers, the routes and the HTML are the
+application's. `arc make:auth user` writes all but the last:
+
+| File | Holds |
+| --- | --- |
+| `app/auth/user.rs` | the account: the model, plus `AuthUser` and `UserLoader` |
+| `app/auth/user_registration_controller.rs` | sign-up |
+| `app/auth/user_session_controller.rs` | sign-in and sign-out |
+| `app/auth/user_password_controller.rs` | forgotten-password and reset |
+| `app/auth/user_routes.rs` | `user_auth_routes()` |
+| `database/migrations/m<stamp>_create_users.rs` | the table |
+
+Every file is declared as it is written, so no `pub mod` line is left to add
+by hand. Four notes are, and they are the whole of what is not automatic:
+`auth-flows` and `auth-reset` are not in the feature list `arc new` writes;
+the migration is not in `Migrator::migrations()`; the reset table is not in
+that migration, because `PasswordResets::new(pool).migrate()` owns it; and
+the route collection is not merged into `bootstrap/app.rs`.
+
+Headless throughout — six files and no screens. Reach for `arc make:page` or
+`arc make:view` for what the user actually looks at.
 
 ## Authorization
 
@@ -300,4 +348,6 @@ authenticated browser, which is the attack it is named after.
 
 Your user model, roles, permissions, or account schema. Cryptography — Argon2,
 HMAC, SHA-2 and TLS come from RustCrypto, `cookie`, and the certified rustls
-plus aws-lc-rs path. A default session store.
+plus aws-lc-rs path. The screens: `auth::flows` owns the decisions behind a
+sign-in form and `arc make:auth` writes the handlers, but nothing in this
+module renders a page.
