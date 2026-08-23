@@ -411,7 +411,6 @@ fn event(r: &Rendered) -> String {
         "//! The `{type_name}` in-process event.\n\
          \n\
          use arcature::Event;\n\
-         use arcature::prelude::*;\n\
          \n\
          /// Dispatched through the `Dispatcher`; listeners receive it by\n\
          /// reference, so the fields describe what happened rather than what\n\
