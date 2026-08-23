@@ -40,8 +40,8 @@ graph, and most applications never enable it.
 
 `otel` adds the OTLP **span** exporter and nothing else. The Prometheus
 endpoint belongs to `observe` — `observe::metrics` is not gated on `otel`,
-whatever the comment above the feature in `Cargo.toml` suggests — so a
-default build already has it.
+as the comment above the feature in `Cargo.toml` also says — so a default
+build already has it.
 
 `tracing-subscriber` is pinned with `registry` and `fmt` and nothing else.
 `ansi` is off, so colour is unavailable rather than disabled; `env-filter` is
@@ -227,11 +227,16 @@ Two consequences worth being exact about:
   id is stage 8 and the access log is stage 9 — and switching the request id
   off while leaving the log on produces lines with an empty id rather than an
   error.
-- A handler's own `tracing::info!` does **not** automatically carry the
-  request id. `AccessLogService` builds its `arcature.request` span and binds
-  it, but never enters it, so no other event becomes a child of it. A handler
-  that wants the id on its own lines reads `RequestId` from the request and
-  records it, or opens its own span.
+- A handler's own `tracing::info!` **does** carry the request id.
+  `AccessLogService` attaches its `arcature.request` span to the inner call
+  with `Instrument`, so the span is entered exactly while that future is
+  polled and a handler's own events inherit `request_id`, `method`, `path`
+  and `client_ip`. `Instrument` rather than a `span.enter()` guard: in async
+  code a guard stays entered across every await point, including the ones
+  where the task is parked and another request is running on the thread,
+  which would attribute other requests' lines to this one.
+  `tests/observe_request_span.rs` pins both halves — the access line carrying
+  the id, and a handler event inheriting it.
 
 Both layers are off unless asked for:
 
@@ -366,9 +371,14 @@ route or per group and names the template itself, and `route` is a
 
 ### Wiring it
 
-Neither the registry nor the layer is installed by the application builder.
-Nothing in the [pipeline](deployment.md#the-pipeline) constructs a `Metrics`,
-and there is no `/metrics` route unless the application adds one:
+The builder installs the layer but never the registry and never the route.
+`ApplicationBuilder::metrics(registry)` puts `MetricsLayer` at stage 9, which
+is where you want it — see [What this module does not do](#what-this-module-does-not-do)
+for why stage 21 is not. Nothing in the
+[pipeline](deployment.md#the-pipeline) constructs a `Metrics`, and there is no
+`/metrics` route unless the application adds one.
+
+Hand-wiring the layer instead puts it among the user layers at 21:
 
 ```rust,ignore
 use arcature::observe::{Metrics, MetricsLayer};

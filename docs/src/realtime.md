@@ -214,14 +214,20 @@ number lives on the shutdown config, and two endpoints built with two different
 admits 100 connections. It returns a `ConnectionGuard`, and dropping the guard
 decrements the count and wakes any drain waiter.
 
-**A WebSocket connection holds its guard; an SSE stream does not.**
-`run_connection` takes the guard as an argument and holds it for the life of the
-socket. `SseEndpoint::handle` acquires a guard to make the limit check, but
-never moves it into the stream it returns, so the guard drops when the response
-is built — before the first byte is written. The source comment at that line
-says the guard is held for the lifetime of the stream; the code does not do
-that. Two consequences: the cap bounds concurrent SSE *admissions* rather than
-concurrent SSE streams, and the drain below cannot see SSE streams at all.
+**Both transports hold their guard for the whole connection.**
+`run_connection` takes the guard as an argument and holds it for the life of
+the socket. `SseEndpoint::handle` carries its guard in the stream's `unfold`
+state, so it lives exactly as long as the stream and drops when the client
+disconnects or the drain ends it. The cap therefore bounds concurrent
+connections rather than concurrent admissions, on both paths.
+
+This was not always true of SSE. The line that should have held the guard was
+`let _ = guard;`, which drops it immediately — `_` is not a binding — under a
+comment claiming the opposite, so the cap gated the instant of admission and
+nothing after it. It is fixed, and
+`a_second_sse_stream_is_refused_while_the_first_is_still_held` in
+`tests/realtime.rs` fails against the old code rather than merely passing
+against the new.
 
 ## What a client sees when it lags
 
@@ -358,9 +364,11 @@ one more payload, or when the last `Broadcast` handle drops and the channel
 closes. The keep-alive tick does not help: axum emits the keep-alive comment
 when the inner stream is pending and does not re-enter it, so from the client's
 side the connection keeps looking healthy while the server is trying to shut
-down. Combined with the SSE guard release described above, that means
-`realtime::drain` can return `Ok(())` with SSE streams still open — the registry
-count it waits on never included them.
+down. Because the stream holds its connection guard for its whole life, the registry
+does count it, so a parked stream does not vanish from the drain — it stalls
+it. `realtime::drain` waits out its full bound and then returns
+`Err(RealtimeError::Shutdown { remaining })` naming the streams still open,
+rather than returning `Ok(())` while they linger.
 
 **The WebSocket path copies each payload per subscriber.** The `Arc<[u8]>` keeps
 the channel's own fan-out cheap, but the send does

@@ -1,5 +1,61 @@
 # Upgrading
 
+## Upgrading from 0.1.1 to 0.1.2
+
+Nothing to do. `0.1.2` removes nothing, changes no public signature, and adds
+no feature flag, so `cargo update -p arcature` takes it.
+
+Read on only if you serve Server-Sent Events, or if something parses your logs.
+
+### Two behaviours change, and neither is a compiler error
+
+**An SSE connection now counts against the connection limit for as long as it
+is open.** It used to count for the instant it was admitted and no longer:
+`SseEndpoint::handle` acquired a `ConnectionGuard` and then wrote
+`let _ = guard;`, which drops it on that line — `_` is not a binding — under a
+comment claiming it was held for the life of the stream. The cap therefore
+bounded concurrent *admissions* rather than concurrent streams, and an
+application could hold any number of SSE connections open against a
+`ShutdownConfig::new(1)`.
+
+If you sized `max_connections` while that was true, you sized it against a
+limit that was not being enforced. The `n + 1`th concurrent SSE stream now
+gets the `503` the configuration always promised. Raise the number if the old
+behaviour was what your capacity planning assumed.
+
+`realtime::drain` is affected in the same direction: an open SSE stream is now
+visible to it, so a drain that used to return `Ok(())` while streams lingered
+will now wait for them and, if they outlast its bound, return
+`Err(RealtimeError::Shutdown { remaining })`.
+
+**Handler log lines gain three fields.** `AccessLogService` built its request
+span and never entered it, so a `tracing::info!` inside a handler inherited
+nothing. It now attaches the span to the inner call, and handler events carry
+`request_id`, `method`, `path` and `client_ip`. Anything parsing your logs
+against an exact key set will see the new keys.
+
+### Two new builder methods, both opt-in
+
+`ApplicationBuilder::metrics(registry)` and
+`ApplicationBuilder::trace_context()` install the metrics and trace-context
+layers at stages 9 and 8. Both were previously reachable only through
+`.layer(..)`, which lands at stage 21 — inside the body limit, the timeout,
+maintenance and the rate limiter — so a counter there missed every `413`,
+`408`, `503` and `429`, and a trace context there left those requests with no
+trace at all.
+
+If you install either by hand today, switch:
+
+```diff
+-    .layer(MetricsLayer::new(metrics.clone()))
+-    .layer(TraceContextLayer)
++    .metrics(metrics.clone())
++    .trace_context()
+```
+
+Your request total will go up, because it starts including the refusals it was
+always supposed to count.
+
 ## Upgrading from 0.1.0 to 0.1.1
 
 Nothing to do. `0.1.1` removes nothing and changes no public signature, so if
@@ -36,7 +92,7 @@ configuration always said: if a limit was set per-IP and tuned against the
 global behaviour, the effective ceiling is now that limit times your caller
 count, so re-check the number. Addresses from `X-Forwarded-For` are trusted
 only from peers you list with `ApplicationBuilder::trusted_proxies`, and the
-default list is empty -- behind a reverse proxy, the address is your proxy's
+default list is empty — behind a reverse proxy, the address is your proxy's
 until you say otherwise.
 
 ### Fourteen new feature flags
@@ -50,10 +106,10 @@ things that happen without asking.
 
 | Feature | What it adds | Why it is opt-in |
 |---|---|---|
-| `auth-flows` | `auth::flows` -- the decisions between `auth`'s seams and a login form that are wrong in ways nothing reports. An unknown address costs the same time as a wrong password; a failed attempt is throttled by address *and* caller | An application with no sign-in screen has no use for it, and it is the half of authentication where a plausible implementation leaks who has an account |
+| `auth-flows` | `auth::flows` — the decisions between `auth`'s seams and a login form that are wrong in ways nothing reports. An unknown address costs the same time as a wrong password; a failed attempt is throttled by address *and* caller | An application with no sign-in screen has no use for it, and it is the half of authentication where a plausible implementation leaks who has an account |
 | `auth-reset` | One-time password-reset links: mailed once, redeemed once, stored as a SHA-256 digest, and issuing a new one invalidates the previous mail | Brings a table and a migration. An application whose accounts are provisioned by an administrator has no use for it |
 | `auth-remember` | Rotating remember-me tokens, with the theft detection that makes a weeks-long credential defensible | Brings a table and a migration. "Stay signed in" is a product decision |
-| `api-tokens` | Hashed personal access tokens -- an opaque bearer credential for a CLI, a CI job, another service. The database holds only a SHA-256 digest | Brings a table and a migration, and is independent of `auth`: an API with no passwords may still hand out a token |
+| `api-tokens` | Hashed personal access tokens — an opaque bearer credential for a CLI, a CI job, another service. The database holds only a SHA-256 digest | Brings a table and a migration, and is independent of `auth`: an API with no passwords may still hand out a token |
 
 **Cryptography**
 
@@ -96,20 +152,20 @@ One thing `auth-reset` does **not** do, because it would be easy to assume it
 does: spending a reset link does not sign the account's other sessions out.
 Sessions are keyed by session id and are not indexed by user, so there is no
 portable statement that deletes every session belonging to one subject. The
-mechanism that would hold -- a credential stamp checked when a session loads
+mechanism that would hold — a credential stamp checked when a session loads
 -- is a separate piece this release does not ship. If your threat model is
 "the attacker already has a session and the user is resetting to evict them",
 that is yours to build on top.
 
 None of the five new database features shares a table with any other, and no
-two claim the same advisory lock -- `tests/advisory_locks.rs` fails if that
+two claim the same advisory lock — `tests/advisory_locks.rs` fails if that
 stops being true, so two migrators can run concurrently without one waiting on
 a lock the other holds under a different name.
 
 ### Following `main` instead
 
 `main` moves ahead of the release and breaks without notice. To follow it,
-depend by git reference and pin a revision -- a branch reference will move
+depend by git reference and pin a revision — a branch reference will move
 under you.
 
 ```toml
@@ -124,7 +180,7 @@ Arcature is versioned `MAJOR.MINOR.PATCH`, starting at `0.1.0`.
 | Field | Increments when |
 |---|---|
 | `MAJOR` | Something breaks: a removed API, a changed signature, a changed default behaviour. Stays `0` until the API is frozen. |
-| `MINOR` | A compatible addition -- and, while `MAJOR` is `0`, a breaking change too. |
+| `MINOR` | A compatible addition — and, while `MAJOR` is `0`, a breaking change too. |
 | `PATCH` | Something is fixed compatibly. |
 
 The current version is `0.1.1`, readable at runtime as
