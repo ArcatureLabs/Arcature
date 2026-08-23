@@ -89,7 +89,13 @@ fn execute(cmd: Subcommand) -> Result<(), CliError> {
             dest,
             stack,
             database,
-        } => commands::new::run(&name, dest, stack, database).map_err(CliError::from),
+            install,
+        } => commands::new::run(&name, dest, stack, database, install).map_err(CliError::from),
+        Subcommand::Install { ci } => {
+            let installed = commands::install::run(ci).map_err(CliError::from)?;
+            println!("{} completed", installed.as_str());
+            Ok(())
+        }
         Subcommand::Version => {
             commands::version::run();
             Ok(())
@@ -200,6 +206,7 @@ macro_rules! command_error {
 
 command_error! {
     commands::dev::DevError,
+    commands::install::InstallError,
     commands::new::NewError,
     commands::serve::ServeError,
     commands::migrate::MigrateError,

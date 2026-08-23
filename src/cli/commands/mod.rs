@@ -18,6 +18,7 @@
 
 pub mod db;
 pub mod dev;
+pub mod install;
 pub mod make;
 pub mod migrate;
 pub mod new;

@@ -49,9 +49,17 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const endpoint = process.env.ARCATURE_VITE_IPC
+// Both values are arguments, not environment. The supervisor mints the
+// endpoint per run and owns where the sentinel lives; neither is a knob, and
+// an environment variable reads like one -- it invites being set by hand, it
+// is inherited by anything this process spawns, and it makes a shell that
+// exported a stale value look like a bug in the dev server.
+const [endpoint, sentinelArgument] = process.argv.slice(2)
 if (!endpoint) {
-  console.error('arc dev: ARCATURE_VITE_IPC is not set; nothing to listen on')
+  console.error(
+    'arc dev: no endpoint argument. This file is written and run by `arc dev`; ' +
+      'running it by hand is not supported.',
+  )
   process.exit(1)
 }
 
@@ -59,7 +67,7 @@ if (!endpoint) {
 if (process.platform !== 'win32' && fs.existsSync(endpoint)) fs.unlinkSync(endpoint)
 
 const httpServer = http.createServer()
-const sentinel = path.resolve(process.env.ARCATURE_RESTART_SENTINEL ?? '.arcature/restart')
+const sentinel = path.resolve(sentinelArgument ?? '.arcature/restart')
 
 // The backend just came back up, so the page's data is stale even where its
 // modules are not. Vite's watcher is already running; one more file is free.
@@ -164,8 +172,21 @@ mod tests {
     #[test]
     fn the_script_listens_on_the_endpoint_the_supervisor_minted() {
         let script = script_text();
-        assert!(script.contains("process.env.ARCATURE_VITE_IPC"));
+        assert!(script.contains("process.argv.slice(2)"));
         assert!(script.contains("httpServer.listen(endpoint"));
+    }
+
+    /// The endpoint and the sentinel are per-run values the supervisor owns.
+    /// Reading either from the environment invites a developer to set it,
+    /// leaks it to every process Vite spawns, and lets a stale exported value
+    /// look like a broken dev server.
+    #[test]
+    fn the_script_reads_no_environment_variable() {
+        let script = script_text();
+        assert!(
+            !script.contains("process.env"),
+            "the script should take its inputs as arguments; got: {script}"
+        );
     }
 
     #[test]

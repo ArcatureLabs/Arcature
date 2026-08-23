@@ -36,7 +36,11 @@ pub enum Subcommand {
         dest: Option<PathBuf>,
         stack: Stack,
         database: Database,
+        install: bool,
     },
+    /// `arc install [--ci]`. Executed in
+    /// [`commands::install`](super::commands::install).
+    Install { ci: bool },
     /// `arc version` (also `--version`, `-V`). Executed in
     /// [`commands::version`](super::commands::version).
     Version,
@@ -447,6 +451,16 @@ pub fn command() -> Command {
                 .help("Print the framework version"),
         )
         .subcommand(new_subcommand())
+        .subcommand(
+            Command::new("install")
+                .about("Install the frontend's npm dependencies")
+                .arg(
+                    Arg::new("ci")
+                        .long("ci")
+                        .action(ArgAction::SetTrue)
+                        .help("Use `npm ci`, which enforces package-lock.json"),
+                ),
+        )
         .subcommand(Command::new("version").about("Print the framework version"))
         .subcommand(
             Command::new("serve")
@@ -584,8 +598,8 @@ pub fn command() -> Command {
     cmd
 }
 
-/// The `arc new` subcommand. Split out because its four arguments would
-/// otherwise bury the shape of [`command`].
+/// The `arc new` subcommand. Split out because its arguments would otherwise
+/// bury the shape of [`command`].
 fn new_subcommand() -> Command {
     let stacks: Vec<&'static str> = Stack::ALL.iter().map(|s| s.as_str()).collect();
     let drivers: Vec<&'static str> = Database::ALL.iter().map(|d| d.as_str()).collect();
@@ -607,6 +621,12 @@ fn new_subcommand() -> Command {
                 .value_parser(stacks)
                 .default_value(Stack::default().as_str())
                 .help("The frontend stack"),
+        )
+        .arg(
+            Arg::new("no-install")
+                .long("no-install")
+                .action(ArgAction::SetTrue)
+                .help("Skip `npm install`; run `arc install` yourself later"),
         )
         .arg(
             Arg::new("db")
@@ -680,6 +700,10 @@ fn from_matches(matches: &ArgMatches) -> Result<Subcommand, clap::Error> {
             dest: sub.get_one::<PathBuf>("dest").cloned(),
             stack: Stack::parse(&string_of(sub, "stack")).unwrap_or_default(),
             database: Database::parse(&string_of(sub, "db")).unwrap_or_default(),
+            install: !sub.get_flag("no-install"),
+        },
+        "install" => Subcommand::Install {
+            ci: sub.get_flag("ci"),
         },
         "version" => Subcommand::Version,
         "serve" => Subcommand::Serve {
@@ -790,12 +814,35 @@ mod tests {
     }
 
     #[test]
+    fn no_install_opts_out_of_the_automatic_npm_install() {
+        let Subcommand::New { install, .. } =
+            parse(&args(&["new", "blog", "--no-install"])).expect("parses")
+        else {
+            panic!("expected `new`");
+        };
+        assert!(!install);
+    }
+
+    #[test]
+    fn install_defaults_to_npm_install_and_ci_is_opt_in() {
+        let Subcommand::Install { ci } = parse(&args(&["install"])).expect("parses") else {
+            panic!("expected `install`");
+        };
+        assert!(!ci);
+        let Subcommand::Install { ci } = parse(&args(&["install", "--ci"])).expect("parses") else {
+            panic!("expected `install`");
+        };
+        assert!(ci);
+    }
+
+    #[test]
     fn new_defaults_to_the_certified_stack_and_driver() {
         let Subcommand::New {
             name,
             dest,
             stack,
             database,
+            install,
         } = parse(&args(&["new", "blog"])).expect("parses")
         else {
             panic!("expected `new`");
@@ -804,6 +851,9 @@ mod tests {
         assert_eq!(dest, None);
         assert_eq!(stack, Stack::React);
         assert_eq!(database, Database::Postgres);
+        // A generated project should be runnable without a second command,
+        // so the install is the default and --no-install is the opt-out.
+        assert!(install);
     }
 
     #[test]

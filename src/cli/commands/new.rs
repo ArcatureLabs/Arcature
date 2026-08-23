@@ -27,12 +27,57 @@ pub fn run(
     dest: Option<PathBuf>,
     stack: Stack,
     database: Database,
+    install: bool,
 ) -> Result<(), NewError> {
     let target = dest.unwrap_or_else(|| PathBuf::from(name));
     crate::templates::generate(&target, template_stack(stack), template_database(database))
         .map_err(NewError::Template)?;
     println!("Created {name} at {}", target.display());
+
+    let installed = install && install_frontend(&target);
+    next_steps(name, installed);
     Ok(())
+}
+
+/// Install the frontend, reporting rather than failing.
+///
+/// Returns whether the project is ready to `arc dev`.
+///
+/// A failure here is deliberately not a [`NewError`]. The application is
+/// already written and correct; npm being absent, offline, or behind a proxy
+/// that rejects the request says nothing about the files on disk. Turning
+/// that into a failed `arc new` would leave a complete project behind an
+/// error message, and the developer's next move -- delete it and try again --
+/// is exactly the wrong one.
+fn install_frontend(target: &std::path::Path) -> bool {
+    println!("  installing frontend dependencies (npm install)...");
+    match super::install::install(target, false) {
+        Ok(_) => true,
+        Err(error) => {
+            println!();
+            println!("note: the frontend was not installed: {error}");
+            println!("      the application is written and complete; run `arc install`");
+            println!("      inside it once npm can reach the registry.");
+            false
+        }
+    }
+}
+
+/// What to do next, in the order it has to be done.
+///
+/// `0.1.2` printed the created path and stopped. Everything below was true
+/// then too and was written down only in the generated `justfile`, which is a
+/// file most people never open -- so the first thing a new project did was
+/// fail, and it failed inside Node with a module-resolution trace.
+fn next_steps(name: &str, installed: bool) {
+    println!();
+    println!("Next:");
+    println!("  cd {name}");
+    if !installed {
+        println!("  arc install          # the frontend's npm dependencies");
+    }
+    println!("  arc key:generate     # writes APP_KEY into .env");
+    println!("  arc dev              # one port, backend and Vite together");
 }
 
 /// Map the CLI's stack onto the catalog's.
@@ -122,6 +167,8 @@ mod tests {
             Some(target.clone()),
             Stack::Svelte,
             Database::Sqlite,
+            // No npm from a unit test: it needs a network and takes seconds.
+            false,
         )
         .expect("generated");
         assert!(target.join("resources/js/app.ts").exists());
@@ -134,8 +181,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let target = dir.path().join("demo");
         std::fs::create_dir_all(&target).expect("mkdir");
-        let error =
-            run("demo", Some(target), Stack::default(), Database::default()).expect_err("refused");
+        let error = run(
+            "demo",
+            Some(target),
+            Stack::default(),
+            Database::default(),
+            false,
+        )
+        .expect_err("refused");
         assert!(matches!(
             error,
             NewError::Template(crate::templates::TemplateError::ExistingTarget { .. })

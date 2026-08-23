@@ -80,6 +80,8 @@ pub enum DevError {
     Project(Cause),
     /// `node` is not on the path, so Vite cannot be started.
     NodeMissing,
+    /// The frontend's npm dependencies are not installed.
+    Frontend(super::install::InstallError),
     /// The Vite entry script could not be written to the scratch directory.
     Script(std::io::Error),
     /// A child process could not be started.
@@ -126,6 +128,7 @@ impl std::fmt::Display for DevError {
                 "`node` was not found on PATH. `arc dev` runs Vite as a child \
                  process, so Node.js has to be installed."
             ),
+            Self::Frontend(source) => write!(formatter, "{source}"),
             Self::Script(source) => write!(
                 formatter,
                 "could not write the Vite entry script into .arcature: {source}"
@@ -165,6 +168,7 @@ impl std::error::Error for DevError {
             }
             Self::Bind { source, .. } => Some(source),
             Self::Watch(source) => Some(source),
+            Self::Frontend(source) => Some(source),
             Self::NodeMissing => None,
         }
     }
@@ -261,6 +265,13 @@ pub async fn run(options: Options) -> Result<(), DevError> {
         .map_err(|error| DevError::Project(Box::new(error)))?;
 
     let node = project::node_version().ok_or(DevError::NodeMissing)?;
+    // Before anything is written or spawned. Without this the first sign of
+    // an uninstalled frontend is Node throwing `ERR_MODULE_NOT_FOUND` for
+    // `vite` out of a generated file the reader never wrote, through four
+    // frames of `node:internal/modules/*`, followed by the supervisor
+    // reporting that the process which should have listened exited first.
+    // Three messages, none of them naming the one thing that is wrong.
+    super::install::ensure_installed(project.root()).map_err(DevError::Frontend)?;
     let endpoints = Endpoints::mint(&scratch);
     let sentinel = project.sentinel();
     // Written before Vite starts, because Vite reads it on the first change
@@ -298,9 +309,13 @@ pub async fn run(options: Options) -> Result<(), DevError> {
 
 /// Start Vite in middleware mode on its endpoint.
 ///
-/// Vite is given the sentinel path in the environment rather than having it
-/// compiled into the script, so the script stays a fixed file the developer
-/// can read and the supervisor stays the one deciding where things live.
+/// The endpoint and the sentinel path are passed as arguments rather than in
+/// the environment. Both are decided by the supervisor for the lifetime of
+/// one run, and neither is configuration: an environment variable would
+/// suggest otherwise, would be inherited by everything Vite spawns, and would
+/// let a stale value exported in some shell present itself as a fault in the
+/// dev server. Arguments are visible in a process list and reach exactly one
+/// process.
 fn start_vite(
     project: &Project,
     script: &std::path::Path,
@@ -310,13 +325,13 @@ fn start_vite(
     let mut command = inherited("node");
     command
         .arg(script)
-        .current_dir(project.root())
-        // stdin is left as `inherited` set it: a pipe the supervisor holds
-        // open, whose closing is how Vite learns it was orphaned. A null
-        // stdin here is end-of-file immediately, and Vite would shut down
-        // the moment it finished starting. See the header of `child.rs`.
-        .env(crate::config::VITE_IPC_ENV, &endpoints.vite)
-        .env("ARCATURE_RESTART_SENTINEL", sentinel);
+        .arg(&endpoints.vite)
+        .arg(sentinel)
+        .current_dir(project.root());
+    // stdin is left as `inherited` set it: a pipe the supervisor holds
+    // open, whose closing is how Vite learns it was orphaned. A null
+    // stdin here is end-of-file immediately, and Vite would shut down
+    // the moment it finished starting. See the header of `child.rs`.
 
     ChildGuard::spawn("vite", &mut command).map_err(|source| DevError::Spawn {
         program: String::from("node (for Vite)"),
