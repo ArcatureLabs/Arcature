@@ -1915,6 +1915,26 @@ therefore its first.
   and which are recorded as names -- which is the whole rule for what has to
   be in scope, and for what a typo costs in each.
 
+- **The attack-surface inventory in `SECURITY.md` covers this release's
+  features.** It had not been touched since `0.1.0` and still stated, in bold,
+  that there was no multipart extractor and no multipart parser -- while
+  predicting that adding file upload "adds a row here". File upload was added
+  and the row was not. Twenty new rows across three sections: file uploads,
+  credentials that are not a session cookie, and rendering and localization,
+  each naming where an attacker-chosen byte enters, what interprets it, and
+  the guard **with its default**.
+
+  Six of those defaults are the kind normally assumed from a feature's name
+  and were read out of the source instead. `UploadPolicy` fails closed -- a
+  route with no policy layer accepts five raster image extensions, not
+  everything. The multipart limits apply with no layer installed, so 32 parts
+  / 8 MiB per part / 16 MiB total / 30 s per read are live rather than
+  something to configure. The cap that bites first on a default build is
+  axum's 2 MiB, not the 16 MiB, because Arcature never raises
+  `DefaultBodyLimit`. The declared `Content-Type` reaches no decision at all.
+  The read timeout is per read, not per request. And the reset link does not
+  sign an account's other sessions out.
+
 - **`RateLimit` now documents the one configuration that costs throughput,
   with the measurement behind it.** The in-memory backend sweeps its bucket
   table past 8192 entries and drops every bucket that has refilled to
