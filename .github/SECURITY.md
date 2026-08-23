@@ -358,3 +358,21 @@ one of those belongs upstream.
 Arcature is not a substitute for the reverse proxy in front of it. TLS
 termination, rate limiting and connection-level request-size limits are the
 front door's job, and the framework's defences assume it is doing it.
+
+That assumption has a measured edge, and it is worth stating rather than
+leaving to be discovered. The in-memory rate limiter keeps one bucket per key
+and sweeps the table past 8192 entries, dropping every bucket that has
+refilled to capacity -- which bounds the table only while buckets refill
+faster than new keys arrive. Under a quota whose refill is slower than that,
+the sweep is entitled to drop nothing, so it rescans a growing table on every
+request while holding a blocking mutex. Measured at 128 connections: a fresh
+key on every request costs nothing under a per-second quota and **5.2x
+throughput** under a per-hour one. A per-hour quota keyed by address is the
+ordinary shape of a login or password-reset throttle, so an attacker who can
+present many distinct keys can degrade a service that is otherwise limiting
+them correctly -- the limit holds, the throughput does not.
+
+`RateLimit::redis(cache)` does not have this property; its backend keeps no
+client-side map and lets the server expire keys. Neither does a
+faster-refilling spelling of the same rate. `RateLimit`'s documentation
+carries the four-row measurement, and `tests/load_profile.rs` reproduces it.

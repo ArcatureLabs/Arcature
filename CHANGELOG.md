@@ -1932,9 +1932,9 @@ therefore its first.
   The dangerous combination is the ordinary shape of a login or
   password-reset throttle.
 
-  No behaviour changes here. `RateLimit`, the deployment guide and the
-  backend's own comments now state it, and name the two ways out that already
-  exist: `RateLimit::redis(cache)`, which keeps no client-side map, or the
+  No behaviour changes here. `RateLimit`, the deployment guide, the security
+  policy's "what Arcature does not claim" section and the backend's own
+  comments now state it, and name the two ways out that already exist: `RateLimit::redis(cache)`, which keeps no client-side map, or the
   faster-refilling spelling of the same rate -- `per_minute(600)` and
   `per_hour(10)` permit nearly the same traffic per hour, but only the second
   accumulates. Two comments in the backend previously claimed the opposite
