@@ -231,9 +231,10 @@ updated app/policies/mod.rs
 note: invoice names `Invoice` and `User`; point them at the model this policy guards and the application's user type
 ```
 
-That lands in `app/policies/`, not in the module — every `make` kind writes to
-the by-kind directory it belongs to, and `make:module` is the one exception
-because a module *is* a directory. Move the file under
+That lands in `app/policies/`, not in the module — nearly every `make` kind
+writes to the by-kind directory it belongs to. The two exceptions are
+`make:module`, because a module *is* a directory, and `make:auth`, which
+writes a feature's worth of files into `app/auth/`. Move the file under
 `app/modules/billing/policy.rs` if you want the feature to own it, add the
 `pub mod policy;` line, and name the type in the module's `policies:` list.
 Nothing in the generator or the graph depends on where the file sits; the list
