@@ -14,19 +14,25 @@
 - [Controllers](controllers.md)
 - [Validation](validation.md)
 - [Inertia](inertia.md)
+- [Views](views.md)
+- [Localization](i18n.md)
 
 # Data
 
 - [Database](database.md)
 - [Cache](cache.md)
 - [Storage](storage.md)
+- [Uploads](uploads.md)
 
 # Behind the request
 
 - [Authentication](auth.md)
+- [API tokens](tokens.md)
+- [Encryption and signed URLs](crypt.md)
 - [Jobs](jobs.md)
 - [Events](events.md)
 - [Mail](mail.md)
+- [Notifications](notifications.md)
 
 # Operating it
 

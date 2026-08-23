@@ -178,18 +178,48 @@ edited -- is already inside the budget. The loop is not slow because the
 compiler is slow at understanding the change; it is slow because the whole
 program is rebuilt around it.
 
-### Two things this measurement cannot tell you
+### The distance to the target, measured rather than scaled
 
 The seconds above are per-unit compile time on a saturated four-core machine.
 They are the right numbers for comparing the before and after of this change,
 because both runs were taken the same way, and they are the wrong numbers for
-deciding how far 2.5s is. Scaled against the quiet-machine reading in issue
-#8 -- `cargo 5.48s (check 2.05, codegen+link 3.36)` -- the same proportions
-put a post-change Cargo invocation near 3.8s. That is over the target by
-about half again, not by the factor the raw figures above suggest. Which of
-the two readings is right is not settled here; it is settled by re-measuring
-on an idle machine, and until someone does, the honest claim is the ratio and
-not the distance.
+deciding how far 2.5s is. An earlier version of this page scaled them against
+issue #8's quiet reading and put a post-change Cargo invocation near 3.8s,
+while saying plainly that the estimate was not settled and that somebody
+should re-measure on an idle machine.
+
+Somebody has. Six one-line handler edits on an otherwise idle machine, warm
+target, `cargo build --features dev` each time:
+
+| Run | Wall clock |
+|---|---|
+| no-op build (nothing changed) | 1.2s |
+| rebuild 1 | 5.8s |
+| rebuild 2 | 4.3s |
+| rebuild 3 | 4.5s |
+| rebuild 4 | 4.3s |
+| rebuild 5 | 4.4s |
+| rebuild 6 | 5.5s |
+| warm `cargo check` (type-check only) | **1.6s** |
+
+So the Cargo half of the loop is **about 4.4s**, and the estimate was
+optimistic by roughly fifteen per cent -- close enough to have been worth
+making, wrong enough to have been worth checking. Against a 2.5s target that
+is over by about 1.8x, not the fourfold the saturated per-unit figures
+suggest.
+
+The split holds up and is the useful part. Type-checking a one-line change is
+1.6s, comfortably inside the budget; everything above that is code generation
+and linking for the whole program, which does not shrink when the diff does.
+The loop is not slow because the compiler is slow at understanding the edit.
+
+One trap for whoever measures next. A `cargo check` taken straight after a
+`cargo build` reads about **90s** on this project, and it is not the
+type-check cost -- `check` keeps its own fingerprints and artifacts, so the
+first one after a build is cold. Run it twice and take the second; the 1.6s
+above is a second run. A measurement script that interleaves `build` and
+`check` will report the cold number every time and make type-checking look
+like the bottleneck it is not.
 
 The second thing is larger, and is missing from the list above because
 `--timings` cannot see it. Issue #8's own breakdown has `spawn` at 5.55s of

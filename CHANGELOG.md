@@ -47,13 +47,15 @@ framework's own workspace build. That is a cost paid on every save rather than
 once, because framework generics are monomorphised into the application's own
 crate and their debug info is emitted and linked there every time.
 
-The target is still missed. Scaling the measured split against the issue's own
-quiet reading puts a Cargo invocation near 3.8s -- over by about half again,
-not the fourfold the raw figures first suggested. A one-line handler change
-dirties 2 units out of 489, and neither is `arcature`; the cost is 11%
-type-check, 45% codegen of the application crate, 44% the binary unit and its
-link. Both dominant terms scale with the size of the program rather than the
-size of the diff.
+The target is still missed, and this release finally measures by how much
+rather than scaling an estimate. Six one-line handler edits on an idle
+machine with a warm target put a `cargo build` at **about 4.4s** (4.3s best of
+six), against a 2.5s goal -- over by roughly 1.8x, not the fourfold the
+saturated per-unit figures had suggested. A warm `cargo check` is **1.6s**, so
+type-checking the edit is comfortably inside the budget and everything above
+it is code generation and linking for the whole program. A one-line change
+dirties 2 units out of 489 and neither is `arcature`: the cost scales with the
+size of the program, not the size of the diff.
 
 The largest single stage is not Cargo's at all. On Windows the antivirus scan
 of the freshly linked 18.9 MB executable is 5.55s of an 11.20s loop, and it
@@ -1801,6 +1803,41 @@ Every other issue open at the start of this cycle is closed: #3, #4, #5, #6,
   for.
 
 ### Documentation
+
+- **Six new guide chapters, one per subsystem this release adds:** *Uploads*,
+  *Views*, *Localization*, *Notifications*, *API tokens*, and *Encryption and
+  signed URLs*. Every one of these features is off by default, so nothing
+  surfaces them by accident -- a reader either finds the name or does not get
+  the feature. The README now carries the full flag table and the chapters
+  whose readers would want them point across; these are the reference pages
+  those pointers lead to.
+
+  Each covers the same ground the existing chapters do: what the feature is
+  for, what turning it on costs, and a section on what it deliberately does
+  **not** do. *Uploads* states that `UploadPolicy` fails closed and that
+  axum's own 2 MiB body cap bites before the 16 MiB the multipart limits name.
+  *Views* argues why a compile-time template engine makes server-side template
+  injection structurally absent rather than defended against, and what
+  rebuilding-to-edit costs. *Localization* records that a locale string never
+  becomes a filesystem path, and discloses the `unsafe` in `self_cell` inside
+  the Fluent tree. *API tokens* explains why SHA-256 and not Argon2 for a
+  high-entropy secret. *Encryption* explains why XChaCha20-Poly1305 rather
+  than AES-GCM, and why signing and encrypting are separate features.
+
+- **The dev-loop chapter reports a measured distance to its target instead of
+  a scaled one.** It previously estimated a post-change `cargo build` near
+  3.8s and said outright that the figure was unsettled until somebody
+  re-measured on an idle machine. That measurement is now in the page: six
+  one-line handler edits on a quiet machine put it at **about 4.4s**, so the
+  estimate was optimistic by roughly fifteen per cent. A warm `cargo check` is
+  1.6s, which keeps the structural conclusion intact -- type-checking the edit
+  is inside the budget and code generation for the whole program is not.
+
+  It also records a trap the measurement itself fell into: a `cargo check`
+  taken straight after a `cargo build` reads about 90s here, because `check`
+  keeps separate fingerprints and the first one after a build is cold. A
+  script that interleaves the two reports that number every time and makes
+  type-checking look like a bottleneck it is not.
 
 - **`arcature::dx` says what `dx` means, once.** The module now opens by
   stating that the name covers exactly one thing -- the runtime contract
