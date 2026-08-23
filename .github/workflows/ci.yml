@@ -185,10 +185,18 @@ jobs:
     #
     # The rule for what belongs in the feature list, so the next addition
     # does not have to guess: a feature goes here when it carries SQL of its
-    # own -- `jobs`, `session-store-db`, `auth-remember` -- because its
-    # statements are otherwise never executed by anything, only compiled.
-    # A feature that merely *uses* a database through one of those does not
-    # earn a place; it would buy a third copy of a build already running.
+    # own -- `jobs`, `session-store-db`, `auth-remember`, `auth-reset`,
+    # `api-tokens`, `notifications-db` -- because its statements are
+    # otherwise never executed by anything, only compiled. A feature that
+    # merely *uses* a database through one of those does not earn a place; it
+    # would buy a third copy of a build already running.
+    #
+    # `--no-fail-fast` is not decoration. Without it the first dialect-
+    # specific failure stops the run, and the targets after it report
+    # nothing -- which reads as "did not fail" and is the same trap the
+    # `test` job documents. The three dialects are the whole point of this
+    # job, so a stop partway through it hides exactly what it was built to
+    # surface.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -197,7 +205,7 @@ jobs:
           toolchain: stable
 
       - name: Test against ${{ matrix.driver }}
-        run: cargo test --no-default-features --features "auth-remember,jobs,session-store-db,test-kit,${{ matrix.feature }}" --lib --test test_kit
+        run: cargo test --no-fail-fast --no-default-features --features "api-tokens,auth-remember,auth-reset,jobs,notifications-db,session-store-db,test-kit,${{ matrix.feature }}" --lib --test test_kit
 
   drivers:
     name: Full features, per driver
@@ -402,6 +410,66 @@ jobs:
         run: >-
           cargo test --no-fail-fast --features
           crypt,signed-urls,uploads,views,i18n,storage-s3,auth-flows,auth-reset,api-tokens,notifications,notifications-db,notifications-broadcast,notifications-queue
+
+  load:
+    name: Load profile
+    runs-on: ubuntu-latest
+
+    # Every other job asks whether the code is correct for one request. This
+    # one asks what happens when a lot of them arrive at once, which is a
+    # different question with different answers: a bucket map that never
+    # evicts, a socket that is accepted and never closed, and a shutdown that
+    # cuts in-flight work all pass every test in this file except this one.
+    #
+    # What it gates on is deliberately narrow. Throughput and latency are
+    # *recorded* here, never asserted, because a hosted runner's neighbours
+    # are invisible and a p99 threshold would fail on a busy afternoon and
+    # pass on a quiet one regardless of the diff. The assertions are the
+    # claims that survive a slow machine: zero errors inside capacity, a flat
+    # resident-memory and descriptor count across a sustained run, a flood on
+    # one rate-limit key that does not refuse a caller on another, and a
+    # shutdown that finishes what it accepted. `tests/load_profile.rs` argues
+    # this at length.
+    #
+    # Linux specifically, and not only because that is what runners are: the
+    # footprint samplers read `/proc/self/status` and `/proc/self/fd`, which
+    # is how they avoid both a C call and a dependency in a crate that
+    # forbids `unsafe`. On any other target they report "not sampled" and the
+    # leak assertions have nothing to check -- so this is the one place the
+    # memory claim is actually made.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      - name: Run the load profile
+        env:
+          ARCATURE_LOAD: "1"
+          # The other half of the switch, for the same reason the `database`
+          # job sets `ARCATURE_REQUIRE_TEST_DB`: without it, the day someone
+          # drops the variable above this job passes in four seconds having
+          # sent no requests, and nothing goes red to say so.
+          ARCATURE_REQUIRE_LOAD: "1"
+        # `--test-threads=1` because these runs compete for the machine they
+        # are measuring. Two sustained profiles in parallel would each report
+        # the other's load as their own latency.
+        run: >-
+          cargo test --no-fail-fast --features test-kit --test load_profile
+          -- --test-threads=1
+
+      # Kept whether the run passed or failed. On a pass it is the durable
+      # record the definition of done asks for; on a failure it is the
+      # evidence, and re-running to obtain it would measure a different
+      # afternoon.
+      - name: Keep the measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: load-report
+          path: load-report.txt
+          if-no-files-found: warn
 
   coverage:
     name: Test coverage
@@ -709,6 +777,7 @@ jobs:
       - oauth
       - telemetry
       - optional
+      - load
       - coverage
       - typescript
       - scaffold
