@@ -596,7 +596,7 @@ impl Run {
         let _ = writeln!(out, "error rate      {:.4}%", self.error_rate() * 100.0);
         let _ = writeln!(
             out,
-            "latency p50     {:.2}ms\nlatency p95     {:.2}ms\nlatency p99     {:.2}ms\nlatency max     {:.2}ms",
+            "latency p50     {:.2}ms\nlatency p95     {:.2}ms\nlatency p99     {:.2}ms\nlatency max     {:.2}ms  (exact; the three above are\n                                bucket lower bounds, under-reporting\n                                by at most one part in eight)",
             millis(self.percentile(50.0)),
             millis(self.percentile(95.0)),
             millis(self.percentile(99.0)),
