@@ -127,6 +127,10 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)"#;
         "INSERT INTO arcature_jobs_schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING";
 
     /// Serialise concurrent migrators. Session-scoped, so it must be released.
+    ///
+    /// The first key in the block Arcature's migrators allocate from.
+    /// `tests/advisory_locks.rs` is the registry and fails if two subsystems
+    /// ever claim the same number.
     pub(crate) const LOCK: Option<&str> = Some("SELECT pg_advisory_lock(71420001)");
 
     /// Release [`LOCK`].

@@ -54,10 +54,12 @@ ON CONFLICT (id) DO NOTHING"#;
     pub(crate) const RECORD_APPLIED: &str = "INSERT INTO arcature_password_resets_schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING";
 
     /// Serialise concurrent migrators. Session-scoped, so it must be released.
-    /// A key of its own -- the job queue uses `71420001`, the session store
-    /// `71420002`, and the API token store `71420003` -- because the four
-    /// schemas are independent and sharing a key would make an application
-    /// that migrates all of them wait on itself for no reason.
+    ///
+    /// A key of its own, the next free one after the API token store's
+    /// `71420003`. Sharing a key with another subsystem would make an
+    /// application that migrates several of them at startup wait on itself.
+    /// `tests/advisory_locks.rs` is the registry and fails if two subsystems
+    /// ever claim the same number.
     pub(crate) const LOCK: Option<&str> = Some("SELECT pg_advisory_lock(71420004)");
 
     /// Release [`LOCK`].

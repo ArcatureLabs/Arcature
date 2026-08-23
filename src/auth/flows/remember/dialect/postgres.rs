@@ -112,6 +112,8 @@ ON CONFLICT (version) DO NOTHING"#;
     /// A key of its own, the next free one after the password-reset store's
     /// `71420004`. Sharing a key with another subsystem would make an
     /// application that migrates several of them at startup wait on itself.
+    /// `tests/advisory_locks.rs` is the registry and fails if two subsystems
+    /// ever claim the same number.
     pub(crate) const LOCK: Option<&str> = Some("SELECT pg_advisory_lock(71420005)");
 
     /// Release [`LOCK`].
