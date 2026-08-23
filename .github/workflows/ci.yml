@@ -677,14 +677,167 @@ jobs:
         working-directory: app
         run: cargo build
 
-      # Only on the SQLite leg. The scaffold's smoke test boots the application,
-      # and on the other two drivers that means connecting to a server this job
-      # does not run. Compiling is the gate for those; SQLite is where the test
-      # suite the template ships actually gets executed.
+      # Only on the SQLite leg. The template's suite constructs the route table,
+      # which needs the driver's types to exist but no server; running it on the
+      # other two legs would re-prove the same assertions against a database
+      # nobody started. Compiling is the gate for those.
+      #
+      # It does not boot the application -- the file says so itself: "these run
+      # without a database, a Redis, or a bound port". Nothing here asks the
+      # generated project to answer a request. The `application` job below does.
       - name: Its own test suite
         if: matrix.db == 'sqlite'
         working-directory: app
         run: cargo test
+
+  application:
+    name: Generated application, end to end
+    runs-on: ubuntu-latest
+
+    # `scaffold` proves a generated project compiles, nine ways. This proves
+    # the thing nobody was checking: that one *runs*. Between them they cover
+    # the two halves of "can somebody actually build an application with this",
+    # and the second half is where the interesting failures are -- a migration
+    # that does not apply, a key the binary refuses to start without, a layer
+    # that panics on the first request rather than at compile time.
+    #
+    # It also does what a person following the guide does and no other job
+    # does: turns on the features a real application needs and runs the
+    # generators. `arc new` deliberately ships a lean feature list, and
+    # `notification`, `upload` and `auth` deliberately do not edit `Cargo.toml`
+    # -- a generator that reaches into the manifest can break a build it was
+    # never pointed at. Both decisions are right and both mean the working
+    # combination is assembled by hand, by a reader, exactly once per project.
+    # If that assembly is broken, every other job in this file stays green.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          # `app`, matching the DSN `arc new --db postgres` writes into the
+          # generated `.env`, so the project runs on its own configuration.
+          # Overriding `DATABASE_URL` here would work and would quietly stop
+          # testing the one file every new project starts from.
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      - name: Build the CLI
+        run: cargo build --bin arc --features cli
+
+      - name: Scaffold
+        run: ./target/debug/arc new app --stack react --db postgres
+
+      # Same reason as the `scaffold` job: a registry copy would test the last
+      # release rather than this checkout.
+      - name: Point the generated project at this checkout
+        run: |
+          {
+            echo ""
+            echo "[patch.crates-io]"
+            echo 'arcature = { path = ".." }'
+          } >> app/Cargo.toml
+
+      # The one manual step the design requires, performed the way the notes in
+      # each generated file describe it. If this list ever stops being enough,
+      # the compile below says so.
+      - name: Turn on the features a real application needs
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, pathlib
+          path = pathlib.Path("app/Cargo.toml")
+          text = path.read_text()
+          wanted = [
+              "uploads", "crypt", "signed-urls", "auth-flows", "auth-reset",
+              "auth-remember", "notifications", "notifications-db",
+              "notifications-queue", "api-tokens", "i18n",
+          ]
+          added = "".join(f'    "{name}",\n' for name in wanted)
+          marker = '    "views",\n'
+          assert marker in text, "the scaffold's feature list no longer ends where this expects"
+          path.write_text(text.replace(marker, marker + added, 1))
+          PY
+          grep -c '"uploads"' app/Cargo.toml
+
+      # Every generator whose output needs a feature that `arc new` leaves off,
+      # plus `module` because it is the one that edits another file and can
+      # therefore fail in a way the others cannot.
+      - name: Run the generators a real application runs
+        run: |
+          set -euo pipefail
+          cd app
+          ../target/debug/arc make:module billing
+          ../target/debug/arc make:auth account
+          ../target/debug/arc make:upload avatar
+          ../target/debug/arc make:notification welcome
+          ../target/debug/arc make:mail invoice
+          ../target/debug/arc make:view dashboard
+
+      - name: Mint an application key
+        working-directory: app
+        run: ../target/debug/arc key:generate
+
+      - name: Compile it
+        working-directory: app
+        run: cargo build
+
+      # The application's own binary, not `arc migrate`. They are not
+      # interchangeable: `--migrate` applies the project's `database::Migrator`
+      # *and* the framework's `arcature_sessions` table, which is not in that
+      # migrator and has its own idempotent migration. `arc migrate` knows
+      # about the first. Booting without the second is a login that fails on
+      # the first request rather than at start-up.
+      - name: Migrate
+        working-directory: app
+        run: cargo run -- --migrate
+
+      # The whole point of the job. Everything above this line is also proven,
+      # in part, somewhere else; nothing anywhere else asks the binary to bind a
+      # port and answer.
+      - name: Boot it and ask it a question
+        working-directory: app
+        run: |
+          set -euo pipefail
+          cargo run &
+          server=$!
+          # Fail on exit as well as on timeout. A binary that dies during start
+          # -- a missing key, an unreachable database -- would otherwise look
+          # identical to one that is merely slow, for the whole thirty seconds.
+          for _ in $(seq 1 60); do
+            if ! kill -0 "$server" 2>/dev/null; then
+              echo "the application exited during start-up" >&2
+              wait "$server" || true
+              exit 1
+            fi
+            if curl -fsS --max-time 2 http://127.0.0.1:3000/up > /dev/null 2>&1; then
+              break
+            fi
+            sleep 0.5
+          done
+
+          echo "== /up =="
+          curl -fsS --max-time 5 http://127.0.0.1:3000/up
+          echo
+          echo "== / =="
+          curl -fsS --max-time 5 -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/
+          echo "== /welcome =="
+          curl -fsS --max-time 5 -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/welcome
+
+          kill "$server"
+          wait "$server" 2>/dev/null || true
 
   deny:
     name: Licences and advisories
@@ -781,6 +934,7 @@ jobs:
       - coverage
       - typescript
       - scaffold
+      - application
       - deny
       - book
       - publish-dry-run
