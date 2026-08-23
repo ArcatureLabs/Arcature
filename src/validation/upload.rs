@@ -205,18 +205,27 @@ where
 /// # Example
 ///
 /// ```no_run
-/// use arcature::storage::Disk;
+/// use arcature::storage::{Disk, StorageError};
 /// use arcature::validation::upload::UploadedFile;
+///
+/// const PREFIX: &str = "avatars";
 ///
 /// async fn store_avatar(disk: Disk, upload: UploadedFile) -> arcature::Result<String> {
 ///     // Sanitized label, verified bytes, whitelisted extension -- all true
 ///     // before this line runs.
-///     let address = upload
-///         .store_under(&disk, "avatars")
-///         .await
-///         .map_err(|_| arcature::bad_request("that file could not be stored"))?;
+///     //
+///     // `?` and not a `map_err`: `From<UploadError> for Error` keeps the
+///     // split `UploadError` exists to make, so a disk that is down answers
+///     // 500 and bytes that disagree with their extension answer 422.
+///     // Collapsing the two by hand is how an upload endpoint ends up
+///     // reporting a rejected file as an outage.
+///     let address = upload.store_under(&disk, PREFIX).await?;
 ///
-///     Ok(address.path().as_str().to_string())
+///     // `address.path()` is the content address on its own. The bytes went
+///     // under the prefix, so the prefixed key is the one that finds them.
+///     let key = address.path_under(PREFIX).map_err(StorageError::from)?;
+///
+///     Ok(key.as_str().to_string())
 /// }
 /// ```
 #[non_exhaustive]
