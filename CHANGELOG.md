@@ -1208,6 +1208,41 @@ therefore its first.
   what a route needs to accept anything wider, not what it needs to be
   safe.
 
+- **`arc make:auth`.** The twenty-second kind, and the largest: six files
+  from one command -- an account model under `app/auth/<name>.rs` with
+  `AuthUser` and `UserLoader` already implemented, a registration
+  controller, a session controller, a password-reset controller, a route
+  collection, and the migration that creates the table. They arrive
+  together because five of the six are wrong on their own: a registration
+  handler that does not know how the login handler compares passwords
+  stores a hash nothing can verify.
+
+  What it writes is the half that is dangerous to get wrong, and the
+  three places it would be got wrong are closed in the generated code
+  rather than mentioned in a comment. Registration hashes the password
+  *before* it looks for an existing account and answers `202` either way,
+  so neither the body nor the response time says whether an address is
+  taken -- and it deliberately does not sign the new account in, because
+  a `Set-Cookie` on one branch and not the other puts the same oracle
+  back. Sign-in runs a full Argon2 verification against a throwaway hash
+  when no account matches, answers `CREDENTIAL_REJECTION` for an unknown
+  address and a wrong password alike, and routes a stored hash that will
+  not parse into that same rejection instead of a 500. The reset flow
+  builds the link and stops at the mail, revokes every outstanding link
+  once one is spent, and never returns the plaintext.
+
+  It is headless -- JSON in, JSON or `204` out -- and that is a choice,
+  not a gap. A generated login *form* has to pick Inertia or a
+  server-rendered view, a CSS convention and a copy deck, and be wrong
+  about at least one of them in every application; what a login *handler*
+  does is the same everywhere. `arc make:page` and `arc make:view` are one
+  command each for the other half. Four notes ship with the artifacts:
+  `auth-flows` and `auth-reset` are not in the feature list `arc new`
+  writes, the migration has to be added to `Migrator::migrations()`, the
+  reset table is created by `PasswordResets::migrate()` and not by this
+  migration, and the route collection is not mounted until
+  `bootstrap/app.rs` merges it.
+
 ### Changed
 
 - **A page rendered through a `PageContract` now titles itself.** Where every

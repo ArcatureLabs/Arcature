@@ -12,8 +12,8 @@
 //! The crate depends on clap with `default-features = false` and the manifest
 //! does not enable clap's `derive` feature, so `#[derive(Parser)]` does not
 //! exist in this build. The builder is also the better fit for the `make:*`
-//! family: twenty-one near-identical subcommands come out of one loop over
-//! [`MakeKind::ALL`] instead of twenty-one hand-written variants that could
+//! family: twenty-two near-identical subcommands come out of one loop over
+//! [`MakeKind::ALL`] instead of twenty-two hand-written variants that could
 //! drift apart.
 
 use std::ffi::OsString;
@@ -244,7 +244,7 @@ impl DbAction {
 
 /// The kind of artifact `arc make:<kind>` writes.
 ///
-/// One enum rather than twenty-one subcommand variants: every `make:*` command
+/// One enum rather than twenty-two subcommand variants: every `make:*` command
 /// takes the same single `<name>` argument and differs only in which
 /// blueprint it renders, so the difference belongs in data, not in the shape
 /// of the dispatcher.
@@ -293,6 +293,8 @@ pub enum MakeKind {
     View,
     /// An upload endpoint under `app/controllers/`.
     Upload,
+    /// A sign-in flow under `app/auth/`, and the table behind it.
+    Auth,
 }
 
 impl MakeKind {
@@ -319,6 +321,7 @@ impl MakeKind {
         Self::Mail,
         Self::View,
         Self::Upload,
+        Self::Auth,
     ];
 
     /// The bare kind name, as it appears after `make:`.
@@ -346,6 +349,7 @@ impl MakeKind {
             Self::Mail => "mail",
             Self::View => "view",
             Self::Upload => "upload",
+            Self::Auth => "auth",
         }
     }
 
@@ -381,6 +385,7 @@ impl MakeKind {
             Self::Mail => "make:mail",
             Self::View => "make:view",
             Self::Upload => "make:upload",
+            Self::Auth => "make:auth",
         }
     }
 
@@ -410,6 +415,7 @@ impl MakeKind {
             Self::Mail => "Generate a mailable in app/mail",
             Self::View => "Generate a view in app/views and its template",
             Self::Upload => "Generate an upload controller in app/controllers",
+            Self::Auth => "Generate a sign-in flow in app/auth and its migration",
         }
     }
 

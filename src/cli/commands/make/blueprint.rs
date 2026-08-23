@@ -1,7 +1,7 @@
 //! What each `arc make:<kind>` writes, and where.
 //!
-//! One function per kind would spread twenty-one near-identical decisions
-//! across twenty-one places, so instead [`plan`] answers all of them: the
+//! One function per kind would spread twenty-two near-identical decisions
+//! across twenty-two places, so instead [`plan`] answers all of them: the
 //! destination path, the file body, whether a sibling `mod.rs` should learn
 //! about the new file, and any follow-up the generator cannot do for the
 //! developer.
@@ -17,12 +17,19 @@
 //! because a scaffold that silently omits the binding is worse than one that
 //! fails to compile until it is pointed somewhere real.
 //!
-//! `notification` and `upload` compile only once the application enables the
-//! feature their imports live behind, which a fresh `arc new` does not. The
-//! alternative was to have the generator edit `Cargo.toml`, and a generator
-//! that reaches into the manifest is a generator that can break a build it
-//! was never pointed at. Each artifact's notes say which feature and why, and
-//! adding it is one line.
+//! `notification`, `upload` and `auth` compile only once the application
+//! enables the features their imports live behind, which a fresh `arc new`
+//! does not. The alternative was to have the generator edit `Cargo.toml`, and
+//! a generator that reaches into the manifest is a generator that can break a
+//! build it was never pointed at. Each artifact's notes say which feature and
+//! why, and adding it is one line.
+//!
+//! `auth` is also the one kind that does not scaffold its own screens. What a
+//! login form looks like is an application's answer, and a generator that
+//! guesses Inertia or a server-rendered view is wrong for half of them; what a
+//! login *handler* does is not, and getting it wrong leaks who has an account.
+//! So the dangerous half is written and the visible half is left to
+//! `arc make:page` and `arc make:view`.
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -72,13 +79,14 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
         MakeKind::Mail => rust(name, "app/mail", "", mailable),
         MakeKind::View => rust(name, "app/views", "View", view_struct),
         MakeKind::Upload => upload(name),
+        MakeKind::Auth => account(name),
     }
 }
 
 /// Every file `kind` + `name` produces, primary artifact first.
 ///
-/// Nineteen of the twenty-one kinds write one file, and [`plan`] is the older,
-/// narrower way to ask for one of those. Two kinds are not one file, for the
+/// Nineteen of the twenty-two kinds write one file, and [`plan`] is the older,
+/// narrower way to ask for one of those. Three kinds are not one file, for the
 /// same underlying reason: what they produce is not a file, it is a set of
 /// files that only means anything together.
 ///
@@ -87,7 +95,10 @@ pub fn plan(kind: MakeKind, name: &ArtifactName) -> Artifact {
 /// three is not a module. A view is a struct and the template it is the type
 /// of, and askama reads that template when the crate compiles -- so a view
 /// without its template is not a half-finished scaffold, it is a build
-/// failure.
+/// failure. And a sign-in flow is an account, the handlers that read and
+/// write it, and the table it lives in -- a registration handler that does
+/// not know how the login handler compares passwords stores a hash nothing
+/// can verify.
 ///
 /// A second function rather than a `Vec<Artifact>` field on [`Artifact`] --
 /// or a second path on [`super::Generated`] -- because both of those structs
@@ -98,6 +109,7 @@ pub fn plan_all(kind: MakeKind, name: &ArtifactName) -> Vec<Artifact> {
     match kind {
         MakeKind::Module => module(name),
         MakeKind::View => view(name),
+        MakeKind::Auth => auth(name),
         _ => vec![plan(kind, name)],
     }
 }
@@ -922,6 +934,717 @@ fn upload(name: &ArtifactName) -> Artifact {
             "an `UploadPolicy` layer decides which extensions the route accepts; \
              with no layer the route accepts images and nothing else"
                 .to_string(),
+        ],
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The auth blueprint: one account, three controllers, a route table, a table.
+// ---------------------------------------------------------------------------
+
+/// Everything a sign-in needs, minus the screens.
+///
+/// The six files answer one question each -- who an account is, how one is
+/// created, how a session starts and ends, how a forgotten password is
+/// recovered, which paths reach those, and what the table looks like -- and
+/// the reason they arrive together is that five of the six are wrong on
+/// their own. A registration handler that does not know how the login
+/// handler compares passwords is a registration handler that stores a hash
+/// nothing can verify.
+///
+/// It is headless: JSON in, JSON or `204` out. A generated login *form* would
+/// have to pick Inertia or a server-rendered view, a CSS convention and a
+/// copy deck, and be wrong about at least one of them in every application.
+/// The parts that are the same everywhere -- and that are dangerous to get
+/// wrong -- are here; `arc make:page` and `arc make:view` are one command
+/// each for the parts that are not.
+fn auth(name: &ArtifactName) -> Vec<Artifact> {
+    let r = Rendered::new(name, "");
+    vec![
+        account(name),
+        auth_part(name, "registration_controller", registration_controller(&r)),
+        auth_part(name, "session_controller", session_controller(&r)),
+        auth_part(name, "password_controller", password_controller(&r)),
+        auth_part(name, "routes", auth_routes(&r)),
+        auth_migration(name),
+    ]
+}
+
+/// `app/auth/<segments...>/<stem>_<part>.rs`, registered like any other file.
+///
+/// Every sibling is registered, unlike `make:module`, because these are
+/// ordinary files in an ordinary directory rather than a directory whose own
+/// `mod.rs` is written by hand. The generic registration walks up from
+/// `app/auth/` and declares each level it had to create, so `app/mod.rs`
+/// learns about `auth` without the generator naming it.
+fn auth_part(name: &ArtifactName, part: &str, contents: String) -> Artifact {
+    let stem = format!("{}_{part}", name.file_stem(""));
+    Artifact {
+        path: destination("app/auth", name, &stem),
+        contents,
+        register_module: true,
+        notes: Vec::new(),
+    }
+}
+
+/// The account itself: the model, plus the two traits that make it signable.
+fn account(name: &ArtifactName) -> Artifact {
+    let r = Rendered::new(name, "");
+    let Rendered {
+        stem,
+        type_name,
+        base_stem,
+        ..
+    } = &r;
+    let table = pluralize(base_stem);
+
+    let contents = format!(
+        "//! The `{type_name}` account: one row of `{table}`.\n\
+         //!\n\
+         //! Three impls, and only the first is what `arc make:model` writes.\n\
+         //! `AuthUser` is what lets a session hold this account; `UserLoader`\n\
+         //! is what turns the id in that session back into an account on the\n\
+         //! next request. A model with neither still compiles -- it simply\n\
+         //! cannot be signed in.\n\
+         \n\
+         use arcature::auth::UserLoader;\n\
+         use arcature::database::sea_orm::ActiveValue;\n\
+         use arcature::database::{{insert, update}};\n\
+         use arcature::prelude::*;\n\
+         \n\
+         use crate::bootstrap::AppState;\n\
+         \n\
+         /// A `{table}` row.\n\
+         #[model(table = \"{table}\")]\n\
+         pub struct {type_name} {{\n\
+         \x20   #[sea_orm(primary_key)]\n\
+         \x20   pub id: i64,\n\
+         \x20   #[sea_orm(unique)]\n\
+         \x20   pub email: String,\n\
+         \x20   /// The Argon2 PHC string. Never the password.\n\
+         \x20   pub password_hash: String,\n\
+         \x20   /// `None` until the address is proved reachable.\n\
+         \x20   pub email_verified_at: Option<DateTimeUtc>,\n\
+         }}\n\
+         \n\
+         impl AuthUser for {type_name} {{\n\
+         \x20   type Id = i64;\n\
+         \n\
+         \x20   fn id(&self) -> &i64 {{\n\
+         \x20       &self.id\n\
+         \x20   }}\n\
+         \n\
+         \x20   /// The credential every session is stamped against.\n\
+         \x20   ///\n\
+         \x20   /// Returning it is what signs the other devices out when the\n\
+         \x20   /// password changes: a session carries a digest of this, and\n\
+         \x20   /// one whose digest no longer matches is flushed on its next\n\
+         \x20   /// request. Return `None` and nothing checks, so a stolen\n\
+         \x20   /// session outlives the password it was issued against.\n\
+         \x20   fn stored_credential(&self) -> Option<&[u8]> {{\n\
+         \x20       Some(self.password_hash.as_bytes())\n\
+         \x20   }}\n\
+         }}\n\
+         \n\
+         impl UserLoader<AppState> for {type_name} {{\n\
+         \x20   type Error = arcature::Error;\n\
+         \n\
+         \x20   /// `core::result::Result` spelled out: the prelude brings a\n\
+         \x20   /// one-parameter `Result<T>` alias, and this signature needs\n\
+         \x20   /// the two-parameter one.\n\
+         \x20   async fn load_user(\n\
+         \x20       id: &i64,\n\
+         \x20       state: &AppState,\n\
+         \x20   ) -> core::result::Result<Option<Self>, Self::Error> {{\n\
+         \x20       {type_name}::query(connection(state)?)\n\
+         \x20           .where_eq({type_name}Column::Id, *id)\n\
+         \x20           .one()\n\
+         \x20           .await\n\
+         \x20   }}\n\
+         }}\n\
+         \n\
+         /// Find one account by address.\n\
+         pub async fn find_by_email(\n\
+         \x20   state: &AppState,\n\
+         \x20   email: &str,\n\
+         ) -> Result<Option<{type_name}>> {{\n\
+         \x20   {type_name}::query(connection(state)?)\n\
+         \x20       .where_eq({type_name}Column::Email, email)\n\
+         \x20       .one()\n\
+         \x20       .await\n\
+         }}\n\
+         \n\
+         /// Insert one account. The caller hashes the password.\n\
+         pub async fn create(\n\
+         \x20   state: &AppState,\n\
+         \x20   email: &str,\n\
+         \x20   password_hash: &str,\n\
+         ) -> Result<{type_name}> {{\n\
+         \x20   let record = {type_name}ActiveModel {{\n\
+         \x20       id: ActiveValue::NotSet,\n\
+         \x20       email: ActiveValue::Set(email.to_string()),\n\
+         \x20       password_hash: ActiveValue::Set(password_hash.to_string()),\n\
+         \x20       email_verified_at: ActiveValue::Set(None),\n\
+         \x20   }};\n\
+         \x20   insert(connection(state)?, record).await\n\
+         }}\n\
+         \n\
+         /// Replace one account's password hash.\n\
+         ///\n\
+         /// Writing this column is what ends every session that account has\n\
+         /// open, including the one doing the writing: the digest\n\
+         /// `stored_credential` returns changes with it. Call\n\
+         /// `AuthManager::rebind_credential` with the *re-read* account to\n\
+         /// keep the current session alive and drop only the others.\n\
+         pub async fn set_password(\n\
+         \x20   state: &AppState,\n\
+         \x20   id: i64,\n\
+         \x20   password_hash: &str,\n\
+         ) -> Result<{type_name}> {{\n\
+         \x20   let record = {type_name}ActiveModel {{\n\
+         \x20       id: ActiveValue::Unchanged(id),\n\
+         \x20       email: ActiveValue::NotSet,\n\
+         \x20       password_hash: ActiveValue::Set(password_hash.to_string()),\n\
+         \x20       email_verified_at: ActiveValue::NotSet,\n\
+         \x20   }};\n\
+         \x20   update(connection(state)?, record).await\n\
+         }}\n\
+         \n\
+         /// The database, or a server error rather than a panic.\n\
+         pub fn connection(state: &AppState) -> Result<&Db> {{\n\
+         \x20   state\n\
+         \x20       .db\n\
+         \x20       .as_ref()\n\
+         \x20       .ok_or_else(|| Error::Config(\"no database is configured\".to_string()))\n\
+         }}\n"
+    );
+
+    Artifact {
+        path: destination("app/auth", name, stem),
+        contents,
+        register_module: true,
+        notes: vec![
+            "the flows these controllers call live behind `auth-flows` and \
+             `auth-reset`, neither of which is in the feature list `arc new` \
+             writes; add both to the application's `arcature` dependency"
+                .to_string(),
+        ],
+    }
+}
+
+fn registration_controller(r: &Rendered) -> String {
+    let Rendered {
+        stem,
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    format!(
+        "//! Registration for `{type_name}`.\n\
+         //!\n\
+         //! One handler, and it answers identically whether or not the\n\
+         //! address is already taken. \"That address is already registered\"\n\
+         //! is a membership oracle anyone can query for any address, and a\n\
+         //! registration form is the one place it needs no password.\n\
+         //!\n\
+         //! It also does not sign the new account in. Auto-login is the\n\
+         //! friendlier default and it reopens the same hole from the other\n\
+         //! side: a `Set-Cookie` on one branch and not the other says which\n\
+         //! branch ran. Sign in after the address is verified, or add\n\
+         //! `AuthManager` here and accept the oracle knowingly.\n\
+         \n\
+         use arcature::prelude::*;\n\
+         use arcature::serde_json;\n\
+         \n\
+         use super::{stem}::{{create, find_by_email}};\n\
+         use crate::bootstrap::AppState;\n\
+         \n\
+         /// What a registration form sends.\n\
+         #[request]\n\
+         #[derive(Debug, Clone, Deserialize)]\n\
+         pub struct Register{type_name} {{\n\
+         \x20   /// Length only. `validator` is built here without its `email`\n\
+         \x20   /// feature, and that is the better check anyway: an address\n\
+         \x20   /// is proved by mail arriving at it, not by a regular\n\
+         \x20   /// expression agreeing with its shape.\n\
+         \x20   #[validate(length(min = 3, max = 254))]\n\
+         \x20   pub email: String,\n\
+         \x20   #[validate(length(min = 12, max = 4096))]\n\
+         \x20   pub password: String,\n\
+         }}\n\
+         \n\
+         /// The `{slash_path}` registration controller.\n\
+         pub struct {type_name}RegistrationController;\n\
+         \n\
+         #[controller]\n\
+         impl {type_name}RegistrationController {{\n\
+         \x20   /// Create one account.\n\
+         \x20   pub async fn store(\n\
+         \x20       State(state): State<AppState>,\n\
+         \x20       Validated(input): Validated<Register{type_name}>,\n\
+         \x20   ) -> Result<Response> {{\n\
+         \x20       let email = input.email.trim().to_lowercase();\n\
+         \n\
+         \x20       // Hash first, unconditionally. Hashing only when the\n\
+         \x20       // address turns out to be free would make the response\n\
+         \x20       // time say whether it was.\n\
+         \x20       let hash = state\n\
+         \x20           .hasher\n\
+         \x20           .hash(input.password.as_bytes())\n\
+         \x20           .map_err(|error| Error::Other(error.to_string()))?;\n\
+         \n\
+         \x20       if find_by_email(&state, &email).await?.is_none() {{\n\
+         \x20           create(&state, &email, hash.as_str()).await?;\n\
+         \x20       }}\n\
+         \n\
+         \x20       Ok((\n\
+         \x20           StatusCode::ACCEPTED,\n\
+         \x20           json(serde_json::json!({{\n\
+         \x20               \"status\": \"check your mail to finish signing up\",\n\
+         \x20           }})),\n\
+         \x20       )\n\
+         \x20           .into_response())\n\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+fn session_controller(r: &Rendered) -> String {
+    let Rendered {
+        stem,
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    format!(
+        "//! Sign-in and sign-out for `{type_name}`.\n\
+         //!\n\
+         //! Two decisions here are load-bearing, and both are about what the\n\
+         //! response does *not* say.\n\
+         //!\n\
+         //! A rejected sign-in answers `CREDENTIAL_REJECTION` whether the\n\
+         //! address is unknown or the password is wrong, and\n\
+         //! `CredentialChecker` runs a full Argon2 verification either way --\n\
+         //! against a throwaway hash when there is no account. Skipping that\n\
+         //! work for an unknown address makes the two cases differ by\n\
+         //! milliseconds, which is a membership oracle measurable over the\n\
+         //! network.\n\
+         //!\n\
+         //! And a stored hash that will not parse falls through to the same\n\
+         //! rejection rather than a 500, because a distinguishable error is\n\
+         //! that oracle again by another route.\n\
+         \n\
+         use std::sync::{{LazyLock, OnceLock}};\n\
+         \n\
+         use arcature::auth::PasswordHashString;\n\
+         use arcature::auth::flows::{{CREDENTIAL_REJECTION, CredentialChecker, LoginThrottle}};\n\
+         use arcature::axum::Extension;\n\
+         use arcature::http::ClientIp;\n\
+         use arcature::prelude::*;\n\
+         use arcature::serde_json;\n\
+         \n\
+         use super::{stem}::{{{type_name}, find_by_email}};\n\
+         use crate::bootstrap::AppState;\n\
+         \n\
+         /// Failed sign-ins, counted per address and per client address.\n\
+         ///\n\
+         /// A `static` because the count has to outlive the request: an\n\
+         /// instance built per call counts to one forever and throttles\n\
+         /// nothing. That makes it per-process, so two instances behind a\n\
+         /// load balancer each keep their own tally. Move it into `AppState`\n\
+         /// when it should be shared, and to a shared store when it should be\n\
+         /// shared across processes.\n\
+         static THROTTLE: LazyLock<LoginThrottle> = LazyLock::new(LoginThrottle::new);\n\
+         \n\
+         /// The verifier, built once.\n\
+         ///\n\
+         /// `CredentialChecker::new` hashes a throwaway password at\n\
+         /// construction so it has something to verify against when no\n\
+         /// account matches, and that costs one full Argon2. Building it per\n\
+         /// request would spend that on every sign-in.\n\
+         static CHECKER: OnceLock<CredentialChecker> = OnceLock::new();\n\
+         \n\
+         fn checker(state: &AppState) -> Result<&'static CredentialChecker> {{\n\
+         \x20   if let Some(checker) = CHECKER.get() {{\n\
+         \x20       return Ok(checker);\n\
+         \x20   }}\n\
+         \x20   // Built from the application's own hasher, so the throwaway\n\
+         \x20   // verification costs exactly what a real one costs. A checker\n\
+         \x20   // with default parameters would take a different amount of\n\
+         \x20   // time and put the timing difference straight back.\n\
+         \x20   let built = CredentialChecker::new((*state.hasher).clone())\n\
+         \x20       .map_err(|error| Error::Other(error.to_string()))?;\n\
+         \x20   Ok(CHECKER.get_or_init(|| built))\n\
+         }}\n\
+         \n\
+         /// What a sign-in form sends.\n\
+         #[request]\n\
+         #[derive(Debug, Clone, Deserialize)]\n\
+         pub struct {type_name}Credentials {{\n\
+         \x20   #[validate(length(min = 3, max = 254))]\n\
+         \x20   pub email: String,\n\
+         \x20   #[validate(length(min = 1, max = 4096))]\n\
+         \x20   pub password: String,\n\
+         }}\n\
+         \n\
+         /// The `{slash_path}` session controller.\n\
+         pub struct {type_name}SessionController;\n\
+         \n\
+         #[controller]\n\
+         impl {type_name}SessionController {{\n\
+         \x20   /// Start a session.\n\
+         \x20   ///\n\
+         \x20   /// `ClientIp` arrives as an extension rather than an\n\
+         \x20   /// extractor, and optionally: the raw serve path does not\n\
+         \x20   /// insert one. `None` throttles by address alone, which is\n\
+         \x20   /// weaker than throttling by both and stronger than a 500.\n\
+         \x20   pub async fn store(\n\
+         \x20       State(state): State<AppState>,\n\
+         \x20       auth: AuthManager<{type_name}>,\n\
+         \x20       client: Option<Extension<ClientIp>>,\n\
+         \x20       Validated(input): Validated<{type_name}Credentials>,\n\
+         \x20   ) -> Result<Response> {{\n\
+         \x20       let email = input.email.trim().to_lowercase();\n\
+         \x20       let address = client.map(|Extension(ip)| ip.addr());\n\
+         \n\
+         \x20       let decision = THROTTLE.check(&email, address);\n\
+         \x20       if !decision.is_allowed() {{\n\
+         \x20           let seconds = decision.retry_after().map_or(60, |d| d.as_secs());\n\
+         \x20           return Ok((\n\
+         \x20               StatusCode::TOO_MANY_REQUESTS,\n\
+         \x20               [(\"retry-after\", seconds.to_string())],\n\
+         \x20               json(serde_json::json!({{ \"message\": \"too many attempts\" }})),\n\
+         \x20           )\n\
+         \x20               .into_response());\n\
+         \x20       }}\n\
+         \n\
+         \x20       let account = find_by_email(&state, &email).await?;\n\
+         \n\
+         \x20       // A hash the parser rejects becomes \"no stored hash\",\n\
+         \x20       // which the checker answers with the same rejection as a\n\
+         \x20       // wrong password. The alternative is a 500 on exactly the\n\
+         \x20       // accounts whose rows are damaged, which says something\n\
+         \x20       // about those accounts.\n\
+         \x20       let stored = account\n\
+         \x20           .as_ref()\n\
+         \x20           .and_then(|found| PasswordHashString::new(&found.password_hash).ok());\n\
+         \n\
+         \x20       let outcome = checker(&state)?.check(stored.as_ref(), input.password.as_bytes());\n\
+         \n\
+         \x20       match (outcome.is_verified(), account) {{\n\
+         \x20           (true, Some(account)) => {{\n\
+         \x20               THROTTLE.record_success(&email, address);\n\
+         \x20               auth.login(&account)\n\
+         \x20                   .await\n\
+         \x20                   .map_err(|error| Error::Other(error.to_string()))?;\n\
+         \x20               Ok(no_content())\n\
+         \x20           }}\n\
+         \x20           _ => {{\n\
+         \x20               THROTTLE.record_failure(&email, address);\n\
+         \x20               Ok((\n\
+         \x20                   StatusCode::UNPROCESSABLE_ENTITY,\n\
+         \x20                   json(serde_json::json!({{ \"message\": CREDENTIAL_REJECTION }})),\n\
+         \x20               )\n\
+         \x20                   .into_response())\n\
+         \x20           }}\n\
+         \x20       }}\n\
+         \x20   }}\n\
+         \n\
+         \x20   /// End the session.\n\
+         \x20   pub async fn destroy(auth: AuthManager<{type_name}>) -> Result<Response> {{\n\
+         \x20       auth.logout()\n\
+         \x20           .await\n\
+         \x20           .map_err(|error| Error::Other(error.to_string()))?;\n\
+         \x20       Ok(no_content())\n\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+fn password_controller(r: &Rendered) -> String {
+    let Rendered {
+        stem,
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    format!(
+        "//! Password reset for `{type_name}`.\n\
+         //!\n\
+         //! `request` mints a one-time link; `reset` redeems it.\n\
+         //!\n\
+         //! `request` answers the same way for an address with no account,\n\
+         //! for the reason registration does -- a forgotten-password form\n\
+         //! that says \"no such address\" is a membership oracle needing no\n\
+         //! password at all.\n\
+         //!\n\
+         //! What it does not do is send the mail. The link has to reach the\n\
+         //! person somehow, and which template, transport and copy that means\n\
+         //! is the application's. The line below builds the URL and stops.\n\
+         \n\
+         use std::time::Duration;\n\
+         \n\
+         use arcature::auth::flows::PasswordResets;\n\
+         use arcature::prelude::*;\n\
+         use arcature::serde_json;\n\
+         \n\
+         use super::{stem}::{{connection, find_by_email, set_password}};\n\
+         use crate::bootstrap::AppState;\n\
+         \n\
+         /// How long a reset link is good for.\n\
+         ///\n\
+         /// Short on purpose: the window is how long a link sitting in an\n\
+         /// inbox, a proxy log or a browser history is still worth stealing.\n\
+         const RESET_TTL: Duration = Duration::from_secs(60 * 60);\n\
+         \n\
+         /// What a forgotten-password form sends.\n\
+         #[request]\n\
+         #[derive(Debug, Clone, Deserialize)]\n\
+         pub struct {type_name}PasswordRequest {{\n\
+         \x20   #[validate(length(min = 3, max = 254))]\n\
+         \x20   pub email: String,\n\
+         }}\n\
+         \n\
+         /// What the reset form sends back.\n\
+         #[request]\n\
+         #[derive(Debug, Clone, Deserialize)]\n\
+         pub struct {type_name}PasswordReset {{\n\
+         \x20   #[validate(length(min = 1, max = 512))]\n\
+         \x20   pub token: String,\n\
+         \x20   #[validate(length(min = 12, max = 4096))]\n\
+         \x20   pub password: String,\n\
+         }}\n\
+         \n\
+         /// The `{slash_path}` password controller.\n\
+         pub struct {type_name}PasswordController;\n\
+         \n\
+         #[controller]\n\
+         impl {type_name}PasswordController {{\n\
+         \x20   /// Mint a reset link, if the address has an account.\n\
+         \x20   pub async fn request(\n\
+         \x20       State(state): State<AppState>,\n\
+         \x20       Validated(input): Validated<{type_name}PasswordRequest>,\n\
+         \x20   ) -> Result<Response> {{\n\
+         \x20       let email = input.email.trim().to_lowercase();\n\
+         \x20       let resets = PasswordResets::new(connection(&state)?.sqlx().clone());\n\
+         \n\
+         \x20       if find_by_email(&state, &email).await?.is_some() {{\n\
+         \x20           let issued = resets\n\
+         \x20               .issue(&email, RESET_TTL)\n\
+         \x20               .await\n\
+         \x20               .map_err(|error| Error::Other(error.to_string()))?;\n\
+         \n\
+         \x20           // The one place the plaintext exists. Mail it. Do not\n\
+         \x20           // log it, and do not return it -- a reset link in a\n\
+         \x20           // response body belongs to anyone who can read the\n\
+         \x20           // response.\n\
+         \x20           let _link = format!(\n\
+         \x20               \"{{}}/password/reset?token={{}}\",\n\
+         \x20               state.app_url,\n\
+         \x20               issued.plaintext().expose()\n\
+         \x20           );\n\
+         \x20       }}\n\
+         \n\
+         \x20       Ok(json(serde_json::json!({{\n\
+         \x20           \"status\": \"if that address has an account, a link is on its way\",\n\
+         \x20       }})))\n\
+         \x20   }}\n\
+         \n\
+         \x20   /// Redeem a reset link and set the new password.\n\
+         \x20   pub async fn reset(\n\
+         \x20       State(state): State<AppState>,\n\
+         \x20       Validated(input): Validated<{type_name}PasswordReset>,\n\
+         \x20   ) -> Result<Response> {{\n\
+         \x20       let resets = PasswordResets::new(connection(&state)?.sqlx().clone());\n\
+         \n\
+         \x20       let Some(email) = resets\n\
+         \x20           .consume(&input.token)\n\
+         \x20           .await\n\
+         \x20           .map_err(|error| Error::Other(error.to_string()))?\n\
+         \x20       else {{\n\
+         \x20           return Ok((\n\
+         \x20               StatusCode::UNPROCESSABLE_ENTITY,\n\
+         \x20               json(serde_json::json!({{ \"message\": \"that link is not valid\" }})),\n\
+         \x20           )\n\
+         \x20               .into_response());\n\
+         \x20       }};\n\
+         \n\
+         \x20       let Some(account) = find_by_email(&state, &email).await? else {{\n\
+         \x20           // The link redeemed, but the account is gone.\n\
+         \x20           return Ok(no_content());\n\
+         \x20       }};\n\
+         \n\
+         \x20       let hash = state\n\
+         \x20           .hasher\n\
+         \x20           .hash(input.password.as_bytes())\n\
+         \x20           .map_err(|error| Error::Other(error.to_string()))?;\n\
+         \x20       set_password(&state, account.id, hash.as_str()).await?;\n\
+         \n\
+         \x20       // Writing the hash already ended every session bound to\n\
+         \x20       // the old one. This revokes the outstanding *links* too,\n\
+         \x20       // so a second copy of the mail cannot be redeemed after\n\
+         \x20       // the first.\n\
+         \x20       resets\n\
+         \x20           .revoke_all_for(&email)\n\
+         \x20           .await\n\
+         \x20           .map_err(|error| Error::Other(error.to_string()))?;\n\
+         \n\
+         \x20       Ok(no_content())\n\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+fn auth_routes(r: &Rendered) -> String {
+    let Rendered {
+        stem,
+        type_name,
+        slash_path,
+        ..
+    } = r;
+    let namespace = slash_path.replace('/', ".");
+    format!(
+        "//! The paths the `{slash_path}` sign-in flow serves.\n\
+         //!\n\
+         //! The paths are absolute: a `Routes` collection adds no prefix of\n\
+         //! its own. Wrap the block in a `group` if this flow needs one, or\n\
+         //! if a second `arc make:auth` would otherwise claim `/login` twice\n\
+         //! -- two routes on one path is a panic at boot, from axum.\n\
+         \n\
+         use arcature::prelude::*;\n\
+         \n\
+         use super::{stem}_password_controller::{type_name}PasswordController;\n\
+         use super::{stem}_registration_controller::{type_name}RegistrationController;\n\
+         use super::{stem}_session_controller::{type_name}SessionController;\n\
+         use crate::bootstrap::AppState;\n\
+         \n\
+         routes! {{\n\
+         \x20   pub {stem}_auth {{\n\
+         \x20       state: AppState;\n\
+         \n\
+         \x20       post \"/register\" => {type_name}RegistrationController::store \
+         {{ name: {namespace}.register }}\n\
+         \x20       post \"/login\" => {type_name}SessionController::store \
+         {{ name: {namespace}.login }}\n\
+         \x20       post \"/logout\" => {type_name}SessionController::destroy \
+         {{ name: {namespace}.logout }}\n\
+         \x20       post \"/password/forgot\" => {type_name}PasswordController::request \
+         {{ name: {namespace}.password.forgot }}\n\
+         \x20       post \"/password/reset\" => {type_name}PasswordController::reset \
+         {{ name: {namespace}.password.reset }}\n\
+         \x20   }}\n\
+         }}\n"
+    )
+}
+
+/// The table the account maps to.
+///
+/// Explicit `ColumnDef` builders rather than the `schema::*` shorthands, and
+/// a `DeriveIden` enum named for the table so the default snake-casing spells
+/// it -- both so this file depends on nothing beyond the migration prelude it
+/// already imports.
+fn auth_migration(name: &ArtifactName) -> Artifact {
+    let base_stem = name.file_stem("");
+    let table = pluralize(&base_stem);
+    let iden = to_pascal_case(&table);
+    let module = format!("m{}_create_{table}", utc_stamp());
+    let mut path = PathBuf::from("database/migrations");
+    for segment in name.segments() {
+        path.push(segment);
+    }
+    path.push(format!("{module}.rs"));
+
+    let contents = format!(
+        "//! Migration `create_{table}`: the table the account model maps to.\n\
+         \n\
+         // `DeriveMigrationName` expands to a path relative to a crate\n\
+         // named `sea_orm_migration`, and the prelude carries names out\n\
+         // of that crate rather than the crate itself.\n\
+         use arcature::database::sea_orm_migration;\n\
+         use arcature::database::sea_orm_migration::prelude::*;\n\
+         \n\
+         /// Create `{table}`.\n\
+         #[derive(DeriveMigrationName)]\n\
+         pub struct Migration;\n\
+         \n\
+         /// The columns, spelled the way `#[model]` spells them.\n\
+         #[derive(DeriveIden)]\n\
+         enum {iden} {{\n\
+         \x20   Table,\n\
+         \x20   Id,\n\
+         \x20   Email,\n\
+         \x20   PasswordHash,\n\
+         \x20   EmailVerifiedAt,\n\
+         }}\n\
+         \n\
+         #[async_trait::async_trait]\n\
+         impl MigrationTrait for Migration {{\n\
+         \x20   async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {{\n\
+         \x20       manager\n\
+         \x20           .create_table(\n\
+         \x20               Table::create()\n\
+         \x20                   .table({iden}::Table)\n\
+         \x20                   .if_not_exists()\n\
+         \x20                   .col(\n\
+         \x20                       ColumnDef::new({iden}::Id)\n\
+         \x20                           .big_integer()\n\
+         \x20                           .not_null()\n\
+         \x20                           .auto_increment()\n\
+         \x20                           .primary_key(),\n\
+         \x20                   )\n\
+         \x20                   // Unique in the database, not only in the\n\
+         \x20                   // handler: two registrations racing each other\n\
+         \x20                   // both read \"no such address\" and both insert.\n\
+         \x20                   // The constraint is what makes the second one\n\
+         \x20                   // fail.\n\
+         \x20                   .col(\n\
+         \x20                       ColumnDef::new({iden}::Email)\n\
+         \x20                           .string_len(254)\n\
+         \x20                           .not_null()\n\
+         \x20                           .unique_key(),\n\
+         \x20                   )\n\
+         \x20                   .col(\n\
+         \x20                       ColumnDef::new({iden}::PasswordHash)\n\
+         \x20                           .string_len(255)\n\
+         \x20                           .not_null(),\n\
+         \x20                   )\n\
+         \x20                   .col(\n\
+         \x20                       ColumnDef::new({iden}::EmailVerifiedAt)\n\
+         \x20                           .timestamp_with_time_zone()\n\
+         \x20                           .null(),\n\
+         \x20                   )\n\
+         \x20                   .to_owned(),\n\
+         \x20           )\n\
+         \x20           .await\n\
+         \x20   }}\n\
+         \n\
+         \x20   async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {{\n\
+         \x20       manager\n\
+         \x20           .drop_table(Table::drop().table({iden}::Table).to_owned())\n\
+         \x20           .await\n\
+         \x20   }}\n\
+         }}\n"
+    );
+
+    Artifact {
+        path,
+        contents,
+        register_module: true,
+        notes: vec![
+            format!(
+                "add `Box::new({module}::Migration)` to `Migrator::migrations()` \
+                 in database/migrations/mod.rs -- ordering is yours to choose, so \
+                 the generator does not guess it"
+            ),
+            "the reset links need `arcature_password_resets`, which is not this \
+             migration: call `PasswordResets::new(pool).migrate()` once at boot, \
+             or write the table into a migration of your own"
+                .to_string(),
+            format!(
+                "the route collection is not mounted anywhere -- merge \
+                 `crate::app::auth::{base_stem}_routes::{base_stem}_auth_routes()` \
+                 into `bootstrap/app.rs` beside `crate::routes::app_routes()`"
+            ),
         ],
     }
 }
