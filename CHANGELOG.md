@@ -60,6 +60,25 @@ therefore its first.
 
 ### Fixed
 
+- **A log line written inside a handler can now be tied back to its request.**
+  `AccessLogService` built the request span and then bound it to `_span`,
+  which enters it never, so a handler's own `tracing::info!` inherited no
+  `request_id`, no `path` and no `method`. The access line itself carried them
+  because it names the fields directly, so from the outside the feature looked
+  like it worked; there was simply no way to join a handler's output to the
+  request that produced it, and the span was pure cost.
+
+  The repair attaches the span to the inner future with `Instrument` rather
+  than taking an `enter()` guard. A guard would stay entered across every
+  await point in the handler, including the ones where the task is parked and
+  another request is running on the thread, which attributes other people's
+  log lines to this request. Only the inner call is instrumented, so the
+  access line does not gain a second, inherited copy of the fields it already
+  names.
+
+  **Handler log lines gain three fields they did not have.** Anything parsing
+  them on an exact key set will see `request_id`, `method` and `path` appear.
+
 - **The realtime connection limit now applies to SSE streams, not just to the
   moment one is admitted.** `SseEndpoint::handle` acquired a `ConnectionGuard`
   and then wrote `let _ = guard;` with the comment "held for the lifetime of

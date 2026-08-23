@@ -761,9 +761,24 @@ global tracer provider. `install_logging` is a call the binary makes.
 values; routing and access control are the application's.
 
 **Wire metrics or trace context into the pipeline.** Only `RequestIdLayer` and
-`AccessLogLayer` have builder methods. `MetricsLayer` and `TraceContextLayer`
-are installed by hand, and a user `.layer()` sits inside the request-id and
-access-log stages.
+`AccessLogLayer` have builder methods, at stages 8 and 9. `MetricsLayer` and
+`TraceContextLayer` are installed by hand with `.layer(..)`, and that lands
+them at **stage 21** — inside the body limit (12), the timeout (13),
+maintenance (14) and the rate limiter (15).
+
+Read that as a measurement gap rather than an inconvenience. A request refused
+with a `413`, a `408`, a `503` or a `429` never reaches stage 21, so a
+hand-installed `MetricsLayer` does not count it. Your request total is the
+count of requests that got *through* admission, and the traffic you would most
+want a graph of during an incident is exactly the traffic missing from it. The
+access log does see those responses, because it sits at stage 9, so the two
+sources disagree on purpose and by a margin that grows with load.
+
+There is no way to close that from application code. The stage order is a
+contract asserted by the test suite (`docs/src/deployment.md` lists all 23),
+and a layer cannot be inserted between two of them from outside. Counting
+refusals means reading them off the access log, or putting a counter in front
+of the whole application.
 
 **Redact in debug builds.** The `fmt` layer prints fields verbatim.
 

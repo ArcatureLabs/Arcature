@@ -29,6 +29,7 @@ use std::time::Instant;
 use axum::extract::Request;
 use axum::response::Response;
 use tower::{Layer, Service};
+use tracing::Instrument as _;
 
 use super::{REQUEST, RequestId, redact};
 
@@ -94,14 +95,32 @@ where
         let inner = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, inner);
         Box::pin(async move {
-            let _span = tracing::info_span!(
+            let span = tracing::info_span!(
                 REQUEST,
                 method = %method,
                 path = %uri.path(),
                 request_id = %request_id,
                 client_ip = %redact::apply(CLIENT_IP, &client_ip),
             );
-            let response = inner.call(req).await?;
+            // `.instrument(span)`, not a guard. This used to be
+            // `let _span = info_span!(..)` -- which builds the span, binds it
+            // to nothing, and enters it never, so a handler's own
+            // `tracing::info!` inherited none of these fields and a log line
+            // from inside a request could not be tied to the request. The
+            // span was pure cost.
+            //
+            // A `span.enter()` guard is the wrong repair in async code: the
+            // guard would stay entered across every await point in the
+            // handler, including the ones where the task is parked and
+            // another request is running on the thread. `Instrument` attaches
+            // the span to the future instead, so it is entered exactly while
+            // this future is polled.
+            //
+            // Only the inner call is instrumented. The access-log event below
+            // names these fields itself, and emitting it inside the span
+            // would have `JsonLog` add them a second time as inherited span
+            // fields.
+            let response = inner.call(req).instrument(span).await?;
 
             let status = response.status();
             let duration = started.elapsed();
