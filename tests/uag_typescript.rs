@@ -185,7 +185,8 @@ export const named: RouteName = "assets.show";
 "#;
 
 /// Usage that must not type-check, one file each so the failures cannot mask
-/// one another, with the `tsc` code each one is expected to raise.
+/// one another, with the `tsc` codes any one of which counts as the expected
+/// rejection.
 ///
 /// The codes differ because the mistakes are caught at different points, and
 /// pinning the real one is what makes this a proof that the mistake is caught
@@ -200,42 +201,50 @@ export const named: RouteName = "assets.show";
 /// * `TS2345` -- the argument as a whole does not match, which is what is
 ///   left once no key is excess and none is individually mistyped: a missing
 ///   key, or a route name outside the union.
-const REJECTED: &[(&str, &str, &str)] = &[
+/// * `TS2741` -- the same missing key, named. Newer compilers narrow the
+///   argument mismatch to the property that is absent instead of reporting
+///   the argument as a whole.
+///
+/// A case lists more than one code only where compilers disagree on how to
+/// spell one rejection, never to admit a second kind of failure: the pinned
+/// job runs `typescript@5.9.3`, but the test also uses a `tsc` found on
+/// `PATH`, and that one's version is whatever the machine has.
+const REJECTED: &[(&str, &str, &[&str])] = &[
     (
         "omitted-parameters",
         // The whole point of the conditional tuple.
         r#"import { route } from "./routes";
 export const bad: string = route("links.show");
 "#,
-        "TS2554",
+        &["TS2554"],
     ),
     (
         "misspelt-parameter",
         r#"import { route } from "./routes";
 export const bad: string = route("links.show", { lnik: 42 });
 "#,
-        "TS2353",
+        &["TS2353"],
     ),
     (
         "wrong-parameter-type",
         r#"import { route } from "./routes";
 export const bad: string = route("links.show", { link: true });
 "#,
-        "TS2322",
+        &["TS2322"],
     ),
     (
         "one-of-two-parameters",
         r#"import { route } from "./routes";
 export const bad: string = route("posts.comments.show", { post: 1 });
 "#,
-        "TS2345",
+        &["TS2345", "TS2741"],
     ),
     (
         "parameters-on-a-parameterless-route",
         r#"import { route } from "./routes";
 export const bad: string = route("home", { link: 42 });
 "#,
-        "TS2554",
+        &["TS2554"],
     ),
     (
         "starred-wildcard-key",
@@ -244,14 +253,14 @@ export const bad: string = route("home", { link: 42 });
         r#"import { route } from "./routes";
 export const bad: string = route("assets.show", { "*path": "img/logo.svg" });
 "#,
-        "TS2353",
+        &["TS2353"],
     ),
     (
         "unknown-route-name",
         r#"import { route } from "./routes";
 export const bad: string = route("links.shwo", { link: 42 });
 "#,
-        "TS2345",
+        &["TS2345"],
     ),
 ];
 
@@ -381,12 +390,13 @@ fn an_omitted_misspelt_or_mistyped_parameter_is_a_compile_error() {
     // mismatch would hide the remaining cases behind it -- the same masking
     // this loop exists to undo, reintroduced one level up.
     let mut wrong = Vec::new();
-    for (name, _, code) in REJECTED {
+    for (name, _, codes) in REJECTED {
         let (ok, output) = typecheck(dir.path(), &[format!("{name}.ts")]);
         if ok {
             wrong.push(format!("{name}.ts type-checked and should not have"));
-        } else if !output.contains(code) {
-            wrong.push(format!("{name}.ts failed, but not with {code}:\n{output}"));
+        } else if !codes.iter().any(|code| output.contains(code)) {
+            let codes = codes.join(" or ");
+            wrong.push(format!("{name}.ts failed, but not with {codes}:\n{output}"));
         }
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n\n"));
