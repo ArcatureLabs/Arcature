@@ -416,7 +416,11 @@ mod tests {
         // legal and any change is a different MAC.
         let marker = "signature=v1.";
         let body = link.find(marker).expect("a signed link") + marker.len();
-        let flipped = if link[body..].starts_with('A') { 'B' } else { 'A' };
+        let flipped = if link[body..].starts_with('A') {
+            'B'
+        } else {
+            'A'
+        };
         let tampered = format!("{}{flipped}{}", &link[..body], &link[body + 1..]);
 
         assert_eq!(
