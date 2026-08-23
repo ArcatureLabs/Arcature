@@ -109,6 +109,30 @@ Prose that names the old number is not caught by anything. Grep for it:
 grep -rn '0\.1\.0' README.md docs/src/ .github/CONTRIBUTING.md
 ```
 
+**The unsafe baselines carry the version too, and the Geiger workflow will go
+red for it.** `cargo geiger` prints a dependency tree, and the first two rows
+of that tree are `arcature <version>` and `arcature-macros <version>`. Bumping
+the manifests changes them, the recorded baselines still say the old number,
+and `just geiger` reports a diff on the next push that touches its triggers.
+
+This is not a real drift and it is a waste of a cold rebuild to treat it as
+one. Patch the two lines in each baseline by hand and check that the diff is
+exactly two lines per file, no unsafe count moved:
+
+```
+sed -i 's/  arcature X.Y.Z-old$/  arcature X.Y.Z/' unsafe-baseline.*.txt
+sed -i 's/  |-- arcature-macros X.Y.Z-old$/  |-- arcature-macros X.Y.Z/' unsafe-baseline.*.txt
+git diff --numstat unsafe-baseline.*.txt      # expect 2 2 per file
+```
+
+The same is true of `coverage-baseline.*` only if the number ever changes,
+which it does not -- that file holds a percentage and nothing else.
+`load-baseline.*` records the version nowhere.
+
+Do this in the same commit as the bump. Leaving it makes the next Geiger run
+red for a reason that has nothing to do with what changed, which is exactly
+the kind of red people learn to ignore.
+
 ### 4. Run the gate
 
 `just` is a convenience, not the contract. On a machine where an
