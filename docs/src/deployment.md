@@ -23,7 +23,7 @@ Outermost first:
 | 6 | `SecurityHeaders` | Outside the body limit and timeout, so a `413` and a `408` carry them too. Mints the per-request CSP nonce on the way down. |
 | 7 | `CORS` | Answers a preflight without waking anything below. |
 | 8 | `RequestId` | Every response carries `x-request-id`. |
-| 9 | `AccessLog` | Outside the panic catcher, so a `500` is logged. |
+| 9 | `AccessLog`, `Metrics` | Outside the panic catcher, the body limit, the timeout and the rate limiter, so a `500`, a `413`, a `408` and a `429` are logged and counted. |
 | 10 | `CatchPanic` | A panic becomes a `500`, not a dropped connection. |
 | 11 | `ErrorMapping` | RFC 9457 bodies for bodiless errors; release redaction. |
 | 12 | `BodyLimit` | Rejects an oversized upload before buffering it. |

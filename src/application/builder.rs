@@ -656,6 +656,40 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
+    /// Record request metrics into `metrics`, at stage 9 beside the access log.
+    ///
+    /// Off by default: a registry is a thing an application owns and exposes,
+    /// and the framework has no opinion about where `/metrics` lives or who
+    /// may read it.
+    ///
+    /// # Why this is not just `.layer(MetricsLayer::new(..))`
+    ///
+    /// It can be, and it will be wrong in a way that is hard to see. A user
+    /// `.layer()` lands at stage 21, inside the body limit, the timeout,
+    /// maintenance and the rate limiter -- so a request refused with a `413`,
+    /// a `408`, a `503` or a `429` never reaches it and is never counted. The
+    /// request total then means "requests that got through admission", the
+    /// access log at stage 9 disagrees with it, and the gap widens with
+    /// exactly the load an incident is about.
+    ///
+    /// This installs the layer at stage 9 instead, where it sees what the
+    /// access log sees.
+    ///
+    /// ```
+    /// use arcature::Application;
+    /// use arcature::observe::Metrics;
+    ///
+    /// let metrics = Metrics::new();
+    /// let app = Application::<()>::new().metrics(metrics.clone()).build();
+    /// # let _ = (app, metrics.render());
+    /// ```
+    #[cfg(feature = "observe")]
+    #[must_use]
+    pub fn metrics(mut self, metrics: crate::observe::Metrics) -> Self {
+        self.pipeline.metrics = Some(metrics);
+        self
+    }
+
     /// Turn a panic below this point into a `500` carrying an RFC 9457
     /// `Problem`.
     ///

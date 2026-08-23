@@ -760,25 +760,39 @@ global tracer provider. `install_logging` is a call the binary makes.
 **Add a `/metrics` route, or protect one.** The registry and the layer are
 values; routing and access control are the application's.
 
-**Wire metrics or trace context into the pipeline.** Only `RequestIdLayer` and
-`AccessLogLayer` have builder methods, at stages 8 and 9. `MetricsLayer` and
-`TraceContextLayer` are installed by hand with `.layer(..)`, and that lands
-them at **stage 21** — inside the body limit (12), the timeout (13),
-maintenance (14) and the rate limiter (15).
+**Use `.metrics(..)`, not `.layer(MetricsLayer::new(..))`.** Both compile.
+Only one of them counts a refused request.
 
-Read that as a measurement gap rather than an inconvenience. A request refused
-with a `413`, a `408`, a `503` or a `429` never reaches stage 21, so a
-hand-installed `MetricsLayer` does not count it. Your request total is the
-count of requests that got *through* admission, and the traffic you would most
-want a graph of during an incident is exactly the traffic missing from it. The
-access log does see those responses, because it sits at stage 9, so the two
-sources disagree on purpose and by a margin that grows with load.
+A user `.layer()` lands at **stage 21** — inside the body limit (12), the
+timeout (13), maintenance (14) and the rate limiter (15). A request refused
+with a `413`, a `408`, a `503` or a `429` never reaches stage 21, so a counter
+installed there does not see it. The request total then quietly means
+"requests that got through admission", the access log at stage 9 disagrees
+with it, and the gap is widest under exactly the load an incident is about.
 
-There is no way to close that from application code. The stage order is a
-contract asserted by the test suite (`docs/src/deployment.md` lists all 23),
-and a layer cannot be inserted between two of them from outside. Counting
-refusals means reading them off the access log, or putting a counter in front
-of the whole application.
+`ApplicationBuilder::metrics(registry)` installs the same layer at stage 9,
+beside the access log, where it sees what the access log sees.
+
+```rust,ignore
+let metrics = Metrics::new();
+
+let app = Application::<AppState>::new()
+    .routes(routes())
+    .rate_limit(RateLimit::per_minute(60))
+    .metrics(metrics.clone())   // stage 9: counts the 429s too
+    .build();
+```
+
+`tests/observe_metrics_stage.rs` pins the difference: the same request through
+the same limit is counted at stage 9 and missed at stage 21, and both
+placements agree on a request that is served. The second of those asserts the
+gap on purpose, so that anyone who later moves user layers outside the
+admission stages learns it from a failing test rather than from a graph.
+
+**Wire trace context yourself.** `TraceContextLayer` still has no builder
+method and lands at stage 21 through `.layer(..)`. It is not a counter, so the
+placement costs a span rather than a number, but a request refused before
+stage 21 carries no trace.
 
 **Redact in debug builds.** The `fmt` layer prints fields verbatim.
 

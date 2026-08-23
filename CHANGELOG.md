@@ -81,6 +81,32 @@ therefore its first.
   `observe::metrics` is gated on `observe` alone and is reachable without
   `otel`; the two are separate opt-ins that happen to be read together.
 
+### Added
+
+- **`ApplicationBuilder::metrics(registry)` installs the metrics layer at
+  stage 9, where it can see a refused request.** Previously the only way to
+  record request metrics was `.layer(MetricsLayer::new(..))`, and a user
+  `.layer()` lands at stage 21 -- inside the body limit, the timeout,
+  maintenance and the rate limiter. A counter there never sees a `413`, a
+  `408`, a `503` or a `429`, so the request total quietly meant "requests that
+  got through admission" while the access log at stage 9 disagreed with it,
+  and the gap was widest under exactly the load an incident is about.
+
+  Stage 9 now carries the access log and the metrics layer together, because
+  they must see the same requests for their numbers to be comparable. No stage
+  was added, reordered or removed, and nothing changes for an application that
+  does not call the new method.
+
+  `tests/observe_metrics_stage.rs` pins all three cases: the same request
+  through the same limit is counted at stage 9, missed at stage 21, and both
+  placements agree on a request that is served. The middle one asserts the gap
+  deliberately, so that moving user layers later is a failing test rather than
+  a quiet change in a graph.
+
+  `TraceContextLayer` still has no builder method and still lands at stage 21.
+  It records a span rather than a number, so the cost of the placement is a
+  missing trace rather than a wrong total.
+
 ### Fixed
 
 - **A log line written inside a handler can now be tied back to its request.**
