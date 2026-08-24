@@ -10,7 +10,7 @@
 //! pub fn app() -> AppConfig {
 //!     AppConfig::new()
 //!         .name(env_or("APP_NAME", "Arcature"))
-//!         .url(env_or("APP_URL", "http://localhost:3000"))
+//!         .url(env_or("APP_URL", "http://localhost:1183"))
 //! }
 //!
 //! assert!(app().base_url().starts_with("http"));
@@ -166,9 +166,9 @@ impl AppConfig {
     pub fn new() -> Self {
         AppConfig {
             name: "Arcature".to_string(),
-            url: "http://localhost:3000".to_string(),
+            url: "http://localhost:1183".to_string(),
             env: AppEnvironment::Development,
-            port: 3000,
+            port: 1183,
         }
     }
 
@@ -277,9 +277,9 @@ impl AppConfig {
     pub fn from_env() -> Self {
         AppConfig::new()
             .name(env_or("APP_NAME", "Arcature"))
-            .url(env_or("APP_URL", "http://localhost:3000"))
+            .url(env_or("APP_URL", "http://localhost:1183"))
             .environment(AppEnvironment::parse(&env_or("APP_ENV", "development")))
-            .port(env_parsed("APP_PORT", 3000))
+            .port(env_parsed("APP_PORT", 1183))
     }
 }
 
@@ -353,8 +353,8 @@ mod tests {
     fn the_defaults_are_the_development_ones() {
         let config = AppConfig::new();
         assert_eq!(config.name, "Arcature");
-        assert_eq!(config.base_url(), "http://localhost:3000");
+        assert_eq!(config.base_url(), "http://localhost:1183");
         assert_eq!(config.env, AppEnvironment::Development);
-        assert_eq!(config.port, 3000);
+        assert_eq!(config.port, 1183);
     }
 }

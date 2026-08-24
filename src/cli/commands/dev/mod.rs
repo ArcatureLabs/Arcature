@@ -193,7 +193,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            port: crate::application::DEFAULT_PORT,
+            port: crate::application::builder::DEFAULT_PORT,
             host: IpAddr::V4(Ipv4Addr::LOCALHOST),
             open: false,
             hold: service::DEFAULT_HOLD,
@@ -644,7 +644,7 @@ mod tests {
     fn the_default_port_is_the_one_the_printed_url_uses() {
         let options = Options::default();
 
-        assert_eq!(local_url(&options), "127.0.0.1:3000");
+        assert_eq!(local_url(&options), "127.0.0.1:1183");
     }
 
     #[test]
@@ -654,7 +654,7 @@ mod tests {
             ..Options::default()
         };
 
-        assert_eq!(local_url(&options), "localhost:3000");
+        assert_eq!(local_url(&options), "localhost:1183");
     }
 
     #[test]
