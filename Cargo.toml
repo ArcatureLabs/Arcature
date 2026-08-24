@@ -721,7 +721,7 @@ unicode-normalization = { version = "0.1.25", default-features = false, features
 # backend is the portable software one -- no C, no OpenSSL, no assembly unless
 # the `asm` feature is asked for, and it is not. `session-store-db` shares it,
 # for the row key described above.
-sha2 = { version = "0.10", default-features = false, optional = true }
+sha2 = { version = "0.11", default-features = false, optional = true }
 #
 # `infer` answers "what are these bytes" from the leading magic number, and
 # nothing else. The client's `Content-Type` is a string the client chose, and
