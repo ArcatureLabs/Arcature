@@ -46,6 +46,35 @@ that compiles and is wrong.
 ## Install
 
 ```sh
+cargo install arcature --features cli --locked
+arc new my-app
+cd my-app
+arc dev
+```
+
+That is the whole thing. `arc new` generates the project, mints `APP_KEY`,
+installs the frontend's npm dependencies, and configures SQLite -- created by
+the driver on first connect, so **no server, no container and no credentials**.
+`arc dev` applies migrations, builds, and serves the backend and Vite together
+on one port: <http://127.0.0.1:1183>.
+
+Pass `--db postgres` (or `mysql`) to `arc new` when you want one, and
+`--no-install` to skip npm.
+
+**`--locked` is not optional.** Without it `cargo install` ignores the
+published lockfile and re-resolves from scratch, which currently picks a
+`sea-schema` that fails to build with `can't find crate for async_trait`.
+
+Requirements: Rust **1.97.1** or newer (edition 2024), and Node.js for the
+frontend. Nothing else -- PostgreSQL 17 or MySQL 8 only if you choose that
+driver over the default.
+
+### Using Arcature as a library
+
+Most people want the CLI above. To add the framework to a crate you already
+have:
+
+```sh
 cargo add arcature
 ```
 
@@ -54,9 +83,8 @@ carry you to `0.2` -- see [Versioning](#versioning). To follow `main` ahead of
 a release instead, take a git dependency and pin a revision; a branch reference
 will move under you.
 
-Requirements: Rust **1.97.1** or newer (edition 2024). Anything that uses the
-database or the job queue needs one of PostgreSQL 17, MySQL 8 or SQLite --
-picked at build time, one per build.
+Anything that uses the database or the job queue needs one of PostgreSQL 17,
+MySQL 8 or SQLite -- picked at build time, one per build.
 
 ### Optional subsystems
 
@@ -121,14 +149,8 @@ on the latter. `run()` returns `EngineResult<()>` -- engine failures (a bound
 port, a database that will not connect) are a different kind of failure from a
 handler's, and deliberately do not share an error type with `Result<Response>`.
 
-To scaffold a whole Laravel-shaped project instead:
-
-```sh
-cargo install arcature --features cli
-arc new my-app
-cd my-app
-cargo run
-```
+That is the library on its own, for a crate that already exists. A whole
+Laravel-shaped project is [`arc new`](#install).
 
 ## What Arcature is
 
@@ -505,8 +527,9 @@ compiled against the graph that shipped.
 
 `arc routes`, `arc typegen` and `arc build` read the application graph, so
 they are gated on the `uag` feature the way `arc queue` is gated on
-`database` + `jobs`. `cargo install arcature` gets them only with
-`--features uag`; the generated application turns the feature on for itself
+`database` + `jobs`. `cargo install arcature --locked` gets them only with
+`--features uag`, which `--features cli` already implies; the generated
+application turns the feature on for itself
 through its own `uag` feature, which is what `arc typegen` uses when no dev
 server is running.
 
