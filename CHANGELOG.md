@@ -32,10 +32,18 @@ therefore its first.
 
 ## [0.1.3] - 2026-08-24
 
-A patch release, and the last of a run of three that all say the same thing in
-different words: a control that was not doing what its configuration claimed.
-In `0.1.2` it was an SSE connection limit and a request span. Here it is a
-distributed trace that never joined.
+Two halves. One is the last of a run of three releases that all say the same
+thing in different words: a control that was not doing what its configuration
+claimed. In `0.1.2` it was an SSE connection limit and a request span; here it
+is a distributed trace that never joined.
+
+The other half is the first five minutes. Four separate things stood between
+`arc new` and a page in a browser -- an uninstalled frontend, an empty
+`APP_KEY`, a PostgreSQL server nobody said was required, and a session table
+created only by a command `arc dev` never ran. Each reads as a small omission
+on its own. Together they meant a generated project could not serve its own
+home page, and the failure arrived as a Node module-resolution trace. All four
+are closed, and installing the CLI no longer means compiling the framework.
 
 Nothing removed, no signature changed, no new feature flag. **Two** behaviours
 change, and only one of them is behind `otel`.
@@ -56,6 +64,30 @@ measured. Everything reachable from inside this repository shipped; what is
 left is nightly tooling or a machine's antivirus configuration.
 
 ### Added
+
+- **A generated project now runs with nothing installed.** `arc new` mints
+  `APP_KEY` -- the scaffold's own `.env` said "The application refuses to boot
+  without it" and then shipped it empty -- and defaults to SQLite, which the
+  driver creates on first connect, so there is no server, no container and no
+  credentials. `arc dev` applies migrations once before its first serve.
+  PostgreSQL is `--db postgres`, and the library's own default feature is
+  still `db-postgres`: that is a different question, about what `cargo add`
+  compiles.
+
+  The migration step needs saying plainly, because `bootstrap/app.rs` argues
+  the schema should *not* be applied at boot. That argument is about replicas
+  racing during a deploy. A single dev supervisor on one machine is not that,
+  and it is the only caller.
+
+- **`cargo binstall arcature` downloads the `arc` binary instead of building
+  it.** The release workflow has cross-built and attached `arc` for five
+  targets, each with a SHA-256, since `0.1.2`, and nothing pointed anybody at
+  them: the only documented install was a release build of the whole
+  framework, sea-orm and sqlx included. The `[package.metadata.binstall]`
+  table is what makes the standard command find them -- binstall's own guess
+  is wrong here twice, because the binary is `arc` while the package is
+  `arcature`, and the archive holds a directory rather than a bare
+  executable.
 
 - **`arc install` installs the frontend's npm dependencies**, and `arc new`
   now runs it for you. A generated project is two halves: `cargo` resolves the
@@ -92,6 +124,27 @@ left is nightly tooling or a machine's antivirus configuration.
   names `arc install`.
 
 ### Changed
+
+- **The default port is 1183, not 3000.** `A`=1, `R`=18, `C`=3: the port
+  spells the name of the binary you type. 3000 is Node's convention, belongs
+  to whatever else is running, and says nothing about this framework. This
+  moves `application::DEFAULT_PORT`, the `arc dev` default, and the
+  scaffold's `APP_PORT` and `APP_URL`. Not checked against the IANA registry:
+  the service-name list truncates before this range when fetched, so no claim
+  is made that 1183 is unassigned.
+
+- **`cargo install arcature` needs `--locked`, and the README now says so.**
+  Without it Cargo ignores the published lockfile and re-resolves, which
+  currently selects a `sea-schema` that fails to build with `can't find crate
+  for async_trait`. The README was telling people to run a command that does
+  not work.
+
+- **The dev server's output was replaced.** It opened with a raw IPC pipe
+  name, logged by the generated Node script, and closed with six timings in a
+  row. The pipe name is a per-run value nobody can act on. There is now a
+  banner, and colour comes from ANSI escapes behind `std::io::IsTerminal` with
+  no new dependency -- off for `NO_COLOR`, `TERM=dumb`, or a non-tty, so a
+  redirected log carries no escapes.
 
 - **The generated Vite entry point takes arguments, not environment
   variables.** `.arcature/vite-ipc.mjs` read `ARCATURE_VITE_IPC` and
