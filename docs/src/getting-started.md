@@ -31,12 +31,42 @@ A release build of the whole framework, sea-orm and sqlx included; minutes.
 re-resolves, which currently selects a `sea-schema` that fails to build with
 `can't find crate for async_trait`.
 
-**With [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall), if you
-already have it.** `cargo binstall arcature` fetches the same prebuilt binary
-the releases page serves. It is worth having if you install Rust binaries
-often, and it is not worth acquiring for this one: `cargo install
-cargo-binstall` compiles several hundred crates, which is more than compiling
-Arcature would have cost.
+**With [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall).** It
+fetches the published binary rather than building one, and once it is on the
+machine every crate that declares binstall metadata — Arcature does — installs
+without a compile.
+
+Getting binstall is itself a download, not a build. Its official script pulls
+the prebuilt binary into `~/.cargo/bin`:
+
+```powershell
+# Windows
+Set-ExecutionPolicy Unrestricted -Scope Process; iex (iwr "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.ps1").Content
+```
+
+```sh
+# Linux and macOS
+curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+```
+
+Then:
+
+```sh
+cargo binstall arcature
+```
+
+Do **not** reach for `cargo install cargo-binstall`. That builds it from
+source — several hundred crates, more than compiling Arcature would have
+cost — which is the opposite of the point.
+
+Two things worth knowing before you run the script. It is `curl | bash`: you
+are executing code fetched at that moment, trusting GitHub and the
+`cargo-bins` organisation. And for Arcature alone it buys nothing over the
+download above, which is one signed archive and adds no tool to the machine.
+It pays off when you install Rust binaries regularly. If you would rather not
+pipe a script, binstall publishes signed archives on
+[its own releases page](https://github.com/cargo-bins/cargo-binstall/releases/latest)
+and unpacking one into `~/.cargo/bin` does the same job.
 
 Check it:
 

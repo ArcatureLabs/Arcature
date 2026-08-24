@@ -68,11 +68,11 @@ A release build of the whole framework, sea-orm and sqlx included; minutes.
 and re-resolves, which currently selects a `sea-schema` that fails to build
 with `can't find crate for async_trait`.
 
-**Already have [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall)?**
-`cargo binstall arcature` fetches the same prebuilt binary. Worth it if you
-install Rust binaries often; not worth installing *for this*, since
-`cargo install cargo-binstall` compiles several hundred crates to avoid
-compiling one.
+**With [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall):**
+`cargo binstall arcature` fetches the same prebuilt binary. Getting binstall
+itself is one line and compiles nothing --
+[the guide has it](docs/src/getting-started.md#installing-the-arc-cli), along
+with when it is worth having.
 
 That is the whole thing. `arc new` generates the project, mints `APP_KEY`,
 installs the frontend's npm dependencies, and configures SQLite -- created by
