@@ -21,7 +21,7 @@ pub struct Config {
     pub app_key: Vec<u8>,
     /// The bind address (env `APP_BIND`, default `127.0.0.1`).
     pub bind_addr: String,
-    /// The bind port (env `APP_PORT`, default `3000`).
+    /// The bind port (env `APP_PORT`, default `1183`).
     pub port: u16,
     /// True in a release build.
     ///
@@ -69,12 +69,12 @@ pub struct Config {
 pub fn load() -> Result<Config> {
     Ok(Config {
         app_name: env_or("APP_NAME", "__PROJECT_NAME__"),
-        app_url: env_or("APP_URL", "http://127.0.0.1:3000")
+        app_url: env_or("APP_URL", "http://127.0.0.1:1183")
             .trim_end_matches('/')
             .to_string(),
         app_key: app_key()?,
         bind_addr: env_or("APP_BIND", "127.0.0.1"),
-        port: arcature::config::env_parsed("APP_PORT", 3000),
+        port: arcature::config::env_parsed("APP_PORT", 1183),
         production: !cfg!(debug_assertions),
         mail_from: env_or("MAIL_FROM", "noreply@localhost"),
         database: DatabaseConfig::new(&env_or("DATABASE_URL", "__DATABASE_URL__"))?,

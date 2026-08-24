@@ -52,7 +52,7 @@ use std::sync::Arc;
 /// The default bind address.
 pub const DEFAULT_BIND_ADDR: &str = "127.0.0.1";
 /// The default port.
-pub const DEFAULT_PORT: u16 = 3000;
+pub const DEFAULT_PORT: u16 = 1183;
 
 /// The application composition root. Generic over the state type `S` that
 /// extractors see via `axum::extract::State`. The stateless app uses `S = ()`.
@@ -349,7 +349,7 @@ impl<S: RouterState> ApplicationBuilder<S> {
         self
     }
 
-    /// Set the port (default `3000`). See [`config`](Self::config) for how a
+    /// Set the port (default `1183`). See [`config`](Self::config) for how a
     /// port set here interacts with the environment at run time.
     #[must_use]
     pub fn port(mut self, port: u16) -> Self {

@@ -7,7 +7,7 @@
 //! the two owns it.
 //!
 //! ```text
-//! browser --TCP:3000--> arc dev
+//! browser --TCP:1183--> arc dev
 //!                         |-- Vite's? --> vite IPC   (ARCATURE_VITE_IPC)
 //!                         `-- otherwise -> app IPC   (ARCATURE_APP_IPC)
 //! ```
@@ -193,7 +193,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            port: 3000,
+            port: crate::application::DEFAULT_PORT,
             host: IpAddr::V4(Ipv4Addr::LOCALHOST),
             open: false,
             hold: service::DEFAULT_HOLD,
