@@ -678,7 +678,7 @@ chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["
 # with the `sha2` 0.10 already declared under "Uploads" below, so on a build
 # that has `uploads` or `session-store-db` this adds an edge rather than a
 # crate. RustCrypto, pure Rust, no C.
-hmac = { version = "0.12", default-features = false, optional = true }
+hmac = { version = "0.13", default-features = false, optional = true }
 #
 # `subtle` compares a presented signature with the expected one in time that
 # does not depend on how many leading bytes matched. Its whole reason to exist
