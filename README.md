@@ -12,6 +12,28 @@ application lifecycle, the request pipeline order, the conventions, and a
 coherent vocabulary. The raw Axum, Tower, SeaORM and SQLx escape hatches stay
 available for when the framework's opinions run out.
 
+> ### ⏸ Paused — 24 August 2026
+>
+> Development is on hold until there is someone to carry it. This is a pause,
+> not a wind-down: `0.1.3` is on crates.io, is not yanked, and keeps working
+> for anything already using it.
+>
+> **Known broken in `0.1.3`, so nobody loses a day finding out:**
+>
+> - `arc new` with the default React stack does not run under `arc dev` --
+>   the dev document omits the `@vitejs/plugin-react` refresh preamble, so the
+>   browser reports "can't detect preamble". Vue and Svelte are unaffected.
+> - `arc dev` has been seen looping `superseded` / `building` without ever
+>   serving. Cause not identified, and the supervisor does not report which
+>   file triggered the rebuild.
+>
+> The library, the request pipeline, the application graph and the generators
+> are covered by the test suite and are not implicated in either. Both faults
+> are in the scaffold's first five minutes.
+>
+> Apache-2.0: fork it, rename it, continue it. No permission needed.
+> [GOVERNANCE.md](.github/GOVERNANCE.md) says what that involves.
+
 **Status: pre-release.** `main` breaks without notice, and `0.x` says so
 deliberately. The `2026.x` versions on crates.io are from an abandoned
 predecessor repository, are yanked, and share nothing with this one but the

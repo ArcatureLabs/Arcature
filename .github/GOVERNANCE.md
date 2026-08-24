@@ -4,6 +4,18 @@ Arcature has one maintainer. This document says what follows from that, because
 a project that is honest about its bus factor is easier to depend on than one
 that publishes an org chart nobody staffs.
 
+## Current status: paused
+
+As of **24 August 2026** development is on hold until there is someone to
+carry it. Issues and pull requests may go unanswered. `0.1.3` stays on
+crates.io and is not yanked, because it works for what it does; this is a
+pause, not the wind-down described under
+[If the maintainer disappears](#if-the-maintainer-disappears). The README
+lists what is known broken.
+
+The rest of this document describes how the project runs when it is running,
+and is what a fork inherits.
+
 ## Who decides
 
 **Maintainer: [@dismonjames](https://github.com/dismonjames).** Final say on
