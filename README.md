@@ -46,32 +46,33 @@ that compiles and is wrong.
 ## Install
 
 ```sh
-cargo install cargo-binstall   # once, if you do not have it
-cargo binstall arcature        # downloads the prebuilt `arc`, seconds
+# Download `arc` for your platform, unpack it, put it on PATH:
+#   https://github.com/ArcatureLabs/Arcature/releases/latest
 arc new my-app
 cd my-app
 arc dev
 ```
 
-[`cargo binstall`](https://github.com/cargo-bins/cargo-binstall) is the
-standard Cargo way to fetch a published binary instead of building one. It is
-a separate tool and does not ship with Cargo, which is what the first line is
-for. This repository has cross-built and attached `arc` for Linux, macOS and
-Windows -- x86-64 and arm64, each with a SHA-256 -- since `0.1.2`.
+The [releases page](https://github.com/ArcatureLabs/Arcature/releases/latest)
+carries `arc` for Linux, macOS and Windows -- x86-64 and arm64, each with a
+`.sha256`. No toolchain, no compile, seconds.
 
-**No tools at all?** Take the archive straight from the
-[releases page](https://github.com/ArcatureLabs/Arcature/releases/latest),
-unpack it, and put `arc` on your `PATH`. That is the fastest route on a
-machine with nothing installed, and each archive has a `.sha256` beside it.
-
-**Prefer to compile it?**
+**Compiling it instead:**
 
 ```sh
 cargo install arcature --features cli --locked
 ```
 
-That is a release build of the whole framework, sea-orm and sqlx included, and
-takes minutes. It produces the same binary as the other two routes.
+A release build of the whole framework, sea-orm and sqlx included; minutes.
+`--locked` is not optional -- without it Cargo ignores the published lockfile
+and re-resolves, which currently selects a `sea-schema` that fails to build
+with `can't find crate for async_trait`.
+
+**Already have [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall)?**
+`cargo binstall arcature` fetches the same prebuilt binary. Worth it if you
+install Rust binaries often; not worth installing *for this*, since
+`cargo install cargo-binstall` compiles several hundred crates to avoid
+compiling one.
 
 That is the whole thing. `arc new` generates the project, mints `APP_KEY`,
 installs the frontend's npm dependencies, and configures SQLite -- created by
@@ -81,10 +82,6 @@ on one port: <http://127.0.0.1:1183>.
 
 Pass `--db postgres` (or `mysql`) to `arc new` when you want one, and
 `--no-install` to skip npm.
-
-**`--locked` is not optional.** Without it `cargo install` ignores the
-published lockfile and re-resolves from scratch, which currently picks a
-`sea-schema` that fails to build with `can't find crate for async_trait`.
 
 Requirements: Rust **1.97.1** or newer (edition 2024), and Node.js for the
 frontend. Nothing else -- PostgreSQL 17 or MySQL 8 only if you choose that

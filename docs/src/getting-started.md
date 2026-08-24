@@ -12,34 +12,31 @@ needed only if you ask for one with `arc new --db postgres`.
 
 ## Installing the `arc` CLI
 
-Three routes to the same binary. Pick by what you already have.
+Three routes to the same binary. The first is the one to use.
 
-**Nothing installed.** Take the archive for your platform from the
+**Download it.** Take the archive for your platform from the
 [releases page](https://github.com/ArcatureLabs/Arcature/releases/latest),
-unpack it, and put `arc` on your `PATH`. This is the quickest route on a bare
-machine, and every archive has a `.sha256` beside it.
+unpack it, and put `arc` on your `PATH`. Linux, macOS and Windows, x86-64 and
+arm64, each with a `.sha256`. No toolchain, no compile, seconds.
 
-**With [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall).** It
-fetches the published binary rather than building one. It is a separate tool
-and does not come with Cargo, so the first line is only needed once:
-
-```sh
-cargo install cargo-binstall
-cargo binstall arcature
-```
-
-**Compiling it yourself.**
+**Compile it.**
 
 ```sh
 cargo install arcature --features cli --locked
 ```
 
-This is a release build of the whole framework, sea-orm and sqlx included, and
-takes minutes. It produces the same binary as the other two.
+A release build of the whole framework, sea-orm and sqlx included; minutes.
 
 `--locked` is not optional. Without it Cargo ignores the published lockfile and
 re-resolves, which currently selects a `sea-schema` that fails to build with
 `can't find crate for async_trait`.
+
+**With [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall), if you
+already have it.** `cargo binstall arcature` fetches the same prebuilt binary
+the releases page serves. It is worth having if you install Rust binaries
+often, and it is not worth acquiring for this one: `cargo install
+cargo-binstall` compiles several hundred crates, which is more than compiling
+Arcature would have cost.
 
 Check it:
 
