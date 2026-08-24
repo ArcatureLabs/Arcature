@@ -41,6 +41,7 @@
 
 pub mod commands;
 pub(crate) mod parser;
+pub mod style;
 
 pub use parser::{Database, DbAction, MakeKind, Stack, Subcommand, parse};
 

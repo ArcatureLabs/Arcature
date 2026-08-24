@@ -34,9 +34,41 @@ pub fn run(
         .map_err(NewError::Template)?;
     println!("Created {name} at {}", target.display());
 
+    let keyed = generate_key(&target);
     let installed = install && install_frontend(&target);
-    next_steps(name, installed);
+    next_steps(name, installed, keyed);
     Ok(())
+}
+
+/// Mint `APP_KEY` into the generated `.env`.
+///
+/// Returns whether the project has a key.
+///
+/// The scaffold ships `APP_KEY=` empty and its own comment says the
+/// application refuses to boot without it, which made "run `arc key:generate`"
+/// a step between `arc new` and anything working at all. There is nothing for
+/// a developer to decide here -- the key is 64 bytes from the OS RNG and any
+/// value they chose themselves would be worse -- so the generator mints it.
+///
+/// [`super::key_generate::generate`] rather than a second RNG: that module
+/// owns the certified source and the `.env` upsert, and two ways to produce
+/// the same secret would mean only one of them was reviewed.
+#[cfg(feature = "auth")]
+fn generate_key(target: &std::path::Path) -> bool {
+    match super::key_generate::generate(false, target) {
+        Ok(_) => true,
+        Err(error) => {
+            println!("note: APP_KEY was not written: {error}");
+            false
+        }
+    }
+}
+
+/// Without `auth` there is no certified RNG to mint a key with, so the
+/// developer is told to run the command from a CLI that has one.
+#[cfg(not(feature = "auth"))]
+fn generate_key(_target: &std::path::Path) -> bool {
+    false
 }
 
 /// Install the frontend, reporting rather than failing.
@@ -69,15 +101,22 @@ fn install_frontend(target: &std::path::Path) -> bool {
 /// then too and was written down only in the generated `justfile`, which is a
 /// file most people never open -- so the first thing a new project did was
 /// fail, and it failed inside Node with a module-resolution trace.
-fn next_steps(name: &str, installed: bool) {
+fn next_steps(name: &str, installed: bool, keyed: bool) {
     println!();
     println!("Next:");
     println!("  cd {name}");
     if !installed {
         println!("  arc install          # the frontend's npm dependencies");
     }
-    println!("  arc key:generate     # writes APP_KEY into .env");
+    if !keyed {
+        println!("  arc key:generate     # writes APP_KEY into .env");
+    }
     println!("  arc dev              # one port, backend and Vite together");
+    if installed && keyed {
+        println!();
+        println!("Nothing else is needed: the default database is SQLite, created on");
+        println!("first connect, and `arc dev` applies migrations before it serves.");
+    }
 }
 
 /// Map the CLI's stack onto the catalog's.

@@ -602,6 +602,12 @@ pub(crate) struct Backend {
     built: Option<PathBuf>,
     /// [`digest`] of the binary the running child was started from.
     built_digest: Option<u64>,
+    /// Whether the schema has been applied in this supervisor's lifetime.
+    ///
+    /// One run, not one per restart: migrations are idempotent but not free,
+    /// and paying for them on every rebuild would put seconds into the loop
+    /// this command exists to keep short.
+    migrated: bool,
 }
 
 impl Backend {
@@ -622,6 +628,7 @@ impl Backend {
             generation: 0,
             built: None,
             built_digest: None,
+            migrated: false,
         }
     }
 
@@ -803,6 +810,36 @@ impl Backend {
     ///
     /// The copy is taken *before* the old child is stopped, so a failure to
     /// make it leaves a working server running rather than none.
+    /// Apply the project's schema by running its own binary in `--migrate`
+    /// mode, once.
+    ///
+    /// Reported and not propagated. A project may legitimately have no
+    /// database configured, and a migration that fails still leaves a
+    /// supervisor that can serve every route which does not touch the schema
+    /// -- refusing to start would take that away and tell the developer less
+    /// than the migrator's own output already did.
+    async fn migrate(&self, program: &Path) {
+        let mut command = inherited(&program.display().to_string());
+        command.arg("--migrate").current_dir(&self.root);
+        // `spawn_blocking` with `std::process`, not `tokio::process`: the
+        // latter is behind a tokio feature this crate does not turn on, and
+        // stopping the previous child a few lines below already takes this
+        // shape.
+        let outcome = tokio::task::spawn_blocking(move || command.status()).await;
+        match outcome {
+            Ok(Ok(status)) if status.success() => {}
+            Ok(Ok(status)) => {
+                eprintln!("warning: `--migrate` exited with {status}; the schema may be behind");
+            }
+            Ok(Err(error)) => {
+                eprintln!("warning: could not run migrations: {error}");
+            }
+            Err(error) => {
+                eprintln!("warning: the migration task failed: {error}");
+            }
+        }
+    }
+
     async fn restart(&mut self, executable: &Path) -> Result<Restart, DevError> {
         let swapping = Instant::now();
         self.generation = self.generation.wrapping_add(1);
@@ -844,6 +881,24 @@ impl Backend {
             .env(crate::config::VITE_IPC_ENV, &self.endpoints.vite);
 
         let swap = swapping.elapsed();
+
+        // Before the first spawn of this session. A freshly generated project
+        // has no tables at all, and the session store is read on the first
+        // request that carries a CSRF token -- which is every request the
+        // scaffold serves. Without this, `arc dev` on a new project starts,
+        // reports ready, opens a browser and fails on the first page.
+        //
+        // `bootstrap/app.rs` says the schema is applied by `--migrate` rather
+        // than at boot, and that reasoning holds: a deploy that migrates as a
+        // side effect of starting has every replica racing. A single dev
+        // supervisor on a developer's machine is not that, and it is the only
+        // caller here.
+        if !self.migrated {
+            self.migrate(self.staged.as_deref().unwrap_or(executable))
+                .await;
+            self.migrated = true;
+        }
+
         let spawning = Instant::now();
         let mut child = ChildGuard::spawn("application", &mut command)
             .map_err(|source| DevError::Spawn { program, source })?;

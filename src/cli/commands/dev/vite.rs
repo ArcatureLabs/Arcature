@@ -106,9 +106,11 @@ const vite = await createServer({
 })
 
 httpServer.on('request', vite.middlewares)
-httpServer.listen(endpoint, () => {
-  console.log(`arc dev: vite listening on ${endpoint}`)
-})
+// Deliberately silent. The endpoint is a per-run IPC path the supervisor
+// minted; printing it put a raw pipe name at the top of every session, above
+// the banner, where it read as something the developer was supposed to do
+// something about. The supervisor already reports that Vite is ready.
+httpServer.listen(endpoint)
 
 const shutdown = async () => {
   await vite.close()

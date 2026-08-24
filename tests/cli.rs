@@ -209,7 +209,13 @@ fn every_stack_the_help_offers_actually_scaffolds() {
         ("svelte", "resources/js/app.ts"),
     ] {
         let dir = project();
-        let output = arc(dir.path(), &["new", stack, "--stack", stack]);
+        // `--no-install`: `arc new` runs `npm install` by default, and a test
+        // suite that reaches the network takes minutes and fails offline.
+        // What this test is about is the file tree, not npm.
+        let output = arc(
+            dir.path(),
+            &["new", stack, "--stack", stack, "--no-install"],
+        );
 
         assert!(
             output.status.success(),

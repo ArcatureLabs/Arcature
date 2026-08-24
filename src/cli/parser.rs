@@ -144,12 +144,24 @@ impl Stack {
 }
 
 /// The database driver `arc new` configures.
+///
+/// SQLite is the default, and the reason is the first five minutes rather
+/// than the next five years. `sqlite://storage/<name>.sqlite?mode=rwc` is
+/// created by the driver on first connect, so a generated project runs with
+/// no server installed, no container started and no credentials to match.
+/// PostgreSQL is one flag away and is what a deployment should use; making it
+/// the default meant every new project's first act was to fail at
+/// `stage: "connect"`, which teaches nothing about Arcature.
+///
+/// The library's own default feature is still `db-postgres` -- that is a
+/// different question, about what `cargo add arcature` compiles, and it is
+/// answered in `Cargo.toml`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Database {
-    /// PostgreSQL (the certified default).
-    #[default]
+    /// PostgreSQL.
     Postgres,
-    /// SQLite.
+    /// SQLite, created on first connect. The default.
+    #[default]
     Sqlite,
     /// MySQL.
     Mysql,
@@ -836,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn new_defaults_to_the_certified_stack_and_driver() {
+    fn new_defaults_to_a_stack_and_a_driver_that_need_no_server() {
         let Subcommand::New {
             name,
             dest,
@@ -850,7 +862,11 @@ mod tests {
         assert_eq!(name, "blog");
         assert_eq!(dest, None);
         assert_eq!(stack, Stack::React);
-        assert_eq!(database, Database::Postgres);
+        // SQLite, not PostgreSQL. `sqlite://storage/<name>.sqlite?mode=rwc`
+        // is created by the driver on first connect, so a generated project
+        // boots with nothing installed. PostgreSQL as the default made every
+        // new project's first act a failure at `stage: "connect"`.
+        assert_eq!(database, Database::Sqlite);
         // A generated project should be runnable without a second command,
         // so the install is the default and --no-install is the opt-out.
         assert!(install);

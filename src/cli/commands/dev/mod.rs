@@ -307,6 +307,35 @@ pub async fn run(options: Options) -> Result<(), DevError> {
     serve(project, endpoints, sentinel, listener, options, vite_child).await
 }
 
+/// What the developer sees once the first build is serving.
+///
+/// The line this replaced was `Arcature dev server ready at <url>`, printed
+/// after a row of six timings. Everything that matters was there and nothing
+/// was easier to find for it. A banner earns its blank lines by making the
+/// URL the only thing the eye lands on.
+///
+/// `--host` is named rather than a second address printed, because the
+/// supervisor binds loopback by default and a "Network" row showing an
+/// address nothing can reach from another machine is worse than no row.
+fn ready_banner(url: &str) {
+    use crate::cli::style;
+
+    println!();
+    println!(
+        "  {} {}",
+        style::brand("Arcature"),
+        style::dim(crate::FRAMEWORK_VERSION)
+    );
+    println!();
+    println!("  {}  {}", style::dim("Local:  "), style::green(url));
+    println!(
+        "  {}  {}",
+        style::dim("Network:"),
+        style::dim("use --host to expose")
+    );
+    println!();
+}
+
 /// Start Vite in middleware mode on its endpoint.
 ///
 /// The endpoint and the sentinel path are passed as arguments rather than in
@@ -403,7 +432,7 @@ async fn serve(
     // has to work for the same reason it has to work during any other.
     let outcome = rebuild_loop(project.root(), &mut backend, || {
         let url = format!("http://{}", local_url(&options));
-        println!("\n  Arcature dev server ready at {url}\n");
+        ready_banner(&url);
         if options.open {
             open_browser(&url);
         }
