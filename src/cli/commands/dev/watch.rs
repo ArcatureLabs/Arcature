@@ -47,7 +47,15 @@ pub(crate) const DEBOUNCE: Duration = Duration::from_millis(300);
 /// `target` is the build output -- watching it means every build triggers
 /// the next one. `node_modules` is Vite's. `.arcature` is ours, and the
 /// restart sentinel we write lives there.
-const IGNORED_DIRECTORIES: &[&str] = &["target", "node_modules", ".arcature", ".git"];
+///
+/// `storage` is runtime data the application itself writes: uploads, logs,
+/// and -- since SQLite became the default driver -- the database file, plus
+/// its `-wal` and `-shm` siblings. Every one of those is touched *by the
+/// process the supervisor just started*, so watching them is a loop with no
+/// exit: connect, write, rebuild, restart, connect. The symptom is
+/// `superseded` and `building` alternating forever and no server ever
+/// answering.
+const IGNORED_DIRECTORIES: &[&str] = &["target", "node_modules", ".arcature", ".git", "storage"];
 
 /// Generated TypeScript, written by the supervisor after each restart.
 /// Rebuilding because of it would make every rebuild trigger another.
@@ -361,6 +369,26 @@ mod tests {
         )));
     }
 
+    /// `storage/` is runtime data the running application owns: uploads,
+    /// logs, and the SQLite database. A `.rs` file is the only thing under
+    /// there that `classify` would otherwise act on, so it is what this
+    /// asserts -- the database file was already inert, because `.sqlite`
+    /// matches no rule, and a test naming it would pass with or without the
+    /// ignore entry.
+    #[test]
+    fn nothing_under_storage_rebuilds_even_when_it_looks_like_source() {
+        for file in [
+            "storage/uploads/payload.rs",
+            "storage/framework/cache.rs",
+            "storage/demo.sqlite",
+        ] {
+            assert!(
+                classify(&PathBuf::from(file)).is_none(),
+                "{file} must not trigger a rebuild"
+            );
+        }
+    }
+
     #[test]
     fn a_dependency_source_inside_node_modules_never_rebuilds() {
         assert!(!triggers_rebuild(&PathBuf::from(
@@ -377,7 +405,7 @@ mod tests {
 
     #[test]
     fn the_directories_that_would_exhaust_the_kernels_watch_budget_are_never_subscribed_to() {
-        for name in ["target", "node_modules", ".git", ".arcature"] {
+        for name in ["target", "node_modules", ".git", ".arcature", "storage"] {
             assert!(
                 !watchable(std::ffi::OsStr::new(name)),
                 "{name} must never be subscribed to recursively"
