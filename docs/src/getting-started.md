@@ -3,18 +3,61 @@
 ## Requirements
 
 - Rust **1.97.1** or newer (edition 2024). `rust-toolchain.toml` pins `stable`.
-- **PostgreSQL 17** for anything using the database or the job queue.
-- Node.js, only if you are building a frontend with Vite. Arcature itself
-  publishes no npm package.
+- **Node.js**, for the frontend a generated project ships with.
 
-## Installing
+That is all. A generated project uses SQLite by default, and the driver
+creates the file on first connect — there is no server to install, no
+container to start and no credentials to match. PostgreSQL 17 or MySQL 8 are
+needed only if you ask for one with `arc new --db postgres`.
+
+## Installing the `arc` CLI
+
+Three routes to the same binary. Pick by what you already have.
+
+**Nothing installed.** Take the archive for your platform from the
+[releases page](https://github.com/ArcatureLabs/Arcature/releases/latest),
+unpack it, and put `arc` on your `PATH`. This is the quickest route on a bare
+machine, and every archive has a `.sha256` beside it.
+
+**With [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall).** It
+fetches the published binary rather than building one. It is a separate tool
+and does not come with Cargo, so the first line is only needed once:
+
+```sh
+cargo install cargo-binstall
+cargo binstall arcature
+```
+
+**Compiling it yourself.**
+
+```sh
+cargo install arcature --features cli --locked
+```
+
+This is a release build of the whole framework, sea-orm and sqlx included, and
+takes minutes. It produces the same binary as the other two.
+
+`--locked` is not optional. Without it Cargo ignores the published lockfile and
+re-resolves, which currently selects a `sea-schema` that fails to build with
+`can't find crate for async_trait`.
+
+Check it:
+
+```console
+$ arc version
+arcature 0.1.3
+```
+
+## Using Arcature as a library
+
+To add the framework to a crate you already have, rather than generating one:
 
 ```sh
 cargo add arcature
 ```
 
-That is the whole install. To follow `main` ahead of a release instead, depend
-on the repository and pin a revision -- a branch reference will move under you.
+To follow `main` ahead of a release instead, depend on the repository and pin a
+revision — a branch reference will move under you.
 
 ```toml
 [dependencies]
