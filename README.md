@@ -46,11 +46,25 @@ that compiles and is wrong.
 ## Install
 
 ```sh
-cargo install arcature --features cli --locked
+cargo binstall arcature       # downloads the prebuilt `arc`, seconds
 arc new my-app
 cd my-app
 arc dev
 ```
+
+[`cargo binstall`](https://github.com/cargo-bins/cargo-binstall) is the
+standard Cargo way to fetch a published binary instead of building one. This
+repository has cross-built and attached `arc` for Linux, macOS and Windows --
+x86-64 and arm64, each with a SHA-256 -- since `0.1.2`.
+
+To compile it yourself instead:
+
+```sh
+cargo install arcature --features cli --locked
+```
+
+That is a release build of the whole framework, sea-orm and sqlx included, and
+takes minutes. It produces the same binary.
 
 That is the whole thing. `arc new` generates the project, mints `APP_KEY`,
 installs the frontend's npm dependencies, and configures SQLite -- created by

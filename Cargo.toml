@@ -29,6 +29,33 @@ required-features = ["cli"]
 name = "arcature"
 path = "src/lib.rs"
 
+# `cargo binstall arcature` -- download the `arc` binary this repository
+# already publishes instead of compiling it.
+#
+# The release workflow has cross-built and attached `arc` for five targets
+# since 0.1.2, with a SHA-256 beside each archive, and nothing pointed anybody
+# at them. `cargo install` was the only documented path, and it is a release
+# build of the whole framework: sea-orm, sqlx and the rest, twelve minutes on
+# a four-core machine, to obtain a file that was already sitting on the
+# release page.
+#
+# These four keys are what make the standard command find it. Without them
+# binstall guesses `{name}-{target}-v{version}`, which is wrong twice over:
+# the binary is `arc` while the package is `arcature`, and the version carries
+# no `v` inside the filename even though the tag has one.
+#
+# `bin-dir` matters as much as `pkg-url`. The workflow archives a *directory*
+# named after the archive, with the executable inside it, so an extractor
+# pointed at the archive root finds nothing.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/arc-{ version }-{ target }{ archive-suffix }"
+pkg-fmt = "tgz"
+bin-dir = "arc-{ version }-{ target }/{ bin }{ binary-ext }"
+
+# Windows is the one target the workflow zips rather than tars.
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
 # ---------------------------------------------------------------------------
 # Workspace — the proc-macro crate lives alongside `arcature` as a path dep.
 # Only `arcature` is the public release unit; `arcature-macros` is an
