@@ -45,47 +45,50 @@ that compiles and is wrong.
 
 ## Install
 
+### 1. Get `arc`
+
+Pick one. All three land the same binary.
+
+| | How | Cost |
+|---|---|---|
+| **Download** *(recommended)* | [**Grab your platform's archive**](https://github.com/ArcatureLabs/Arcature/releases/latest), unpack, put `arc` on `PATH` | seconds, no toolchain |
+| **Compile** | `cargo install arcature --features cli --locked` | minutes |
+| **binstall** | `cargo binstall arcature` | seconds, [needs binstall](docs/src/getting-started.md#installing-the-arc-cli) |
+
+The releases page carries Linux, macOS and Windows, x86-64 and arm64, each
+with a `.sha256`.
+
+`--locked` is not optional on the compile route. Without it Cargo ignores the
+published lockfile and re-resolves, which currently selects a `sea-schema`
+that fails to build with `can't find crate for async_trait`.
+
+### 2. Create and run
+
 ```sh
-# Download `arc` for your platform, unpack it, put it on PATH:
-#   https://github.com/ArcatureLabs/Arcature/releases/latest
 arc new my-app
 cd my-app
 arc dev
 ```
 
-The [releases page](https://github.com/ArcatureLabs/Arcature/releases/latest)
-carries `arc` for Linux, macOS and Windows -- x86-64 and arm64, each with a
-`.sha256`. No toolchain, no compile, seconds.
+```text
+  Arcature 0.1.3
 
-**Compiling it instead:**
-
-```sh
-cargo install arcature --features cli --locked
+  Local:    http://127.0.0.1:1183
+  Network:  use --host to expose
 ```
 
-A release build of the whole framework, sea-orm and sqlx included; minutes.
-`--locked` is not optional -- without it Cargo ignores the published lockfile
-and re-resolves, which currently selects a `sea-schema` that fails to build
-with `can't find crate for async_trait`.
-
-**With [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall):**
-`cargo binstall arcature` fetches the same prebuilt binary. Getting binstall
-itself is one line and compiles nothing --
-[the guide has it](docs/src/getting-started.md#installing-the-arc-cli), along
-with when it is worth having.
-
-That is the whole thing. `arc new` generates the project, mints `APP_KEY`,
-installs the frontend's npm dependencies, and configures SQLite -- created by
-the driver on first connect, so **no server, no container and no credentials**.
-`arc dev` applies migrations, builds, and serves the backend and Vite together
-on one port: <http://127.0.0.1:1183>.
+**Nothing else to install and nothing else to start.** `arc new` generates the
+project, mints `APP_KEY`, installs the frontend's npm dependencies, and
+configures SQLite -- which the driver creates on first connect, so there is no
+server, no container and no credentials. `arc dev` applies migrations, builds,
+and serves the backend and Vite together on that one port.
 
 Pass `--db postgres` (or `mysql`) to `arc new` when you want one, and
 `--no-install` to skip npm.
 
-Requirements: Rust **1.97.1** or newer (edition 2024), and Node.js for the
-frontend. Nothing else -- PostgreSQL 17 or MySQL 8 only if you choose that
-driver over the default.
+**Requirements:** Rust **1.97.1** or newer (edition 2024) for the compile
+route, and Node.js for the frontend. Nothing else -- PostgreSQL 17 or MySQL 8
+only if you choose that driver over the default.
 
 ### Using Arcature as a library
 
